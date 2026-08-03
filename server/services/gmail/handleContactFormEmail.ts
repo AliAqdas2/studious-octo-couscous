@@ -1,4 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
+import { inspect } from "node:util";
 import { getDb } from "../../db/index.js";
 import {
   activityLogs,
@@ -44,6 +45,26 @@ function requireDb() {
   const db = getDb();
   if (!db) throw new AppError("Database is not configured", 503);
   return db;
+}
+
+const INTAKE_LOG = "[email-intake]";
+
+function intakeLog(...args: unknown[]): void {
+  console.log(INTAKE_LOG, ...args);
+}
+
+function intakeDump(label: string, value: unknown): void {
+  const text =
+    typeof value === "string"
+      ? value
+      : inspect(value, {
+          depth: 10,
+          colors: false,
+          maxArrayLength: 100,
+          maxStringLength: 50_000,
+          breakLength: 120,
+        });
+  console.log(`${INTAKE_LOG} ${label}\n${text}`);
 }
 
 export type ProcessedSource = "webhook" | "poller";
@@ -254,11 +275,21 @@ export async function handleContactFormEmail(input: {
   const source: ProcessedSource = input.source || "webhook";
   const messageIds = input.messageIds || [];
 
+  intakeLog("========== handleContactFormEmail START ==========");
+  intakeDump("input", {
+    source,
+    markWebhook: input.markWebhook,
+    messageIds,
+    messageCount: messageIds.length,
+  });
+
   if (input.markWebhook !== false && source === "webhook") {
     await markWebhookHealth();
+    intakeLog("markWebhookHealth: lastWebhookReceivedAt updated");
   }
 
   if (messageIds.length === 0) {
+    intakeLog("No messageIds — returning empty result");
     return { ok: true, created: 0, spam: 0, skipped: 0, results: [] };
   }
 
@@ -266,6 +297,7 @@ export async function handleContactFormEmail(input: {
 
   const db = requireDb();
   const gmail = await getGmailApi();
+  intakeLog("Gmail API client ready");
 
   let createdCount = 0;
   let skippedCount = 0;
@@ -273,6 +305,7 @@ export async function handleContactFormEmail(input: {
   const results: MessageResult[] = [];
 
   for (const messageId of messageIds) {
+    intakeLog(`----- message ${messageId} -----`);
     try {
       const already = await db
         .select()
@@ -280,6 +313,7 @@ export async function handleContactFormEmail(input: {
         .where(eq(processedGmailMessages.gmailMessageId, messageId))
         .limit(1);
       if (already[0]) {
+        intakeDump("already processed row", already[0]);
         skippedCount++;
         results.push({
           messageId,
@@ -297,11 +331,22 @@ export async function handleContactFormEmail(input: {
           format: "full",
         });
         message = res.data;
+        intakeDump("gmail.users.messages.get (metadata)", {
+          id: message.id,
+          threadId: message.threadId,
+          labelIds: message.labelIds,
+          snippet: message.snippet,
+          internalDate: message.internalDate,
+          sizeEstimate: message.sizeEstimate,
+          payloadMimeType: message.payload?.mimeType,
+          payloadPartCount: message.payload?.parts?.length,
+        });
       } catch (fetchErr) {
         console.warn(
           `[email-intake] Failed to fetch ${messageId}:`,
           fetchErr instanceof Error ? fetchErr.message : fetchErr
         );
+        intakeDump("gmail fetch error", fetchErr);
         skippedCount++;
         results.push({
           messageId,
@@ -320,7 +365,23 @@ export async function handleContactFormEmail(input: {
       const emailBody =
         decodeGmailBody(message.payload || null) || message.snippet || "";
 
+      intakeDump("parsed headers (all)", headers);
+      intakeDump("parsed envelope", {
+        from,
+        subject,
+        threadId,
+        senderEmail,
+        senderEmailRaw,
+        to: getHeader(headers, "To"),
+        cc: getHeader(headers, "Cc"),
+        date: getHeader(headers, "Date"),
+        messageIdHeader: getHeader(headers, "Message-ID"),
+        bodyLength: emailBody.length,
+      });
+      intakeDump("FULL email body", emailBody);
+
       const isWebsiteForm = senderEmail === "itsupport@mangiadc.com";
+      intakeLog(`isWebsiteForm=${isWebsiteForm}`);
 
       if (isWebsiteForm) {
         if (
@@ -338,6 +399,7 @@ export async function handleContactFormEmail(input: {
             outcome: "skipped",
             reason: "Contact-form pattern not matched",
           });
+          intakeLog("SKIP: contact-form pattern not matched");
           continue;
         }
       }
@@ -354,6 +416,7 @@ export async function handleContactFormEmail(input: {
             outcome: "silent-skip",
             reason: silentSkip.reason,
           });
+          intakeLog(`SKIP silent: ${silentSkip.reason}`);
           continue;
         }
 
@@ -361,6 +424,7 @@ export async function handleContactFormEmail(input: {
         const ccHeader = (getHeader(headers, "Cc") || "").toLowerCase();
         const mangiaInTo = toHeader.includes("@mangiadc.com");
         const mangiaInCc = ccHeader.includes("@mangiadc.com");
+        intakeLog(`To/Cc check mangiaInTo=${mangiaInTo} mangiaInCc=${mangiaInCc}`);
         if (!mangiaInTo && mangiaInCc) {
           await createSpamRow({
             from,
@@ -600,6 +664,8 @@ export async function handleContactFormEmail(input: {
       });
 
       const ai = getAiProvider();
+      intakeLog("Calling LLM structuredComplete (classify_inbound_email)...");
+      intakeDump("LLM prompt user (truncated)", user.substring(0, 8000));
       const completion = await ai.structuredComplete<ClassifyInboundEmailLlmResult>({
         system,
         user,
@@ -609,6 +675,11 @@ export async function handleContactFormEmail(input: {
       });
 
       const rawLlmResult = completion.data;
+      intakeDump("LLM FULL raw result", rawLlmResult);
+      intakeDump("LLM completion meta", {
+        model: (completion as { model?: string }).model,
+        usage: (completion as { usage?: unknown }).usage,
+      });
       if (!isValidClassifyResult(rawLlmResult)) {
         throw new Error(
           `Malformed LLM response: ${JSON.stringify(rawLlmResult)?.substring(0, 300)}`
@@ -623,6 +694,15 @@ export async function handleContactFormEmail(input: {
       const hasBusinessPotential =
         senderRole === "promoter_or_vendor" ? false : llmBusinessPotential;
       const llmSaysNewLead = rawLlmResult.new_lead === true;
+      intakeDump("LLM decision flags", {
+        aiCategory,
+        aiReason,
+        senderRole,
+        llmBusinessPotential,
+        hasBusinessPotential,
+        llmSaysNewLead,
+        candidateCount: allCandidateLeads.length,
+      });
 
       if (
         hasBusinessPotential &&
@@ -889,11 +969,21 @@ export async function handleContactFormEmail(input: {
           detectErr instanceof Error ? detectErr.message : detectErr
         );
       }
+      intakeDump("CREATED lead", {
+        leadId: newLead.id,
+        name: extractedName,
+        email: extractedEmail,
+        channel: enrich.channel,
+        stage: enrich.stage,
+        clientId: enrich.clientId,
+        outcome: aiCategory ? "created (flagged)" : "created",
+      });
     } catch (perMsgErr) {
       console.error(
         `[email-intake] Per-message error for ${messageId}:`,
         perMsgErr instanceof Error ? perMsgErr.message : perMsgErr
       );
+      intakeDump("per-message error stack", perMsgErr);
       skippedCount++;
       results.push({
         messageId,
@@ -907,13 +997,15 @@ export async function handleContactFormEmail(input: {
     }
   }
 
-  return {
-    ok: true,
+  const summary = {
+    ok: true as const,
     created: createdCount,
     spam: spamCount,
     skipped: skippedCount,
     results,
   };
+  intakeDump("========== handleContactFormEmail END summary ==========", summary);
+  return summary;
 }
 export async function listNewInboxMessageIds(
   startHistoryId: string,
