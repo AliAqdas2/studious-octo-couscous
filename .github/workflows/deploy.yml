@@ -1,0 +1,67 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "${APP_DIR}" ]; then
+              APP_DIR="${HOME}/mangia-crm"
+            fi
+            echo "[deploy] App dir: ${APP_DIR}"
+            cd "${APP_DIR}"
+
+            if [ -d .git ]; then
+              echo "[deploy] Pulling latest..."
+              git fetch --all --prune
+              DEFAULT_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || true)"
+              if [ -z "${DEFAULT_BRANCH}" ]; then
+                DEFAULT_BRANCH=main
+              fi
+              git reset --hard "origin/${DEFAULT_BRANCH}"
+            else
+              echo "[deploy] No .git in ${APP_DIR} — expecting files synced manually"
+            fi
+
+            if [ ! -f .env ]; then
+              echo "[deploy] ERROR: missing .env in ${APP_DIR} — copy it onto the server first"
+              exit 1
+            fi
+
+            echo "[deploy] Building and starting containers..."
+            docker compose pull || true
+            docker compose up -d --build --remove-orphans
+
+            echo "[deploy] Waiting for health..."
+            for i in $(seq 1 30); do
+              if docker compose exec -T app curl -fsS http://127.0.0.1:5000/api/health >/dev/null 2>&1; then
+                echo "[deploy] Healthy"
+                docker compose ps
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "[deploy] Health check timed out"
+            docker compose logs --tail=80 app
+            exit 1

@@ -1,0 +1,222 @@
+import { Router } from "express";
+import { env } from "../config/env.js";
+import { AppError } from "../lib/errors.js";
+import {
+  optionalAuth,
+  requireAuth,
+  type AuthenticatedRequest,
+} from "../middleware/auth.js";
+import { createGmailDraft } from "../services/gmail/drafts.js";
+import {
+  getGmailApi,
+  getGmailStatus,
+  getOAuthConsentUrl,
+  isGoogleOAuthConfigured,
+  saveOAuthTokens,
+} from "../services/gmail/gmailClient.js";
+import {
+  getCurrentHistoryId,
+  upsertPollState,
+} from "../services/gmail/handleContactFormEmail.js";
+import { logLeadEmailActivity } from "../services/gmail/logActivity.js";
+import { getEmailDetail } from "../services/gmail/messages.js";
+import { replyToEmail } from "../services/gmail/reply.js";
+import { sendGmailEmail } from "../services/gmail/send.js";
+import { pollGmailInbox } from "../jobs/pollGmailInbox.js";
+
+const router = Router();
+
+router.get("/gmail/oauth/start", requireAuth, (req, res, next) => {
+  try {
+    if (!isGoogleOAuthConfigured()) {
+      throw new AppError(
+        "Gmail OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
+        503
+      );
+    }
+    const state = (req as AuthenticatedRequest).user?.id || "";
+    const url = getOAuthConsentUrl(state);
+    res.redirect(url);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** JSON consent URL for SPA Connect button (JWT cannot be sent via plain navigation). */
+router.get("/gmail/oauth/url", requireAuth, (req, res, next) => {
+  try {
+    if (!isGoogleOAuthConfigured()) {
+      throw new AppError(
+        "Gmail OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
+        503
+      );
+    }
+    const state = (req as AuthenticatedRequest).user?.id || "";
+    const url = getOAuthConsentUrl(state);
+    res.json({ url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/gmail/oauth/callback", optionalAuth, async (req, res, next) => {
+  try {
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    if (!code) {
+      throw new AppError("Missing OAuth code", 400);
+    }
+    const userId =
+      (typeof req.query.state === "string" && req.query.state) ||
+      (req as AuthenticatedRequest).user?.id ||
+      null;
+    const { email } = await saveOAuthTokens({ code, userId });
+    const appUrl = env.appUrl().replace(/\/$/, "");
+    res.redirect(`${appUrl}/?gmail=connected&email=${encodeURIComponent(email)}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/gmail/status", requireAuth, async (_req, res, next) => {
+  try {
+    const status = await getGmailStatus();
+    res.json(status);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/gmail/messages/:id", requireAuth, async (req, res, next) => {
+  try {
+    const result = await getEmailDetail(req.params.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/gmail/drafts", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as AuthenticatedRequest).user;
+    const { to, subject, body, leadId } = req.body ?? {};
+    if (!to || !subject) {
+      throw new AppError("to and subject are required", 400);
+    }
+    const result = await createGmailDraft({
+      to,
+      subject,
+      body: body ?? "",
+      leadId,
+      userId: user?.id,
+      userName: user?.full_name,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/gmail/send", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as AuthenticatedRequest).user;
+    const { to, subject, body, leadId } = req.body ?? {};
+    if (!to || !subject) {
+      throw new AppError("to and subject are required", 400);
+    }
+    const result = await sendGmailEmail({
+      to,
+      subject,
+      body: body ?? "",
+      leadId,
+      userId: user?.id,
+      userName: user?.full_name,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/gmail/reply", requireAuth, async (req, res, next) => {
+  try {
+    const user = (req as AuthenticatedRequest).user;
+    const { to, subject, body, threadId, messageId, leadId, action } =
+      req.body ?? {};
+    if (!to || !subject) {
+      throw new AppError("to and subject are required", 400);
+    }
+    const result = await replyToEmail({
+      to,
+      subject,
+      body: body ?? "",
+      threadId,
+      messageId,
+      leadId,
+      action,
+      userId: user?.id,
+      userName: user?.full_name,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/gmail/log-activity", requireAuth, async (req, res, next) => {
+  try {
+    const leadId = req.body?.leadId || req.body?.event?.entity_id;
+    const result = await logLeadEmailActivity(leadId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Register Gmail users.watch for Pub/Sub push to /webhook/gmail */
+router.post("/gmail/watch", requireAuth, async (_req, res, next) => {
+  try {
+    const topic = env.gmailPubsubTopic();
+    if (!topic) {
+      throw new AppError(
+        "GMAIL_PUBSUB_TOPIC is not set. Create a Pub/Sub topic and grant Gmail publish rights.",
+        503
+      );
+    }
+    const gmail = await getGmailApi();
+    const watchRes = await gmail.users.watch({
+      userId: "me",
+      requestBody: {
+        topicName: topic,
+        labelIds: ["INBOX"],
+        labelFilterBehavior: "include",
+      },
+    });
+    const historyId = watchRes.data.historyId
+      ? String(watchRes.data.historyId)
+      : await getCurrentHistoryId();
+    await upsertPollState({
+      lastHistoryId: historyId,
+      lastWebhookReceivedAt: new Date(),
+    });
+    res.json({
+      ok: true,
+      historyId,
+      expiration: watchRes.data.expiration || null,
+      topic,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Manual safety-net poll (same logic as cron job) */
+router.post("/gmail/poll", requireAuth, async (_req, res, next) => {
+  try {
+    const result = await pollGmailInbox();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;

@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.github
+.cursor
+*.md
+!docs/deploy.md
+.env
+.env.*
+!.env.example
+.DS_Store
+coverage
+tmp
+*.log
+Base44 Version
+plans
+graphify-out
