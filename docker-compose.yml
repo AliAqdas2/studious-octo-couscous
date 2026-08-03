@@ -1,24 +1,15 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: mangia-crm:latest
-    container_name: mangia-crm
+    build: .
+    container_name: mangia_app
     restart: unless-stopped
-    ports:
-      - "${HOST_PORT:-5000}:5000"
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-      PORT: "5000"
-      # Jobs on in production containers (override in .env if needed)
-      ENABLE_JOBS: "${ENABLE_JOBS:-true}"
-      RUN_MIGRATIONS: "${RUN_MIGRATIONS:-true}"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 45s
+    env_file: .env
+    networks:
+      - db_network    # Can talk to central_db
+      - caddy_network # Can be seen by central_caddy
+
+networks:
+  db_network:
+    external: true
+  caddy_network:
+    external: true

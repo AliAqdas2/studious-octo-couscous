@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "vite build && esbuild server/index.ts --bundle --platform=node --packages=external --outfile=dist/index.js --format=esm",
+    "build": "vite build && esbuild server/index.ts --bundle --platform=node --packages=external --external:vite --external:./vite.js --outfile=dist/index.js --format=esm",
     "start": "NODE_ENV=production node dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

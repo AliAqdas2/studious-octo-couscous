@@ -15,7 +15,10 @@ const app = createApp();
 const port = Number(process.env.PORT) || 5000;
 const server = createServer(app);
 
-if (app.get("env") === "development") {
+// Use process.env.NODE_ENV (not app.get("env")) so production esbuild can
+ // tree-shake the Vite import and keep `vite` out of the Docker image.
+const isDev = process.env.NODE_ENV === "development";
+if (isDev) {
   const { setupVite } = await import("./vite.js");
   await setupVite(app, server);
 } else {
