@@ -1,6 +1,7 @@
 import { config } from "dotenv";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { env } from "../server/config/env.js";
+import { resolveDatabaseUrl } from "../server/db/config.js";
 import { getDb } from "../server/db/index.js";
 import { automationConfig, users } from "../server/db/schema/index.js";
 import { hashPassword } from "../server/services/auth/authService.js";
@@ -8,12 +9,63 @@ import { hashPassword } from "../server/services/auth/authService.js";
 config();
 
 async function seed(): Promise<void> {
-  const db = getDb();
-  if (!db) {
-    throw new Error("DATABASE_URL is not set");
+  const email = env.seedAdminEmail.toLowerCase();
+  const passwordFromEnv = Boolean(process.env.SEED_ADMIN_PASSWORD?.trim());
+  console.log("[seed] Starting admin / automation seed");
+  console.log(
+    `[seed] SEED_ADMIN_EMAIL=${email} SEED_ADMIN_PASSWORD=${
+      passwordFromEnv ? "[set from env]" : "[default: changeme]"
+    }`
+  );
+
+  const databaseUrl = resolveDatabaseUrl();
+  if (!databaseUrl) {
+    throw new Error(
+      "[seed] DATABASE_URL is not set — check docker-compose env_file: .env on the server"
+    );
   }
 
-  const email = env.seedAdminEmail.toLowerCase();
+  try {
+    const normalized = databaseUrl.replace(/^postgresql:/i, "http:");
+    const u = new URL(normalized);
+    console.log(
+      `[seed] DATABASE_URL host=${u.hostname} port=${u.port || "5432"} db=${u.pathname}`
+    );
+  } catch {
+    console.log("[seed] DATABASE_URL present (could not parse host for logging)");
+  }
+
+  const db = getDb();
+  if (!db) {
+    throw new Error(
+      "[seed] getDb() returned null — DATABASE_URL missing or invalid"
+    );
+  }
+
+  try {
+    await db.execute(sql`select 1`);
+    console.log("[seed] Database connection OK");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[seed] Database unreachable (${message}). Check DATABASE_URL and that the app container can reach Postgres (db_network / Supabase).`
+    );
+  }
+
+  let userTableOk = false;
+  try {
+    await db.select({ id: users.id }).from(users).limit(1);
+    userTableOk = true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[seed] users table not readable (${message}). Run migrations first (RUN_MIGRATIONS=true).`
+    );
+  }
+  if (userTableOk) {
+    console.log("[seed] users table OK");
+  }
+
   const [existing] = await db
     .select()
     .from(users)
@@ -21,8 +73,11 @@ async function seed(): Promise<void> {
     .limit(1);
 
   if (existing) {
-    console.log(`Admin user already exists: ${email}`);
+    console.log(
+      `[seed] Admin already exists: ${email} (id=${existing.id}, role=${existing.role}, active=${existing.isActive})`
+    );
   } else {
+    console.log(`[seed] Admin not found — creating ${email}...`);
     const passwordHash = await hashPassword(env.seedAdminPassword);
     const [admin] = await db
       .insert(users)
@@ -34,7 +89,7 @@ async function seed(): Promise<void> {
         passwordHash,
       })
       .returning();
-    console.log(`Created admin user: ${admin.email} (${admin.id})`);
+    console.log(`[seed] Created admin user: ${admin.email} (${admin.id})`);
   }
 
   const [configRow] = await db
@@ -44,21 +99,27 @@ async function seed(): Promise<void> {
     .limit(1);
 
   if (configRow) {
-    console.log("automation_config default already exists");
+    console.log("[seed] automation_config key=default already exists");
   } else {
     await db.insert(automationConfig).values({
       key: "default",
     });
-    console.log("Created automation_config key=default");
+    console.log("[seed] Created automation_config key=default");
   }
 }
 
 seed()
   .then(() => {
-    console.log("Seed complete");
+    console.log("[seed] Seed complete");
     process.exit(0);
   })
   .catch((err) => {
-    console.error("Seed failed:", err);
+    console.error(
+      "[seed] Seed failed:",
+      err instanceof Error ? err.message : err
+    );
+    if (err instanceof Error && err.stack) {
+      console.error(err.stack);
+    }
     process.exit(1);
   });

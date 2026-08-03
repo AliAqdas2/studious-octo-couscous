@@ -110,6 +110,7 @@ docker compose build --no-cache && docker compose up -d
 ## 4. Notes
 
 - Migrations run on container start (`RUN_MIGRATIONS=true`). Set `false` to skip.
+- Default admin is seeded on start if missing (`RUN_SEED=true`, uses `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, defaults `admin@mangia.com` / `changeme`).
 - Jobs (Gmail poll, call retries, daily digest) default to **on** in Compose via `ENABLE_JOBS`; override in `.env`.
 - Health: `GET /api/health` (checks DB).
 - Image does not embed `.env`; keep secrets only on the server.

@@ -17,6 +17,12 @@ RUN npm run build \
     --platform=node \
     --packages=external \
     --outfile=dist/migrate-apply.js \
+    --format=esm \
+  && npx esbuild scripts/seed.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed.js \
     --format=esm
 
 FROM node:22-bookworm-slim AS runner
