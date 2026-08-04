@@ -1047,29 +1047,52 @@ export async function listNewInboxMessageIds(
 ): Promise<{ messageIds: string[]; newHistoryId: string }> {
   const gmail = await getGmailApi();
   try {
+    // Do NOT pass labelId: "INBOX" — Gmail often omits history records for that
+    // filter even when a real INBOX message arrived, which silently advances the
+    // cursor and drops the email. Collect all messageAdded, then filter to INBOX.
     const hist = await gmail.users.history.list({
       userId: "me",
       startHistoryId,
       historyTypes: ["messageAdded"],
-      labelId: "INBOX",
     });
 
     const newHistoryId = hist.data.historyId
       ? String(hist.data.historyId)
       : startHistoryId;
     const seenIds = new Set<string>();
-    const messageIds: string[] = [];
+    const candidateIds: string[] = [];
 
     for (const h of hist.data.history || []) {
       for (const ma of h.messagesAdded || []) {
         const id = ma.message?.id;
         if (id && !seenIds.has(id)) {
           seenIds.add(id);
-          messageIds.push(id);
-          if (messageIds.length >= maxMessages) break;
+          candidateIds.push(id);
+          if (candidateIds.length >= maxMessages * 3) break;
         }
       }
+      if (candidateIds.length >= maxMessages * 3) break;
+    }
+
+    const messageIds: string[] = [];
+    for (const id of candidateIds) {
       if (messageIds.length >= maxMessages) break;
+      try {
+        const res = await gmail.users.messages.get({
+          userId: "me",
+          id,
+          format: "minimal",
+        });
+        const labels = res.data.labelIds || [];
+        if (labels.includes("INBOX")) {
+          messageIds.push(id);
+        }
+      } catch (e) {
+        console.warn(
+          `[email-intake] history candidate ${id} minimal get failed:`,
+          e instanceof Error ? e.message : e
+        );
+      }
     }
 
     return { messageIds, newHistoryId };
@@ -1087,6 +1110,43 @@ export async function listNewInboxMessageIds(
     }
     throw err;
   }
+}
+
+/**
+ * Safety net when history.list advances the cursor but returns no INBOX IDs.
+ * Scans recent INBOX mail and returns IDs not yet terminally processed.
+ */
+export async function listUnprocessedInboxMessageIds(
+  maxMessages = 20
+): Promise<string[]> {
+  const gmail = await getGmailApi();
+  const listRes = await gmail.users.messages.list({
+    userId: "me",
+    q: "in:inbox newer_than:2d",
+    maxResults: maxMessages,
+  });
+
+  const candidates = (listRes.data.messages || [])
+    .map((m) => m.id)
+    .filter((id): id is string => Boolean(id));
+
+  if (candidates.length === 0) return [];
+
+  const db = getDb();
+  if (!db) return candidates;
+
+  const unprocessed: string[] = [];
+  for (const id of candidates) {
+    const seen = await db
+      .select()
+      .from(processedGmailMessages)
+      .where(eq(processedGmailMessages.gmailMessageId, id))
+      .limit(1);
+    if (!seen[0] || !isTerminalProcessedStatus(seen[0].status)) {
+      unprocessed.push(id);
+    }
+  }
+  return unprocessed;
 }
 
 export async function getCurrentHistoryId(): Promise<string> {

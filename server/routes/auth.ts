@@ -50,6 +50,19 @@ const passwordResetRateLimit = rateLimit({
   name: "password-reset",
 });
 
+/** No-op when ENABLE_AUTH_RATE_LIMIT is not set. */
+const maybeAuthRateLimit = env.enableAuthRateLimit()
+  ? authRateLimit
+  : ((_req, _res, next) => {
+      next();
+    }) as typeof authRateLimit;
+
+const maybePasswordResetRateLimit = env.enableAuthRateLimit()
+  ? passwordResetRateLimit
+  : ((_req, _res, next) => {
+      next();
+    }) as typeof passwordResetRateLimit;
+
 /** In-memory cache for password-reset availability (60s). */
 let availabilityCache: { available: boolean; expiresAt: number } | null = null;
 
@@ -78,7 +91,7 @@ function clearRefreshCookie(res: Response): void {
 
 const router = Router();
 
-router.post("/login", authRateLimit, async (req, res, next) => {
+router.post("/login", maybeAuthRateLimit, async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
     const result = await login({
@@ -162,7 +175,7 @@ router.get("/password-reset/status", async (_req, res, next) => {
 
 router.post(
   "/password-reset/request",
-  passwordResetRateLimit,
+  maybePasswordResetRateLimit,
   async (req, res, next) => {
     try {
       const body = resetRequestSchema.parse(req.body);
@@ -180,7 +193,7 @@ router.post(
 
 router.post(
   "/password-reset/verify",
-  passwordResetRateLimit,
+  maybePasswordResetRateLimit,
   async (req, res, next) => {
     try {
       const body = resetVerifySchema.parse(req.body);
@@ -197,7 +210,7 @@ router.post(
 
 router.post(
   "/password-reset/confirm",
-  passwordResetRateLimit,
+  maybePasswordResetRateLimit,
   async (req, res, next) => {
     try {
       const body = resetConfirmSchema.parse(req.body);

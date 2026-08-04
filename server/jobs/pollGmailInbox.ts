@@ -1,14 +1,15 @@
-import { eq } from "drizzle-orm";
 import {
   getCurrentHistoryId,
   getPollState,
   handleContactFormEmail,
   listNewInboxMessageIds,
+  listUnprocessedInboxMessageIds,
   upsertPollState,
 } from "../services/gmail/handleContactFormEmail.js";
 import { getDb } from "../db/index.js";
 import { processedGmailMessages } from "../db/schema/index.js";
 import { isTerminalProcessedStatus } from "../services/gmail/intakeRetry.js";
+import { eq } from "drizzle-orm";
 
 const WEBHOOK_HEALTH_THRESHOLD_MIN = 90;
 const MAX_MESSAGES_PER_RUN = 20;
@@ -52,6 +53,7 @@ export async function pollGmailInbox(): Promise<Record<string, unknown>> {
 
   let messageIds: string[] = [];
   let newHistoryId = state.lastHistoryId;
+  let catchUpCount = 0;
 
   try {
     const result = await listNewInboxMessageIds(
@@ -61,12 +63,26 @@ export async function pollGmailInbox(): Promise<Record<string, unknown>> {
     messageIds = result.messageIds;
     newHistoryId = result.newHistoryId;
   } catch (err) {
-    // listNewInboxMessageIds re-seeds on 404; other errors bubble
     console.error("[poll-gmail] history.list failed:", err);
     throw err;
   }
 
-  // If cursor was re-seeded with empty messages and same id change, still update
+  if (messageIds.length === 0 && newHistoryId !== state.lastHistoryId) {
+    console.log(
+      `[poll-gmail] history advanced ${state.lastHistoryId} → ${newHistoryId} with 0 IDs — running INBOX catch-up`
+    );
+    try {
+      messageIds = await listUnprocessedInboxMessageIds(MAX_MESSAGES_PER_RUN);
+      catchUpCount = messageIds.length;
+      console.log(`[poll-gmail] catch-up recovered ${catchUpCount} message(s)`);
+    } catch (catchUpErr) {
+      console.error(
+        "[poll-gmail] catch-up failed:",
+        catchUpErr instanceof Error ? catchUpErr.message : catchUpErr
+      );
+    }
+  }
+
   if (messageIds.length === 0) {
     await upsertPollState({
       lastHistoryId: newHistoryId,
@@ -75,7 +91,12 @@ export async function pollGmailInbox(): Promise<Record<string, unknown>> {
     console.log(
       `[poll-gmail] No new messages. Cursor advanced ${state.lastHistoryId} → ${newHistoryId}`
     );
-    return { ok: true, found: 0, new_history_id: newHistoryId };
+    return {
+      ok: true,
+      found: 0,
+      catch_up: catchUpCount,
+      new_history_id: newHistoryId,
+    };
   }
 
   console.log(
@@ -121,6 +142,7 @@ export async function pollGmailInbox(): Promise<Record<string, unknown>> {
       ? Number(minutesSinceWebhook.toFixed(1))
       : null,
     found: messageIds.length,
+    catch_up: catchUpCount,
     processed_now: toProcess.length,
     skipped_as_dup: messageIds.length - toProcess.length,
     new_history_id: newHistoryId,

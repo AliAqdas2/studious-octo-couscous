@@ -4,6 +4,9 @@ services:
     container_name: mangia_app
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Poller + intake retry + Gmail watch renew. Override with ENABLE_JOBS=false in .env if needed.
+      ENABLE_JOBS: ${ENABLE_JOBS:-true}
     networks:
       - db_network    # Can talk to central_db
       - caddy_network # Can be seen by central_caddy

@@ -11,6 +11,7 @@ import {
   getPollState,
   handleContactFormEmail,
   listNewInboxMessageIds,
+  listUnprocessedInboxMessageIds,
   upsertPollState,
 } from "../../services/gmail/handleContactFormEmail.js";
 
@@ -219,7 +220,7 @@ async function resolveMessageIds(body: unknown): Promise<{
   }
 
   log(`Calling history.list startHistoryId=${startHistoryId} max=20`);
-  const { messageIds, newHistoryId } = await listNewInboxMessageIds(
+  let { messageIds, newHistoryId } = await listNewInboxMessageIds(
     startHistoryId,
     20
   );
@@ -227,6 +228,24 @@ async function resolveMessageIds(body: unknown): Promise<{
     `history.list result: ${messageIds.length} message(s), newHistoryId=${newHistoryId}`
   );
   dump("history.list messageIds", messageIds);
+
+  let catchUpCount = 0;
+  if (messageIds.length === 0 && newHistoryId !== startHistoryId) {
+    log(
+      `history advanced ${startHistoryId} → ${newHistoryId} with 0 IDs — running INBOX catch-up`
+    );
+    try {
+      messageIds = await listUnprocessedInboxMessageIds(20);
+      catchUpCount = messageIds.length;
+      log(`catch-up recovered ${catchUpCount} message(s)`);
+      dump("catch-up messageIds", messageIds);
+    } catch (catchUpErr) {
+      console.error(
+        `${LOG} catch-up failed:`,
+        catchUpErr instanceof Error ? catchUpErr.message : catchUpErr
+      );
+    }
+  }
 
   await upsertPollState({
     lastHistoryId: newHistoryId,
@@ -238,11 +257,15 @@ async function resolveMessageIds(body: unknown): Promise<{
     messageIds,
     source: "webhook",
     detail: {
-      path: "pubsub_history_list",
+      path:
+        catchUpCount > 0
+          ? "pubsub_history_list_with_catchup"
+          : "pubsub_history_list",
       startHistoryId,
       newHistoryId,
       pubsubHistoryHint: pubsub.historyId,
       messageCount: messageIds.length,
+      catchUpCount,
     },
   };
 }

@@ -42,6 +42,10 @@ export const env = {
   gmailWebhookSecret: () => process.env.GMAIL_WEBHOOK_SECRET?.trim() || "",
   enableJobs: () =>
     process.env.ENABLE_JOBS === "true" || process.env.ENABLE_JOBS === "1",
+  /** Login / password-reset rate limits (5 / 15 min). Off unless explicitly enabled. */
+  enableAuthRateLimit: () =>
+    process.env.ENABLE_AUTH_RATE_LIMIT === "true" ||
+    process.env.ENABLE_AUTH_RATE_LIMIT === "1",
   /** Comma-separated digest recipients; empty → Base44 team defaults. */
   digestRecipients: (): string[] => {
     const raw = process.env.DIGEST_RECIPIENTS?.trim();

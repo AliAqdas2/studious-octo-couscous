@@ -46,7 +46,7 @@ Related setup steps: [`gmail-setup.md`](./gmail-setup.md).
 | Pub/Sub **push** subscription → `https://YOUR_HOST/webhook/gmail` | Google HTTP-posts to your server |
 | `POST /api/gmail/watch` (JWT) | Registers `users.watch` for that mailbox (~7 day expiry; auto-renewed by jobs) |
 | `ANTHROPIC_API_KEY` (etc.) | LLM classifies / extracts lead fields |
-| **`ENABLE_JOBS=true`** | Poller safety net + **watch auto-renewal** + **OAuth token keep-alive** |
+| **`ENABLE_JOBS=true`** | Poller safety net + **watch auto-renewal** + **OAuth token keep-alive** + intake retries. Docker Compose defaults this to `true` via `${ENABLE_JOBS:-true}` unless overridden in `.env`. |
 
 Without **watch + Pub/Sub**, OAuth alone still supports send/draft/reply; it does **not** auto-create leads from new mail (unless you hit the webhook manually or run the poller).
 
@@ -150,7 +150,9 @@ File: [`server/routes/webhooks/gmail.ts`](../server/routes/webhooks/gmail.ts)
    - Base64-decode `message.data` → read `historyId` hint (logged; intake still uses **stored** cursor).  
    - Load `gmail_poll_state.last_history_id`.  
    - **If no cursor yet:** seed with `users.getProfile` historyId, update poll state, return **zero** messages this hit (first notification only initializes the cursor).  
-   - **Else:** call `listNewInboxMessageIds(startHistoryId, max=20)` → Gmail `users.history.list` with `historyTypes: ["messageAdded"]`, collect new message IDs, advance `last_history_id` and `last_webhook_received_at`.
+   - **Else:** call `listNewInboxMessageIds(startHistoryId, max=20)` → Gmail `users.history.list` with `historyTypes: ["messageAdded"]` (**no** `labelId` filter — that filter silently misses INBOX mail). Candidates are filtered to messages that currently have the `INBOX` label via `messages.get` (minimal).  
+   - **If history advanced but returned 0 IDs:** run INBOX **catch-up** (`messages.list` `in:inbox newer_than:2d`, skip terminal `processed_gmail_messages`) so emails are not lost when the cursor moves past a gap. Logs: `catch-up recovered N message(s)`.  
+   - Then advance `last_history_id` and `last_webhook_received_at`.
 
 ### C. Deduplicate
 
@@ -316,12 +318,14 @@ Log prefixes: `[retry-gmail-intake]`, `[gmail-intake-dead-letter]`.
 | Symptom | Likely cause |
 |---------|----------------|
 | No webhook logs at all | Push URL wrong / not public HTTPS; watch expired; topic permissions |
-| Webhook hits but `created: 0`, empty IDs | Cursor seed-only first hit; or history already consumed; or no `messageAdded` |
+| Webhook hits but `created: 0`, empty IDs | Cursor seed-only first hit; or no new INBOX mail; catch-up also returned 0 |
+| Webhook 0 history IDs but history advanced | Catch-up scan runs (`in:inbox newer_than:2d`); look for `catch-up recovered N` in logs |
 | Fetch / OAuth errors | Gmail disconnected or token revoked |
 | 503 AI not configured | Missing `ANTHROPIC_API_KEY` on create path |
 | Duplicate prevention | Row already in `processed_gmail_messages` |
 | AI/DB error on intake | Retried up to 2 times (3 total attempts) via `gmail_intake_retries`; then dead-letter + admin email — body preserved in DB |
 | Poller always skipping | Webhooks healthy (&lt; 90 min since last hit) — expected |
+| Jobs never start | `ENABLE_JOBS` unset/`false` in env; Compose should default to true |
 
 Server logs use prefixes:
 
