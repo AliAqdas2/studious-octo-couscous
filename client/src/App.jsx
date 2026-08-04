@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
 import NavigationTracker from "@/lib/NavigationTracker";
@@ -14,6 +15,7 @@ import PageNotFound from "./lib/PageNotFound";
 import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import Users from "@/pages/Users";
 import Login from "@/pages/Login";
+import ForgotPassword from "@/pages/ForgotPassword";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -38,19 +40,22 @@ const AuthenticatedApp = () => {
     );
   }
 
-  const onLoginPage = location.pathname === "/login";
+  const isPublicPage = ["/login", "/forgot-password"].includes(
+    location.pathname
+  );
 
-  if (!isAuthenticated && !onLoginPage) {
+  if (!isAuthenticated && !isPublicPage) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  if (isAuthenticated && onLoginPage) {
+  if (isAuthenticated && isPublicPage) {
     return <Navigate to="/Dashboard" replace />;
   }
 
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route
         path="/"
         element={
@@ -92,6 +97,7 @@ function App() {
           <AuthenticatedApp />
         </Router>
         <Toaster />
+        <SonnerToaster />
       </QueryClientProvider>
     </AuthProvider>
   );

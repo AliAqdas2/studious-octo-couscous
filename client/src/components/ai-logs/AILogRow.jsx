@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   FileText, Phone, Bot, Mail, UserPlus, Calendar as CalIcon,
-  Sparkles, Eye, ExternalLink, ShieldAlert
+  Sparkles, Eye, ExternalLink, ShieldAlert, Loader2
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
 
 // Maps an action label to a category + icon + color band, used to render
 // each row in the AI Logs timeline.
@@ -52,24 +54,80 @@ function formatTime(ts) {
   } catch { return ts; }
 }
 
-export default function AILogRow({ log, leadName, lead, onView }) {
+const SOURCE_EMAIL_KINDS = new Set([
+  'classification',
+  'lead-created',
+  'lead-appended',
+  'spam-routed',
+]);
+
+/**
+ * Resolve a Gmail message id for in-app EmailViewModal (never open Gmail).
+ * Prefer details.gmail_message_id → spam entity → newest message in thread.
+ */
+async function resolveSourceMessageId({ details, lead, spamById }) {
+  if (details.gmail_message_id) {
+    return {
+      id: details.gmail_message_id,
+      subject: details.subject || '',
+      from: details.from || '',
+      snippet: details.body_snippet || '',
+    };
+  }
+
+  const spamId = details.spam_email_id;
+  if (spamId) {
+    let spam = spamById?.[spamId];
+    if (!spam) {
+      const rows = await base44.entities.SpamEmail.filter({ id: spamId });
+      spam = rows?.[0];
+    }
+    const msgId = spam?.gmail_message_id || spam?.gmailMessageId;
+    if (msgId) {
+      return {
+        id: msgId,
+        subject: spam.subject || details.subject || '',
+        from: spam.from || details.from || '',
+        snippet: details.body_snippet || '',
+      };
+    }
+  }
+
+  const threadId = details.gmail_thread_id || lead?.gmail_thread_id || null;
+  if (threadId) {
+    const response = await base44.functions.invoke('getGmailThread', { threadId });
+    const messages = response?.data?.messages || [];
+    const newest = messages[0];
+    if (newest?.id) {
+      return {
+        id: newest.id,
+        subject: newest.subject || details.subject || '',
+        from: newest.from || details.from || '',
+        to: newest.to || '',
+        snippet: newest.snippet || details.body_snippet || '',
+        date: newest.date || '',
+      };
+    }
+  }
+
+  return null;
+}
+
+export default function AILogRow({ log, leadName, lead, spamById, onView }) {
   const cat = categorize(log.action);
   const Icon = cat.icon;
   const details = log.details || {};
+  const [resolving, setResolving] = useState(false);
 
-  // Source email viewer — opens the existing in-app EmailViewModal which fetches
-  // the message from Gmail only when clicked (no LLM credits). We need a
-  // gmail_message_id for that modal; lead-created/appended/spam-routed logs
-  // carry it directly. Classification logs don't, so they fall back to a plain
-  // Gmail thread link if the lead has a thread id.
   const gmailMessageId = details.gmail_message_id || null;
+  const spamEmailId = details.spam_email_id || null;
   const gmailThreadId = details.gmail_thread_id || lead?.gmail_thread_id || null;
-  const canOpenInApp = !!gmailMessageId && ['lead-created', 'lead-appended', 'spam-routed'].includes(cat.kind);
-  const gmailFallbackUrl = !canOpenInApp && gmailThreadId
-    ? `https://mail.google.com/mail/u/0/#all/${gmailThreadId}`
-    : null;
-  const showInAppViewer = canOpenInApp;
-  const showGmailFallback = !!gmailFallbackUrl && ['classification', 'lead-created', 'lead-appended', 'spam-routed'].includes(cat.kind);
+  const spamHasMessage =
+    spamEmailId &&
+    !!(spamById?.[spamEmailId]?.gmail_message_id || spamById?.[spamEmailId]?.gmailMessageId);
+  const canTrySourceEmail =
+    SOURCE_EMAIL_KINDS.has(cat.kind) &&
+    !!(gmailMessageId || spamEmailId || spamHasMessage || gmailThreadId);
 
   const summaryLines = [];
   if (cat.kind === 'survey-draft') {
@@ -77,7 +135,6 @@ export default function AILogRow({ log, leadName, lead, onView }) {
     if (details.proposed_meeting_time_et) summaryLines.push(`Proposed: ${details.proposed_meeting_time_et}`);
     if (details.reason) summaryLines.push(`Reason: ${details.reason.replace(/_/g, ' ')}`);
   } else if (cat.kind === 'classification') {
-    // autoDetectLeadType logs: channel, priority_tag, is_returning, estimate_detected, auto_stage
     const parts = [];
     if (details.channel) parts.push(`Channel: ${details.channel}`);
     if (details.detected_channel) parts.push(`Channel: ${details.detected_channel}`);
@@ -117,6 +174,35 @@ export default function AILogRow({ log, leadName, lead, onView }) {
   const leadLink = log.entity_type === 'Lead' && log.entity_id ? createPageUrl(`LeadDetail?id=${log.entity_id}`) : null;
   const eventLink = log.entity_type === 'Event' && log.entity_id ? createPageUrl(`EventDetail?id=${log.entity_id}`) : null;
 
+  const handleViewSourceEmail = async () => {
+    if (resolving) return;
+    setResolving(true);
+    try {
+      const email = await resolveSourceMessageId({ details, lead, spamById });
+      if (!email?.id) {
+        toast.error('No source email available');
+        return;
+      }
+      onView({
+        type: 'email',
+        log,
+        lead,
+        email: {
+          id: email.id,
+          subject: email.subject || '',
+          from: email.from || '',
+          to: email.to || '',
+          snippet: email.snippet || '',
+          date: email.date || '',
+        },
+      });
+    } catch {
+      toast.error('Failed to load source email. Make sure Gmail is connected.');
+    } finally {
+      setResolving(false);
+    }
+  };
+
   return (
     <div className="flex gap-4 p-4 bg-white rounded-xl border border-gray-200 hover:border-orange-200 transition-colors">
       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border ${cat.color}`}>
@@ -152,32 +238,20 @@ export default function AILogRow({ log, leadName, lead, onView }) {
                 <Eye className="w-3.5 h-3.5 mr-1" /> View Draft
               </Button>
             )}
-            {showInAppViewer && (
+            {canTrySourceEmail && (
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => onView({
-                  type: 'email',
-                  log,
-                  lead,
-                  email: {
-                    id: gmailMessageId,
-                    subject: details.subject || '',
-                    from: details.from || '',
-                    to: '',
-                    snippet: details.body_snippet || ''
-                  }
-                })}
+                disabled={resolving}
+                onClick={handleViewSourceEmail}
               >
-                <Mail className="w-3.5 h-3.5 mr-1" /> View Source Email
+                {resolving ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Mail className="w-3.5 h-3.5 mr-1" />
+                )}
+                View Source Email
               </Button>
-            )}
-            {showGmailFallback && (
-              <a href={gmailFallbackUrl} target="_blank" rel="noopener noreferrer">
-                <Button size="sm" variant="outline">
-                  <Mail className="w-3.5 h-3.5 mr-1" /> View Source Email
-                </Button>
-              </a>
             )}
             {canViewCall && (
               <Link to={createPageUrl(`AutomatedCallDetail?id=${details.call_log_id}`)}>

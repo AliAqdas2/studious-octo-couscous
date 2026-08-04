@@ -138,6 +138,36 @@ async function refreshAndPersist(
   return credentials.access_token;
 }
 
+/**
+ * Force-refresh the stored OAuth access token.
+ * Used by the hourly health job to keep the refresh token from going stale.
+ */
+export async function forceRefreshGmailToken(): Promise<{
+  ok: true;
+  email: string;
+  expiresAt: string | null;
+}> {
+  const connection = await getGmailConnection();
+  if (!connection) {
+    throw new AppError("Gmail not connected", 503);
+  }
+  if (!connection.refreshToken) {
+    throw new AppError(
+      "Gmail has no refresh token. Reconnect via /api/gmail/oauth/start",
+      503
+    );
+  }
+
+  await refreshAndPersist(connection.id, connection.refreshToken);
+
+  const updated = await getGmailConnection();
+  return {
+    ok: true,
+    email: connection.email,
+    expiresAt: updated?.expiresAt ? updated.expiresAt.toISOString() : null,
+  };
+}
+
 /** Authenticated Gmail API client for the shared CRM mailbox. */
 export async function getGmailApi() {
   const connection = await getGmailConnection();

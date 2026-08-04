@@ -63,15 +63,21 @@ export default function Email() {
     },
     onSuccess: (data) => {
       setSyncedEmails(data.emails || []);
-      toast.success(`Synced ${data.count} emails`);
     },
-    onError: (error) => {
-      toast.error('Failed to sync emails. Make sure Gmail is connected.');
+    onError: () => {
+      setSyncedEmails([]);
+      toast.error('Failed to load emails. Make sure Gmail is connected.');
     }
   });
 
   const handleLeadSelect = (lead) => {
     setSelectedLead(lead);
+    setSyncedEmails([]);
+    setSelectedEmail(null);
+    if (!lead?.email) {
+      toast.error('This lead has no email address');
+      return;
+    }
     syncEmailsMutation.mutate(lead.email);
   };
 
@@ -81,7 +87,7 @@ export default function Email() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-[#C84B31] mb-2">Email Management</h1>
-          <p className="text-gray-600">Create Gmail drafts and sync email conversations</p>
+          <p className="text-gray-600">Create Gmail drafts and view email conversations</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -139,22 +145,9 @@ export default function Email() {
             {/* Email Thread */}
             <Card className="bg-white/80 backdrop-blur-sm border-orange-100 lg:col-span-2">
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>
-                    {selectedLead ? `Email Thread: ${selectedLead.name}` : 'Select a lead'}
-                  </CardTitle>
-                  {selectedLead && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => syncEmailsMutation.mutate(selectedLead.email)}
-                      disabled={syncEmailsMutation.isLoading}
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${syncEmailsMutation.isLoading ? 'animate-spin' : ''}`} />
-                      Sync
-                    </Button>
-                  )}
-                </div>
+                <CardTitle>
+                  {selectedLead ? `Email Thread: ${selectedLead.name}` : 'Select a lead'}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {!selectedLead ? (
@@ -162,10 +155,22 @@ export default function Email() {
                     <Mail className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500">Select a lead to view email history</p>
                   </div>
-                ) : syncEmailsMutation.isLoading ? (
+                ) : syncEmailsMutation.isPending || syncEmailsMutation.isLoading ? (
                   <div className="text-center py-12">
                     <RefreshCw className="w-8 h-8 text-[#C84B31] animate-spin mx-auto mb-4" />
-                    <p className="text-gray-500">Syncing emails...</p>
+                    <p className="text-gray-500">Loading emails...</p>
+                  </div>
+                ) : syncEmailsMutation.isError ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 mb-4">Could not load emails for this lead.</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => syncEmailsMutation.mutate(selectedLead.email)}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Try again
+                    </Button>
                   </div>
                 ) : syncedEmails.length === 0 ? (
                   <div className="text-center py-12">

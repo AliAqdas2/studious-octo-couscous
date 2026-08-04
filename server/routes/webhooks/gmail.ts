@@ -5,6 +5,7 @@ import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
 import { processedGmailMessages } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
+import { isTerminalProcessedStatus } from "../../services/gmail/intakeRetry.js";
 import {
   getCurrentHistoryId,
   getPollState,
@@ -282,7 +283,7 @@ router.post("/", checkWebhookSecret, async (req, res, next) => {
             .from(processedGmailMessages)
             .where(eq(processedGmailMessages.gmailMessageId, id))
             .limit(1);
-          if (!seen[0]) {
+          if (!seen[0] || !isTerminalProcessedStatus(seen[0].status)) {
             filtered.push(id);
           } else {
             dedupeSkipped.push({

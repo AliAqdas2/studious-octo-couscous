@@ -8,20 +8,17 @@ import {
 } from "../middleware/auth.js";
 import { createGmailDraft } from "../services/gmail/drafts.js";
 import {
-  getGmailApi,
   getGmailStatus,
   getOAuthConsentUrl,
   isGoogleOAuthConfigured,
   saveOAuthTokens,
 } from "../services/gmail/gmailClient.js";
-import {
-  getCurrentHistoryId,
-  upsertPollState,
-} from "../services/gmail/handleContactFormEmail.js";
 import { logLeadEmailActivity } from "../services/gmail/logActivity.js";
-import { getEmailDetail } from "../services/gmail/messages.js";
+import { getEmailDetail, getGmailThread } from "../services/gmail/messages.js";
+import { syncGmailEmails } from "../services/gmail/syncEmails.js";
 import { replyToEmail } from "../services/gmail/reply.js";
 import { sendGmailEmail } from "../services/gmail/send.js";
+import { renewGmailWatch } from "../services/gmail/watch.js";
 import { pollGmailInbox } from "../jobs/pollGmailInbox.js";
 
 const router = Router();
@@ -89,6 +86,26 @@ router.get("/gmail/status", requireAuth, async (_req, res, next) => {
 router.get("/gmail/messages/:id", requireAuth, async (req, res, next) => {
   try {
     const result = await getEmailDetail(req.params.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/gmail/threads/:threadId", requireAuth, async (req, res, next) => {
+  try {
+    const result = await getGmailThread(req.params.threadId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/gmail/sync", requireAuth, async (req, res, next) => {
+  try {
+    const leadEmail =
+      req.body?.leadEmail || req.body?.email || req.body?.lead_email;
+    const result = await syncGmailEmails(String(leadEmail || ""));
     res.json(result);
   } catch (err) {
     next(err);
@@ -175,35 +192,8 @@ router.post("/gmail/log-activity", requireAuth, async (req, res, next) => {
 /** Register Gmail users.watch for Pub/Sub push to /webhook/gmail */
 router.post("/gmail/watch", requireAuth, async (_req, res, next) => {
   try {
-    const topic = env.gmailPubsubTopic();
-    if (!topic) {
-      throw new AppError(
-        "GMAIL_PUBSUB_TOPIC is not set. Create a Pub/Sub topic and grant Gmail publish rights.",
-        503
-      );
-    }
-    const gmail = await getGmailApi();
-    const watchRes = await gmail.users.watch({
-      userId: "me",
-      requestBody: {
-        topicName: topic,
-        labelIds: ["INBOX"],
-        labelFilterBehavior: "include",
-      },
-    });
-    const historyId = watchRes.data.historyId
-      ? String(watchRes.data.historyId)
-      : await getCurrentHistoryId();
-    await upsertPollState({
-      lastHistoryId: historyId,
-      lastWebhookReceivedAt: new Date(),
-    });
-    res.json({
-      ok: true,
-      historyId,
-      expiration: watchRes.data.expiration || null,
-      topic,
-    });
+    const result = await renewGmailWatch();
+    res.json(result);
   } catch (err) {
     next(err);
   }

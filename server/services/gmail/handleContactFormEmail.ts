@@ -40,6 +40,12 @@ import {
   enrichLeadOnCreate,
   logAutoClassification,
 } from "../leads/enrichLeadOnCreate.js";
+import {
+  clearRetry,
+  isTerminalProcessedStatus,
+  scheduleIntakeRetry,
+  MAX_INTAKE_RETRIES,
+} from "./intakeRetry.js";
 
 function requireDb() {
   const db = getDb();
@@ -68,7 +74,7 @@ function intakeDump(label: string, value: unknown): void {
 }
 
 export type ProcessedSource = "webhook" | "poller";
-export type ProcessedStatus = "lead" | "spam" | "ignored";
+export type ProcessedStatus = "lead" | "spam" | "ignored" | "failed";
 
 export interface MessageResult {
   messageId: string;
@@ -133,6 +139,9 @@ async function recordProcessed(
       source,
       status,
     });
+    if (status !== "failed") {
+      await clearRetry(gmailMessageId);
+    }
   } catch (e) {
     console.warn(
       `[email-intake] recordProcessed(${gmailMessageId}, ${status}) failed:`,
@@ -271,6 +280,7 @@ export async function handleContactFormEmail(input: {
   messageIds: string[];
   source?: ProcessedSource;
   markWebhook?: boolean;
+  isRetry?: boolean;
 }): Promise<HandleContactFormEmailResult> {
   const source: ProcessedSource = input.source || "webhook";
   const messageIds = input.messageIds || [];
@@ -279,6 +289,7 @@ export async function handleContactFormEmail(input: {
   intakeDump("input", {
     source,
     markWebhook: input.markWebhook,
+    isRetry: input.isRetry ?? false,
     messageIds,
     messageCount: messageIds.length,
   });
@@ -313,14 +324,16 @@ export async function handleContactFormEmail(input: {
         .where(eq(processedGmailMessages.gmailMessageId, messageId))
         .limit(1);
       if (already[0]) {
-        intakeDump("already processed row", already[0]);
-        skippedCount++;
-        results.push({
-          messageId,
-          outcome: "already-processed",
-          reason: `Previously processed as "${already[0].status}"`,
-        });
-        continue;
+        if (isTerminalProcessedStatus(already[0].status)) {
+          intakeDump("already processed row", already[0]);
+          skippedCount++;
+          results.push({
+            messageId,
+            outcome: "already-processed",
+            reason: `Previously processed as "${already[0].status}"`,
+          });
+          continue;
+        }
       }
 
       let message;
@@ -347,11 +360,25 @@ export async function handleContactFormEmail(input: {
           fetchErr instanceof Error ? fetchErr.message : fetchErr
         );
         intakeDump("gmail fetch error", fetchErr);
+        const statusCode =
+          fetchErr &&
+          typeof fetchErr === "object" &&
+          "code" in fetchErr
+            ? Number((fetchErr as { code: unknown }).code)
+            : null;
+        const retryResult = await scheduleIntakeRetry({
+          messageId,
+          source,
+          error: fetchErr,
+          immediateDeadLetter: statusCode === 404,
+        });
         skippedCount++;
         results.push({
           messageId,
-          outcome: "skipped",
-          reason: "Gmail fetch failed",
+          outcome: retryResult.deadLetter ? "dead-letter" : "retry-scheduled",
+          reason: retryResult.deadLetter
+            ? "Gmail message not found — moved to dead-letter"
+            : "Gmail fetch failed — scheduled for retry",
         });
         continue;
       }
@@ -984,15 +1011,22 @@ export async function handleContactFormEmail(input: {
         perMsgErr instanceof Error ? perMsgErr.message : perMsgErr
       );
       intakeDump("per-message error stack", perMsgErr);
+      const retryResult = await scheduleIntakeRetry({
+        messageId,
+        source,
+        error: perMsgErr,
+      });
       skippedCount++;
       results.push({
         messageId,
-        outcome: "skipped",
-        reason: `Transient error (will retry): ${
-          perMsgErr instanceof Error
-            ? perMsgErr.message.substring(0, 200)
-            : "unknown"
-        }`,
+        outcome: retryResult.deadLetter ? "dead-letter" : "retry-scheduled",
+        reason: retryResult.deadLetter
+          ? `Failed after ${retryResult.attemptCount} attempt(s) — moved to dead-letter`
+          : `Error (retry ${retryResult.attemptCount}/${MAX_INTAKE_RETRIES} scheduled): ${
+              perMsgErr instanceof Error
+                ? perMsgErr.message.substring(0, 200)
+                : "unknown"
+            }`,
       });
     }
   }
@@ -1065,6 +1099,11 @@ export async function upsertPollState(patch: {
   lastHistoryId?: string;
   lastPolledAt?: Date;
   lastWebhookReceivedAt?: Date;
+  watchExpiration?: Date | null;
+  watchRegisteredAt?: Date | null;
+  lastTokenRefreshAt?: Date | null;
+  lastConnectionError?: string | null;
+  disconnectAlertSentAt?: Date | null;
 }): Promise<void> {
   const db = requireDb();
   const rows = await db

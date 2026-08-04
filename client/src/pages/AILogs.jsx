@@ -104,6 +104,17 @@ export default function AILogs() {
     return map;
   }, [leads]);
 
+  // Spam rows for resolving gmail_message_id from spam_email_id on routed logs.
+  const { data: spamEmails = [] } = useQuery({
+    queryKey: ['ai-logs-spam'],
+    queryFn: () => base44.entities.SpamEmail.list('-received_at', 500)
+  });
+  const spamById = useMemo(() => {
+    const map = {};
+    for (const s of spamEmails) map[s.id] = s;
+    return map;
+  }, [spamEmails]);
+
   // Normalize ActivityLog + CallLog into a single unified list.
   const merged = useMemo(() => {
     const aiActivity = activityLogs
@@ -343,6 +354,7 @@ export default function AILogs() {
                     log={log}
                     leadName={leadName}
                     lead={lead}
+                    spamById={spamById}
                     onView={setViewing}
                   />
                 );

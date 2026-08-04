@@ -8,6 +8,7 @@ import {
 } from "../services/gmail/handleContactFormEmail.js";
 import { getDb } from "../db/index.js";
 import { processedGmailMessages } from "../db/schema/index.js";
+import { isTerminalProcessedStatus } from "../services/gmail/intakeRetry.js";
 
 const WEBHOOK_HEALTH_THRESHOLD_MIN = 90;
 const MAX_MESSAGES_PER_RUN = 20;
@@ -93,8 +94,8 @@ export async function pollGmailInbox(): Promise<Record<string, unknown>> {
       .from(processedGmailMessages)
       .where(eq(processedGmailMessages.gmailMessageId, id))
       .limit(1);
-    if (seen[0]) {
-      console.log(`[poll-gmail] Already processed by ${seen[0].source}: ${id}`);
+    if (seen[0] && isTerminalProcessedStatus(seen[0].status)) {
+      console.log(`[poll-gmail] Already processed as ${seen[0].status}: ${id}`);
       continue;
     }
     toProcess.push(id);

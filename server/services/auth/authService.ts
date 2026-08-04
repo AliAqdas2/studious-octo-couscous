@@ -201,6 +201,15 @@ export async function logout(refreshToken: string | undefined): Promise<void> {
     .where(and(eq(refreshTokens.tokenHash, tokenHash), isNull(refreshTokens.revokedAt)));
 }
 
+/** Revoke every active refresh token for a user (e.g. after password reset). */
+export async function revokeAllUserRefreshTokens(userId: string): Promise<void> {
+  const db = requireDb();
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+}
+
 export async function getUserFromAccessToken(
   token: string
 ): Promise<AuthUser & { isActive: boolean }> {

@@ -112,6 +112,91 @@ async function main(): Promise<void> {
     } else {
       console.log("gmail_connections already present");
     }
+
+    // Refresh table list after possible 0002 create
+    const tablesAfter = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+    `;
+    const namesAfter = new Set(tablesAfter.map((row) => String(row.table_name)));
+
+    const pollCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'gmail_poll_state'
+    `;
+    const pollColNames = new Set(pollCols.map((row) => String(row.column_name)));
+
+    const needsPasswordReset = !namesAfter.has("password_reset_codes");
+    const needsWatchCols = !pollColNames.has("watch_expiration");
+
+    if (needsPasswordReset || needsWatchCols) {
+      console.log("Applying password reset + gmail watch migration (0003)...");
+      const migSql = readFileSync(
+        join(__dirname, "../drizzle/0003_password_reset_and_gmail_watch.sql"),
+        "utf8"
+      );
+      for (const statement of migSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("password reset + gmail watch migration applied");
+    } else {
+      console.log("password_reset_codes and gmail watch columns already present");
+    }
+
+    const tablesFinal = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+    `;
+    const namesFinal = new Set(tablesFinal.map((row) => String(row.table_name)));
+
+    const needsIntakeRetry =
+      !namesFinal.has("gmail_intake_retries") ||
+      !namesFinal.has("gmail_intake_dead_letters");
+
+    if (needsIntakeRetry) {
+      console.log("Applying gmail intake retry migration (0004)...");
+      const migSql = readFileSync(
+        join(__dirname, "../drizzle/0004_gmail_intake_retry.sql"),
+        "utf8"
+      );
+      for (const statement of migSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("gmail intake retry migration applied");
+    } else {
+      console.log("gmail_intake_retries and gmail_intake_dead_letters already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

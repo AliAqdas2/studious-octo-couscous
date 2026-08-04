@@ -1,6 +1,7 @@
 export * from "./enums.js";
 export * from "./users.js";
 export * from "./refresh-tokens.js";
+export * from "./password-reset-codes.js";
 export * from "./clients.js";
 export * from "./leads.js";
 export * from "./event-templates.js";
@@ -18,6 +19,8 @@ export * from "./gmail-connections.js";
 export * from "./spam-emails.js";
 export * from "./stage-email-mappings.js";
 export * from "./processed-gmail-messages.js";
+export * from "./gmail-intake-retries.js";
+export * from "./gmail-intake-dead-letters.js";
 export * from "./fareharbor-events.js";
 export * from "./twilio-webhook-logs.js";
 export * from "./relations.js";

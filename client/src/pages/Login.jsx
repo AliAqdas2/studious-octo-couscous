@@ -1,6 +1,7 @@
-import React, { useState } from "react";
-import { Navigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
+import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +12,22 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [forgotAvailable, setForgotAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    base44.auth.passwordReset
+      .status()
+      .then((data) => {
+        if (!cancelled) setForgotAvailable(!!data?.available);
+      })
+      .catch(() => {
+        if (!cancelled) setForgotAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!isLoadingAuth && isAuthenticated) {
     return <Navigate to="/Dashboard" replace />;
@@ -56,7 +73,17 @@ export default function Login() {
           </div>
 
           <div>
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              {forgotAvailable ? (
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-medium text-[#C84B31] hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              ) : null}
+            </div>
             <Input
               id="password"
               type="password"

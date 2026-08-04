@@ -206,6 +206,7 @@ export const gmailMessageStatusEnum = pgEnum("gmail_message_status", [
   "lead",
   "spam",
   "ignored",
+  "failed",
 ]);
 
 export const stageEmailChannelEnum = pgEnum("stage_email_channel", ["B2B", "B2C", "Both"]);

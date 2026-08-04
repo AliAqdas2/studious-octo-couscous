@@ -234,6 +234,45 @@ export const base44 = {
     redirectToLogin(_returnUrl) {
       redirectToLoginPage();
     },
+    passwordReset: {
+      async status() {
+        return request(
+          "/api/auth/password-reset/status",
+          {},
+          { skipAuth: true, retry: false }
+        );
+      },
+      async request({ email }) {
+        return request(
+          "/api/auth/password-reset/request",
+          {
+            method: "POST",
+            body: JSON.stringify({ email }),
+          },
+          { skipAuth: true, retry: false }
+        );
+      },
+      async verify({ email, code }) {
+        return request(
+          "/api/auth/password-reset/verify",
+          {
+            method: "POST",
+            body: JSON.stringify({ email, code }),
+          },
+          { skipAuth: true, retry: false }
+        );
+      },
+      async confirm({ email, code, newPassword }) {
+        return request(
+          "/api/auth/password-reset/confirm",
+          {
+            method: "POST",
+            body: JSON.stringify({ email, code, newPassword }),
+          },
+          { skipAuth: true, retry: false }
+        );
+      },
+    },
   },
   entities,
   gmail: {
@@ -267,6 +306,29 @@ export const base44 = {
         const body = await request(
           `/api/gmail/messages/${encodeURIComponent(messageId)}`
         );
+        return { data: body };
+      }
+
+      if (name === "getGmailThread") {
+        const threadId = payload.threadId || payload.id;
+        if (!threadId) {
+          throw new ApiError("threadId is required", 400);
+        }
+        const body = await request(
+          `/api/gmail/threads/${encodeURIComponent(threadId)}`
+        );
+        return { data: body };
+      }
+
+      if (name === "syncGmailEmails") {
+        const leadEmail = payload.leadEmail || payload.email;
+        if (!leadEmail) {
+          throw new ApiError("leadEmail is required", 400);
+        }
+        const body = await request("/api/gmail/sync", {
+          method: "POST",
+          body: JSON.stringify({ leadEmail }),
+        });
         return { data: body };
       }
 

@@ -1,4 +1,5 @@
 import { decodeBase64Url, getGmailApi } from "./gmailClient.js";
+import { AppError } from "../../lib/errors.js";
 
 interface BodyResult {
   content: string;
@@ -82,5 +83,61 @@ export async function getEmailDetail(messageId: string) {
       snippet: msgData.snippet || "",
       messageIdHeader: headerValue(headers, "Message-ID"),
     },
+  };
+}
+
+export interface GmailThreadMessageMeta {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  to: string;
+  date: string;
+  snippet: string;
+  internalDate: number;
+}
+
+/** List messages in a Gmail thread, newest first. */
+export async function getGmailThread(threadId: string): Promise<{
+  success: boolean;
+  threadId: string;
+  messages: GmailThreadMessageMeta[];
+}> {
+  if (!threadId) {
+    throw new AppError("threadId is required", 400);
+  }
+  const gmail = await getGmailApi();
+  const res = await gmail.users.threads.get({
+    userId: "me",
+    id: threadId,
+    format: "metadata",
+    metadataHeaders: ["Subject", "From", "To", "Date"],
+  });
+
+  const messages: GmailThreadMessageMeta[] = (res.data.messages || []).map(
+    (msg) => {
+      const headers = msg.payload?.headers || [];
+      const internalDate = msg.internalDate
+        ? parseInt(String(msg.internalDate), 10)
+        : 0;
+      return {
+        id: msg.id || "",
+        threadId: msg.threadId || threadId,
+        subject: headerValue(headers, "Subject") || "(No Subject)",
+        from: headerValue(headers, "From"),
+        to: headerValue(headers, "To"),
+        date: headerValue(headers, "Date"),
+        snippet: msg.snippet || "",
+        internalDate,
+      };
+    }
+  );
+
+  messages.sort((a, b) => b.internalDate - a.internalDate);
+
+  return {
+    success: true,
+    threadId,
+    messages: messages.filter((m) => m.id),
   };
 }
