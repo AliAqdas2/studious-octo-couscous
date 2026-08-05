@@ -52,8 +52,8 @@ export const env = {
     if (!raw) {
       return [
         "aa03095276332@gmail.com",
-        "admin2@mangiadc.com",
-        "info@mangiadc.com",
+        // "admin2@mangiadc.com",
+        // "info@mangiadc.com",
       ];
     }
     return raw

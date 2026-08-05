@@ -178,6 +178,26 @@ export default function AILogRow({ log, leadName, lead, spamById, onView }) {
     if (details.error) summaryLines.push(`Error: ${details.error}`);
   }
 
+  const inputTokens = Number(details.input_tokens);
+  const outputTokens = Number(details.output_tokens);
+  if (Number.isFinite(inputTokens) || Number.isFinite(outputTokens)) {
+    const inT = Number.isFinite(inputTokens) ? inputTokens : 0;
+    const outT = Number.isFinite(outputTokens) ? outputTokens : 0;
+    const total =
+      Number.isFinite(Number(details.total_tokens))
+        ? Number(details.total_tokens)
+        : inT + outT;
+    const cacheRead = Number(details.cache_read_input_tokens);
+    const cacheCreate = Number(details.cache_creation_input_tokens);
+    let tokenLine = `Tokens: ${total.toLocaleString()} (in ${inT.toLocaleString()} · out ${outT.toLocaleString()})`;
+    if (Number.isFinite(cacheRead) && cacheRead > 0) {
+      tokenLine += ` · cache read: ${cacheRead.toLocaleString()}`;
+    } else if (Number.isFinite(cacheCreate) && cacheCreate > 0) {
+      tokenLine += ` · cache write: ${cacheCreate.toLocaleString()}`;
+    }
+    summaryLines.push(tokenLine);
+  }
+
   const canViewDraft = cat.kind === 'survey-draft' && !!details.draft_id;
   const canViewCall = cat.kind === 'call' && !!details.call_log_id;
   const leadLink = log.entity_type === 'Lead' && log.entity_id ? createPageUrl(`LeadDetail?id=${log.entity_id}`) : null;

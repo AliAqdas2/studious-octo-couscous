@@ -39,7 +39,11 @@ export const EVENT_TYPE_INTEREST_OPTIONS = [
 ] as const;
 
 export interface ClassifyInboundEmailLlmResult {
-  sender_role: "prospective_customer" | "promoter_or_vendor" | "other";
+  sender_role:
+    | "prospective_customer"
+    | "promoter_or_vendor"
+    | "operational_or_staff"
+    | "other";
   reason: string;
   category:
     | "Valid"
@@ -83,9 +87,14 @@ export const classifyInboundEmailSchema: JsonSchemaObject = {
   properties: {
     sender_role: {
       type: "string",
-      enum: ["prospective_customer", "promoter_or_vendor", "other"],
+      enum: [
+        "prospective_customer",
+        "promoter_or_vendor",
+        "operational_or_staff",
+        "other",
+      ],
       description:
-        "FIRST: decide who the sender is relative to Mangia DC. Drives business_potential: promoter_or_vendor MUST be No.",
+        "FIRST: decide who the sender is relative to Mangia DC. promoter_or_vendor and operational_or_staff MUST have business_potential No.",
     },
     reason: {
       type: "string",
@@ -159,7 +168,7 @@ DEFAULT WHEN UNCERTAIN: "new_lead": false.
 
 Candidate leads (most recent first):
 `;
-  for (const [idx, l] of candidates.slice(0, 5).entries()) {
+  for (const [idx, l] of candidates.slice(0, 3).entries()) {
     const preferred =
       l.preferredDate instanceof Date
         ? l.preferredDate.toISOString()
@@ -176,7 +185,7 @@ Candidate leads (most recent first):
 - Preferred date: ${preferred}
 - Headcount estimate: ${l.headcountEstimate ?? "(none recorded)"}
 - Inquiry type: ${l.inquiryType || "(unknown)"}
-- Notes snippet: ${(l.notes || "").substring(0, 400) || "(none)"}
+- Notes snippet: ${(l.notes || "").substring(0, 150) || "(none)"}
 `;
   }
   return block;
@@ -196,47 +205,84 @@ export function buildClassifyInboundEmailPrompt(input: {
   const todayIso = new Date().toISOString().split("T")[0];
   const openLeadContextBlock = buildCandidateBlock(input.candidates);
 
-  const system = `You are an email intake classifier for Mangia DC, a Washington DC hospitality & events company. Return structured JSON only via the provided tool.`;
-
-  const user = `You are processing ${emailKind} for Mangia DC.
+  // Stable system prompt — cached via Anthropic prompt caching (no date / email body).
+  const system = `You are an email intake classifier for Mangia DC, a Washington DC hospitality & events company. Return structured JSON only via the provided tool.
 
 ════════════════════════════════════════════════════════════════════════
 WHAT MANGIA DC IS (read carefully — this defines what a lead is)
 ════════════════════════════════════════════════════════════════════════
 Mangia DC is a Washington DC-based HOSPITALITY & EVENTS company. We are the HOST — we provide and deliver food tours, private group experiences (cooking, mixology, paint & sip, etc.), virtual experiences, and corporate team-building.
 
-★ A LEAD IS: Someone reaching out to ASK MANGIA DC to host/provide/quote/plan an experience FOR THEM or their group.
-★ NOT A LEAD: Booking confirmations from OTHER companies, invoices, vendors pitching us, job applications, newsletters, automated meeting notes, bounces, CC-only mail.
+★ A LEAD IS: Someone reaching out to ASK MANGIA DC to host/provide/quote/plan/book an experience FOR THEM or their group, or to check availability for such an experience.
+★ NOT A LEAD: Booking confirmations from OTHER companies, invoices, vendors pitching us, job applications, newsletters, automated meeting notes, bounces, CC-only mail, staff/vendor logistics, calendar invites, meeting scheduling.
+
+════════════════════════════════════════════════════════════════════════
+THIS IS MANGIA'S PRIMARY INBOX — MOST MAIL IS NOT A LEAD
+════════════════════════════════════════════════════════════════════════
+This mailbox receives ALL company email, not just sales enquiries. We use it
+to coordinate with chefs, drivers, guides, venues, suppliers and staff about
+events we are ALREADY running. Operational mail is the majority. Assume an
+email is NOT a lead unless it clearly asks us to host something new.
+
+★ REQUIRED POSITIVE SIGNAL ★
+business_potential may be "Yes" ONLY when the email explicitly asks Mangia to host, quote, plan, book, or check availability for an experience. Coordination, logistics, scheduling, confirmations, and social replies with no such ask are "No".
 
 ★ THE DIRECTION OF INTENT IS THE ONLY THING THAT MATTERS ★
 Who is the host? Who is the customer? If WE are not the host, it's NOT a lead.
 
-Today's date is: ${todayIso}
-
 Follow this exact order:
-(1) Decide "sender_role" (prospective_customer | promoter_or_vendor | other)
+(1) Decide "sender_role" (prospective_customer | promoter_or_vendor | operational_or_staff | other)
 (2) Write "reason" citing direction of intent
 (3) Pick "category" + "business_potential" consistent with role
 (4) If business_potential = "Yes", extract Lead fields; else leave them empty
 
 sender_role rules:
-- "prospective_customer" → business_potential CAN be "Yes"
+- "prospective_customer" → business_potential CAN be "Yes" (only with a positive ask)
 - "promoter_or_vendor" → business_potential MUST be "No"
-- "other" → usually "No" for jobs/spam/notifications
+- "operational_or_staff" → business_potential MUST be "No" (chefs, drivers, trainers, venues, suppliers, internal logistics)
+- "other" → usually "No" for jobs/spam/notifications/meeting logistics
+
+★ SUPPLY SIDE vs DEMAND SIDE ★
+Mentioning an event, a date, a time or a headcount does NOT make it a lead.
+Ask: is the sender WORKING ON our event, or ASKING US TO RUN one for them?
+- Working on it (chef, driver, guide, venue, rental, staff, supplier)
+  → sender_role "operational_or_staff", business_potential "No"
+- Asking us to run a NEW event for their group
+  → sender_role "prospective_customer", business_potential may be "Yes"
+Questions ABOUT an already-booked event (timing, guest count, address,
+call time, menu, equipment, parking, payment) are ALWAYS "No".
+
+NEGATIVE EXAMPLES (business_potential = "No"):
+- Chef, driver, guide or staff member asking about an event they are working:
+  "how many guests on Friday?", "what time should I arrive?", "what's the address?"
+- Someone confirming availability to WORK a shift (not to book an experience)
+- Venue, rental or supplier coordination for an already-booked event
+- Meeting scheduling, Google Meet / calendar notes, "can we hop on a call?"
+- Invoices or receipts from suppliers
+- "Thanks!" / "Sounds good" with no new event ask
 
 category: Valid | Job Application | Hiring-Related | Unrelated Inquiry | Possible Spam | Other
+Use "Unrelated Inquiry" for operational_or_staff and meeting/logistics mail.
 
 PART 2 — FIELD EXTRACTION (only if business_potential = "Yes")
 - name / email / phone from fields, signature, or From header
 - company: ONLY if explicitly mentioned — do NOT guess from domain
 - event_type_interest: comma-separated from ${JSON.stringify(EVENT_TYPE_INTEREST_OPTIONS)}
 - event_format: ${JSON.stringify(EVENT_FORMAT_ENUM)}
-- preferred_date: ISO date-time if explicit; if no year, next future occurrence vs today
+- preferred_date: ISO date-time if explicit; if no year, next future occurrence vs today's date in the user message
 - headcount_estimate: numeric if mentioned
 - channel: ${JSON.stringify(CHANNEL_ENUM)}
 - inquiry_type: ${JSON.stringify(INQUIRY_TYPE_ENUM)}
 - client_type: ${JSON.stringify(CLIENT_TYPE_ENUM)} — default "New"
 - page_url: from body if present
+
+★ FOCUS ON THE NEWEST MESSAGE ONLY ★
+Ignore quoted history and signatures. The "reason" field MUST cite direction of intent.`;
+
+  // Per-email dynamic user prompt — not cached.
+  const user = `You are processing ${emailKind} for Mangia DC.
+
+Today's date is: ${todayIso}
 
 ${openLeadContextBlock}
 ────────────────────────────────────────────────────────────────────────
@@ -245,10 +291,7 @@ EMAIL DATA
 Subject: ${input.subject}
 From: ${input.from}
 Body:
-${input.emailBody.substring(0, 5000)}
-
-★ FOCUS ON THE NEWEST MESSAGE ONLY ★
-Ignore quoted history and signatures. The "reason" field MUST cite direction of intent.`;
+${input.emailBody.substring(0, 2000)}`;
 
   return { system, user };
 }
@@ -269,6 +312,7 @@ export function isValidClassifyResult(
   const validSenderRoles = [
     "prospective_customer",
     "promoter_or_vendor",
+    "operational_or_staff",
     "other",
   ];
   return (

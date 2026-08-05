@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, or, sql } from "drizzle-orm";
 import { inspect } from "node:util";
 import { getDb } from "../../db/index.js";
 import {
@@ -6,6 +6,7 @@ import {
   gmailPollState,
   leads,
   processedGmailMessages,
+  roleAssignments,
   spamEmails,
 } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
@@ -25,6 +26,7 @@ import { getGmailApi } from "./gmailClient.js";
 import {
   decodeGmailBody,
   detectBulkMailHeaders,
+  detectCalendarInvite,
   detectSpamKeywords,
   extractDomain,
   GENERIC_DOMAINS,
@@ -33,6 +35,7 @@ import {
   parseSenderEmail,
   parseSenderEmailRaw,
   shouldSilentlySkip,
+  stripQuotedReply,
 } from "./inboundFilters.js";
 import { scheduleOnLeadCreated } from "../leads/onLeadCreated.js";
 import { detectReturningClient } from "../leads/detectReturningClient.js";
@@ -52,6 +55,32 @@ function requireDb() {
   const db = getDb();
   if (!db) throw new AppError("Database is not configured", 503);
   return db;
+}
+
+const CLOSED_LEAD_STAGES = new Set(["Completed", "Lost/Canceled"]);
+const KNOWN_SENDER_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+function isActiveRecentLead(lead: typeof leads.$inferSelect): boolean {
+  if (CLOSED_LEAD_STAGES.has(String(lead.stage || ""))) return false;
+  const ts = lead.lastContactDate || lead.createdDate;
+  return !!ts && Date.now() - new Date(ts).getTime() <= KNOWN_SENDER_WINDOW_MS;
+}
+
+function llmUsageDetails(usage: {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+}): Record<string, unknown> {
+  return {
+    input_tokens: usage.inputTokens,
+    output_tokens: usage.outputTokens,
+    total_tokens: usage.inputTokens + usage.outputTokens,
+    ai_model: usage.model || null,
+    cache_creation_input_tokens: usage.cacheCreationInputTokens ?? 0,
+    cache_read_input_tokens: usage.cacheReadInputTokens ?? 0,
+  };
 }
 
 const INTAKE_LOG = "[email-intake]";
@@ -178,11 +207,19 @@ async function appendToExistingLead(
     messageId: string;
     threadId: string | null | undefined;
     reasonTag: string;
+    llmUsage?: {
+      inputTokens: number;
+      outputTokens: number;
+      model?: string;
+      cacheCreationInputTokens?: number;
+      cacheReadInputTokens?: number;
+    } | null;
   }
 ): Promise<void> {
   const db = requireDb();
   const now = new Date();
   try {
+    const usage = params.llmUsage;
     await db.insert(activityLogs).values({
       entityType: "Lead",
       entityId: lead.id,
@@ -194,6 +231,7 @@ async function appendToExistingLead(
         gmail_message_id: params.messageId,
         gmail_thread_id: params.threadId,
         match_reason: params.reasonTag,
+        ...(usage ? llmUsageDetails(usage) : {}),
       },
       userName: "System (Email Intake)",
       timestamp: now,
@@ -532,6 +570,127 @@ export async function handleContactFormEmail(input: {
         }
       }
 
+      // Calendar / meeting invites — skip AI (non-website only).
+      // Invites already matched to a lead thread were appended above.
+      if (!isWebsiteForm) {
+        const calendarCheck = detectCalendarInvite(
+          headers,
+          message.payload || null,
+          subject
+        );
+        if (calendarCheck.isCalendar) {
+          await recordProcessed(messageId, "ignored", source);
+          skippedCount++;
+          results.push({
+            messageId,
+            from,
+            subject,
+            outcome: "silent-skip",
+            reason: calendarCheck.reason,
+          });
+          intakeLog(`SKIP calendar: ${calendarCheck.reason}`);
+          continue;
+        }
+
+        // Operational contacts (chefs, drivers, trainers, staff) — no AI.
+        if (senderEmail) {
+          const [opsContact] = await db
+            .select({ id: roleAssignments.id })
+            .from(roleAssignments)
+            .where(
+              or(
+                sql`lower(${roleAssignments.contactEmail}) = ${senderEmail}`,
+                sql`lower(${roleAssignments.userEmail}) = ${senderEmail}`
+              )
+            )
+            .limit(1);
+          if (opsContact) {
+            await recordProcessed(messageId, "ignored", source);
+            skippedCount++;
+            results.push({
+              messageId,
+              from,
+              subject,
+              outcome: "silent-skip",
+              reason: "Known operational contact",
+            });
+            intakeLog(`SKIP ops contact: ${senderEmail}`);
+            continue;
+          }
+
+          // Known spam sender — no AI.
+          const [priorSpam] = await db
+            .select({ id: spamEmails.id })
+            .from(spamEmails)
+            .where(sql`lower(${spamEmails.senderEmail}) = ${senderEmail}`)
+            .limit(1);
+          if (priorSpam) {
+            await createSpamRow({
+              from,
+              senderEmail,
+              subject,
+              body: emailBody,
+              messageId,
+              threadId,
+              spamCategory: "Other",
+              spamReason: "Known spam sender (previously routed to spam)",
+              action: "Routed to Spam (Known Sender)",
+            });
+            await recordProcessed(messageId, "spam", source);
+            spamCount++;
+            results.push({
+              messageId,
+              from,
+              subject,
+              outcome: "spam",
+              reason: "Known spam sender (previously routed to spam)",
+            });
+            intakeLog(`SKIP known spam: ${senderEmail}`);
+            continue;
+          }
+
+          // Active recent lead by exact email — append, no AI.
+          const [byEmailEarly] = await db
+            .select()
+            .from(leads)
+            .where(sql`lower(${leads.email}) = ${senderEmail}`)
+            .orderBy(desc(leads.createdDate))
+            .limit(1);
+          let knownLead = byEmailEarly || null;
+          if (!knownLead && senderEmailRaw !== senderEmail) {
+            const [byRawEarly] = await db
+              .select()
+              .from(leads)
+              .where(eq(leads.email, senderEmailRaw))
+              .orderBy(desc(leads.createdDate))
+              .limit(1);
+            knownLead = byRawEarly || null;
+          }
+          if (knownLead && isActiveRecentLead(knownLead)) {
+            await appendToExistingLead(knownLead, {
+              from,
+              subject,
+              emailBody,
+              messageId,
+              threadId,
+              reasonTag: "known_sender_active_lead",
+            });
+            await recordProcessed(messageId, "ignored", source);
+            skippedCount++;
+            results.push({
+              messageId,
+              from,
+              subject,
+              outcome: "appended-to-lead",
+              reason: `Known active lead ${knownLead.id} — skipped AI`,
+              lead_id: knownLead.id,
+            });
+            intakeLog(`SKIP AI known active lead: ${knownLead.id}`);
+            continue;
+          }
+        }
+      }
+
       let openLeadForSender: typeof leads.$inferSelect | null = null;
       let nameMatchedLeads: (typeof leads.$inferSelect)[] = [];
       let companyMatchedLeads: (typeof leads.$inferSelect)[] = [];
@@ -702,11 +861,15 @@ export async function handleContactFormEmail(input: {
         );
       }
 
+      const bodyForAi = isWebsiteForm
+        ? emailBody
+        : stripQuotedReply(emailBody);
+
       const { system, user } = buildClassifyInboundEmailPrompt({
         isWebsiteForm,
         subject,
         from,
-        emailBody,
+        emailBody: bodyForAi,
         candidates: allCandidateLeads.map(toCandidate),
       });
 
@@ -719,14 +882,33 @@ export async function handleContactFormEmail(input: {
         jsonSchema: classifyInboundEmailSchema,
         schemaName: "classify_inbound_email",
         temperature: 0,
+        maxTokens: 512,
       });
 
       const rawLlmResult = completion.data;
+      const llmUsage = completion.usage
+        ? {
+            inputTokens: completion.usage.inputTokens,
+            outputTokens: completion.usage.outputTokens,
+            model: completion.model,
+            cacheCreationInputTokens:
+              completion.usage.cacheCreationInputTokens ?? 0,
+            cacheReadInputTokens: completion.usage.cacheReadInputTokens ?? 0,
+          }
+        : null;
       intakeDump("LLM FULL raw result", rawLlmResult);
       intakeDump("LLM completion meta", {
-        model: (completion as { model?: string }).model,
-        usage: (completion as { usage?: unknown }).usage,
+        model: completion.model,
+        usage: completion.usage,
       });
+      if (completion.usage) {
+        intakeLog(
+          `LLM tokens: input=${completion.usage.inputTokens} output=${completion.usage.outputTokens}` +
+            ` cache_create=${completion.usage.cacheCreationInputTokens ?? 0}` +
+            ` cache_read=${completion.usage.cacheReadInputTokens ?? 0}` +
+            ` model=${completion.model}`
+        );
+      }
       if (!isValidClassifyResult(rawLlmResult)) {
         throw new Error(
           `Malformed LLM response: ${JSON.stringify(rawLlmResult)?.substring(0, 300)}`
@@ -738,8 +920,12 @@ export async function handleContactFormEmail(input: {
       const aiReason = rawLlmResult.reason || "";
       const senderRole = rawLlmResult.sender_role || "other";
       const llmBusinessPotential = rawLlmResult.business_potential === "Yes";
-      const hasBusinessPotential =
-        senderRole === "promoter_or_vendor" ? false : llmBusinessPotential;
+      const forceNoPotential =
+        senderRole === "promoter_or_vendor" ||
+        senderRole === "operational_or_staff";
+      const hasBusinessPotential = forceNoPotential
+        ? false
+        : llmBusinessPotential;
       const llmSaysNewLead = rawLlmResult.new_lead === true;
       intakeDump("LLM decision flags", {
         aiCategory,
@@ -767,6 +953,7 @@ export async function handleContactFormEmail(input: {
           messageId,
           threadId,
           reasonTag: "llm_continuation_of_existing_lead",
+          llmUsage,
         });
         await recordProcessed(messageId, "ignored", source);
         skippedCount++;
@@ -783,6 +970,10 @@ export async function handleContactFormEmail(input: {
 
       if (!hasBusinessPotential) {
         const pageUrlMatch = emailBody.match(/Page URL:\s*(\S+)/i);
+        const effectiveCategory =
+          senderRole === "operational_or_staff"
+            ? "Unrelated Inquiry"
+            : rawLlmResult.category;
         const spamCategoryMap: Record<
           string,
           "Promotion" | "Other"
@@ -796,7 +987,7 @@ export async function handleContactFormEmail(input: {
         const spamCategory =
           senderRole === "promoter_or_vendor"
             ? "Promotion"
-            : spamCategoryMap[rawLlmResult.category] || "Other";
+            : spamCategoryMap[effectiveCategory] || "Other";
         await createSpamRow({
           from,
           senderEmail,
@@ -806,12 +997,13 @@ export async function handleContactFormEmail(input: {
           messageId,
           threadId,
           spamCategory,
-          spamReason: `[${rawLlmResult.category} | role=${senderRole}] ${aiReason}`,
+          spamReason: `[${effectiveCategory} | role=${senderRole}] ${aiReason}`,
           action: `Routed to Spam (${spamCategory})`,
           details: {
-            ai_category: rawLlmResult.category,
+            ai_category: effectiveCategory,
             sender_role: senderRole,
             ai_reason: aiReason,
+            ...(llmUsage ? llmUsageDetails(llmUsage) : {}),
           },
         });
         await recordProcessed(messageId, "spam", source);
@@ -980,6 +1172,7 @@ export async function handleContactFormEmail(input: {
             gmail_message_id: messageId,
             ai_category: aiCategory || "Valid",
             ai_reason: aiReason,
+            ...(llmUsage ? llmUsageDetails(llmUsage) : {}),
           },
           userName: "System (Email Intake)",
           timestamp: new Date(),

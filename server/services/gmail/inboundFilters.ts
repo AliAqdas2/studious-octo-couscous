@@ -147,15 +147,16 @@ export function parseSenderEmailRaw(fromHeader: string): string {
   return (m ? m[1] : fromHeader).trim();
 }
 
-export function decodeGmailBody(payload: {
+interface GmailMimePart {
+  mimeType?: string | null;
+  filename?: string | null;
   body?: { data?: string | null } | null;
-  parts?: unknown[] | null;
-} | null): string {
+  parts?: GmailMimePart[] | null;
+}
+
+export function decodeGmailBody(payload: GmailMimePart | null): string {
   let body = "";
-  const walk = (p: {
-    body?: { data?: string | null } | null;
-    parts?: unknown[] | null;
-  }) => {
+  const walk = (p: GmailMimePart) => {
     if (p.body?.data) {
       try {
         body += Buffer.from(
@@ -168,12 +169,112 @@ export function decodeGmailBody(payload: {
     }
     if (Array.isArray(p.parts)) {
       for (const part of p.parts) {
-        walk(part as typeof p);
+        walk(part);
       }
     }
   };
   if (payload) walk(payload);
   return body;
+}
+
+/**
+ * Detect calendar / meeting invites from MIME, Content-Class, or subject.
+ * Catches invites forwarded by real people that sender-only filters miss.
+ */
+export function detectCalendarInvite(
+  headers: Array<{ name?: string | null; value?: string | null }>,
+  payload: GmailMimePart | null,
+  subject: string
+): { isCalendar: boolean; reason?: string } {
+  const contentClass = getHeader(headers, "Content-Class").toLowerCase();
+  if (contentClass.includes("calendarmessage")) {
+    return {
+      isCalendar: true,
+      reason: `Content-Class calendar message: ${contentClass.substring(0, 80)}`,
+    };
+  }
+
+  let foundCalendarPart = false;
+  let foundIcs = false;
+  const walk = (p: GmailMimePart) => {
+    const mime = (p.mimeType || "").toLowerCase();
+    const filename = (p.filename || "").toLowerCase();
+    if (mime === "text/calendar" || mime.includes("text/calendar")) {
+      foundCalendarPart = true;
+    }
+    if (filename.endsWith(".ics")) {
+      foundIcs = true;
+    }
+    if (Array.isArray(p.parts)) {
+      for (const part of p.parts) walk(part);
+    }
+  };
+  if (payload) walk(payload);
+
+  if (foundCalendarPart) {
+    return { isCalendar: true, reason: "MIME part text/calendar" };
+  }
+  if (foundIcs) {
+    return { isCalendar: true, reason: "Attachment .ics" };
+  }
+
+  if (
+    /^\s*(Re:\s*)?(Invitation|Updated invitation|Accepted|Declined|Tentative|Canceled|Cancelled):/i.test(
+      subject || ""
+    )
+  ) {
+    return {
+      isCalendar: true,
+      reason: `Calendar subject: ${(subject || "").substring(0, 120)}`,
+    };
+  }
+
+  return { isCalendar: false };
+}
+
+/**
+ * Strip quoted reply history and signature blocks to cut LLM input tokens.
+ * Falls back to the original body if stripping leaves under 40 characters.
+ */
+export function stripQuotedReply(body: string): string {
+  if (!body || body.trim().length < 40) return body;
+
+  let text = body;
+
+  // Cut at common reply separators
+  const separators = [
+    /\nOn .{10,120} wrote:\s*\n/i,
+    /\n-{2,}\s*Original Message\s*-{2,}\s*\n/i,
+    /\nFrom:\s+.+\nSent:\s+/i,
+    /\nFrom:\s+.+\nDate:\s+/i,
+    /\n_{5,}\s*\n/,
+  ];
+  for (const sep of separators) {
+    const m = text.match(sep);
+    if (m && typeof m.index === "number" && m.index > 40) {
+      text = text.slice(0, m.index);
+      break;
+    }
+  }
+
+  // Drop lines that are pure quoted reply ("> ...")
+  const lines = text.split("\n");
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (/^>/.test(line.trimStart())) continue;
+    kept.push(line);
+  }
+  text = kept.join("\n");
+
+  // Drop signature after "-- " (RFC 3676)
+  const sigIdx = text.search(/\n-- \n/);
+  if (sigIdx > 40) {
+    text = text.slice(0, sigIdx);
+  }
+
+  text = text.trim();
+  if (text.length < 40) return body;
+  return text;
 }
 
 export function shouldSilentlySkip(

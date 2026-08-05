@@ -40,13 +40,24 @@ export function createAnthropicProvider(params: {
         model,
         max_tokens: req.maxTokens ?? 4096,
         temperature: req.temperature ?? 0,
-        system: req.system,
+        // Prompt caching: system instructions are stable across classify calls.
+        system: req.system
+          ? [
+              {
+                type: "text",
+                text: req.system,
+                cache_control: { type: "ephemeral" },
+              },
+            ]
+          : undefined,
         tools: [
           {
             name: toolName,
             description:
               "Return the structured classification and extraction result as JSON matching the schema.",
             input_schema: jsonSchemaToAnthropicInputSchema(req.jsonSchema),
+            // Cache tool schema with the system prefix (last marked block).
+            cache_control: { type: "ephemeral" },
           },
         ],
         tool_choice: { type: "tool", name: toolName },
@@ -60,10 +71,23 @@ export function createAnthropicProvider(params: {
         throw new AppError("Anthropic did not return structured tool output", 502);
       }
 
+      const usageRaw = response.usage as {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
+
       return {
         data: toolBlock.input as T,
         model,
         provider: "anthropic",
+        usage: {
+          inputTokens: usageRaw?.input_tokens ?? 0,
+          outputTokens: usageRaw?.output_tokens ?? 0,
+          cacheCreationInputTokens: usageRaw?.cache_creation_input_tokens ?? 0,
+          cacheReadInputTokens: usageRaw?.cache_read_input_tokens ?? 0,
+        },
       };
     },
   };

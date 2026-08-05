@@ -9,7 +9,7 @@ import { Bot, Loader2, Search, Sparkles, Mail } from 'lucide-react';
 import AILogRow from '@/components/ai-logs/AILogRow';
 import AILogDraftModal from '@/components/ai-logs/AILogDraftModal';
 import EmailViewModal from '@/components/email/EmailViewModal';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, Bar, Line } from 'recharts';
 
 // AI / system actors whose actions show up in this feed.
 const AI_USER_NAMES = new Set([
@@ -178,44 +178,83 @@ export default function AILogs() {
 
   const isLoading = loadingLogs || loadingCalls;
 
-  // Daily LLM email processing chart — last 30 days
+  // Daily LLM email processing + token usage chart — last 30 days
   // Only count emails that actually went through the LLM:
-  //   - New leads (always LLM)
-  //   - Follow-ups appended to existing leads (always LLM)
-  //   - Spam routed by the LLM itself (NOT by cheap header/keyword filters)
+  //   - Prefer logs that store input_tokens (new path)
+  //   - Legacy: New leads / LLM follow-ups / LLM spam (not cheap filters)
   const BULK_HEADER_PATTERNS = ['List-Unsubscribe', 'List-Id', 'Feedback-ID', 'List-Unsubscribe-Post'];
   const PRE_LLM_PATTERNS = ['Bot name prefix', 'url= injection', 'Spam phrase:'];
   const isLlmClassifiedSpam = (log) => {
     if (log.action === 'Routed to Spam (CC-Only)') return false;
+    if (log.details?.input_tokens != null) return true;
     const reason = log.details?.ai_reason || '';
     if (BULK_HEADER_PATTERNS.some(p => reason.includes(p))) return false;
     if (PRE_LLM_PATTERNS.some(p => reason.includes(p))) return false;
+    // Known-spam short-circuit has no AI
+    if ((log.details?.ai_reason || '').includes('Known spam sender')) return false;
     return true;
   };
 
-  const dailyEmailData = useMemo(() => {
-    const llmLogs = activityLogs.filter(l => {
-      if (!LLM_EMAIL_ACTIONS.has(l.action)) return false;
-      // For spam actions, only include those that actually went through the LLM
-      const isSpamAction = l.action.startsWith('Routed to Spam');
-      if (isSpamAction) return isLlmClassifiedSpam(l);
+  const isLlmEmailLog = (log) => {
+    if (!LLM_EMAIL_ACTIONS.has(log.action) && !log.action?.startsWith('Routed to Spam')) {
+      return false;
+    }
+    // Token fields prove an LLM call happened
+    if (log.details?.input_tokens != null || log.details?.output_tokens != null) {
       return true;
-    });
+    }
+    // Pre-AI appends (thread match / known active lead) have no tokens
+    if (log.action === 'Inbound Email Received (Follow-up)') {
+      const reason = log.details?.match_reason || '';
+      if (reason === 'same_gmail_thread' || reason === 'known_sender_active_lead') {
+        return false;
+      }
+      // Legacy follow-ups without match_reason: assume LLM
+      return true;
+    }
+    const isSpamAction = log.action?.startsWith('Routed to Spam');
+    if (isSpamAction) return isLlmClassifiedSpam(log);
+    return LLM_EMAIL_ACTIONS.has(log.action);
+  };
+
+  const dailyEmailData = useMemo(() => {
+    const llmLogs = activityLogs.filter(isLlmEmailLog);
     const byDay = {};
     const now = new Date();
     for (let i = 29; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
-      byDay[key] = { date: key, total: 0, leads: 0, spam: 0, followups: 0 };
+      byDay[key] = {
+        date: key,
+        total: 0,
+        leads: 0,
+        spam: 0,
+        followups: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        tokens: 0,
+      };
     }
     for (const log of llmLogs) {
       const key = (log.timestamp || '').slice(0, 10);
       if (!byDay[key]) continue;
       byDay[key].total++;
-      if (log.action === 'Created from Contact Form' || log.action === 'Created from Direct Email') byDay[key].leads++;
-      else if (log.action === 'Inbound Email Received (Follow-up)') byDay[key].followups++;
-      else byDay[key].spam++;
+      if (log.action === 'Created from Contact Form' || log.action === 'Created from Direct Email') {
+        byDay[key].leads++;
+      } else if (log.action === 'Inbound Email Received (Follow-up)') {
+        byDay[key].followups++;
+      } else {
+        byDay[key].spam++;
+      }
+      const inT = Number(log.details?.input_tokens) || 0;
+      const outT = Number(log.details?.output_tokens) || 0;
+      const totalT =
+        Number(log.details?.total_tokens) ||
+        inT + outT;
+      byDay[key].inputTokens += inT;
+      byDay[key].outputTokens += outT;
+      byDay[key].tokens += totalT;
     }
     return Object.values(byDay).map(d => ({
       ...d,
@@ -224,6 +263,18 @@ export default function AILogs() {
   }, [activityLogs]);
 
   const totalLlmThisMonth = useMemo(() => dailyEmailData.reduce((s, d) => s + d.total, 0), [dailyEmailData]);
+  const totalTokensThisMonth = useMemo(
+    () => dailyEmailData.reduce((s, d) => s + d.tokens, 0),
+    [dailyEmailData]
+  );
+  const totalInputTokensThisMonth = useMemo(
+    () => dailyEmailData.reduce((s, d) => s + d.inputTokens, 0),
+    [dailyEmailData]
+  );
+  const totalOutputTokensThisMonth = useMemo(
+    () => dailyEmailData.reduce((s, d) => s + d.outputTokens, 0),
+    [dailyEmailData]
+  );
 
   // Counts per category, for the summary chips
   const counts = useMemo(() => {
@@ -265,41 +316,77 @@ export default function AILogs() {
         ))}
       </div>
 
-      {/* Daily LLM Email Volume Chart */}
+      {/* Daily LLM Email Volume + Tokens Chart */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-base flex-wrap">
             <Mail className="w-4 h-4 text-[#C84B31]" />
-            Emails Sent to LLM for Processing — Last 30 Days
-            <span className="ml-auto text-sm font-normal text-gray-500">{totalLlmThisMonth} total</span>
+            Emails Sent to LLM — Last 30 Days
+            <span className="ml-auto text-sm font-normal text-gray-500">
+              {totalLlmThisMonth} emails · {totalTokensThisMonth.toLocaleString()} tokens
+              <span className="text-gray-400">
+                {' '}(in {totalInputTokensThisMonth.toLocaleString()} · out {totalOutputTokensThisMonth.toLocaleString()})
+              </span>
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyEmailData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+              <ComposedChart data={dailyEmailData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <XAxis
                   dataKey="label"
                   tick={{ fontSize: 10, fill: '#9ca3af' }}
                   tickLine={false}
                   interval={4}
                 />
-                <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis
+                  yAxisId="emails"
+                  tick={{ fontSize: 10, fill: '#9ca3af' }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <YAxis
+                  yAxisId="tokens"
+                  orientation="right"
+                  tick={{ fontSize: 10, fill: '#9ca3af' }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                  width={48}
+                />
                 <Tooltip
                   contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }}
-                  formatter={(value, name) => [value, name === 'leads' ? 'New Leads' : name === 'followups' ? 'Follow-ups' : 'Spam/Filtered']}
+                  formatter={(value, name) => {
+                    if (name === 'tokens') return [Number(value).toLocaleString(), 'Tokens (in+out)'];
+                    if (name === 'leads') return [value, 'New Leads'];
+                    if (name === 'followups') return [value, 'Follow-ups'];
+                    if (name === 'spam') return [value, 'Spam/Filtered'];
+                    return [value, name];
+                  }}
                   labelFormatter={(label) => label}
                 />
-                <Bar dataKey="leads" stackId="a" fill="#C84B31" radius={[0,0,0,0]} name="leads" />
-                <Bar dataKey="followups" stackId="a" fill="#E8B55F" name="followups" />
-                <Bar dataKey="spam" stackId="a" fill="#d1d5db" radius={[3,3,0,0]} name="spam" />
-              </BarChart>
+                <Bar yAxisId="emails" dataKey="leads" stackId="a" fill="#C84B31" radius={[0,0,0,0]} name="leads" />
+                <Bar yAxisId="emails" dataKey="followups" stackId="a" fill="#E8B55F" name="followups" />
+                <Bar yAxisId="emails" dataKey="spam" stackId="a" fill="#d1d5db" radius={[3,3,0,0]} name="spam" />
+                <Line
+                  yAxisId="tokens"
+                  type="monotone"
+                  dataKey="tokens"
+                  stroke="#7c3aed"
+                  strokeWidth={2}
+                  dot={false}
+                  name="tokens"
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 flex-wrap">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#C84B31'}}></span> New Leads</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#E8B55F'}}></span> Follow-ups</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#d1d5db'}}></span> Spam/Filtered by LLM</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 inline-block" style={{background:'#7c3aed', width: 12}}></span> Tokens (in+out)</span>
           </div>
         </CardContent>
       </Card>

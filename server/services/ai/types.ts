@@ -24,4 +24,10 @@ export interface StructuredCompletionResult<T = unknown> {
   rawText?: string;
   model: string;
   provider: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
+  };
 }
