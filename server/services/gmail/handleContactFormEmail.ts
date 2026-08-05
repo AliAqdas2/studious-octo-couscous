@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNull, ne, or, sql } from "drizzle-orm";
 import { inspect } from "node:util";
 import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
@@ -98,22 +98,29 @@ async function countContentSpamForSender(
 
   const afterLead = lastLead?.createdDate ?? null;
 
+  const notExcludedReason = or(
+    isNull(spamEmails.spamReason),
+    and(
+      ne(spamEmails.spamReason, KNOWN_SPAM_ECHO_REASON),
+      ne(spamEmails.spamReason, KNOWN_SPAM_CC_ONLY_REASON)
+    )
+  );
+
   const conditions = [
     sql`lower(${spamEmails.senderEmail}) = ${senderEmail}`,
-    sql`${spamEmails.createdDate} >= ${windowStart}`,
-    sql`${spamEmails.spamReason} IS DISTINCT FROM ${KNOWN_SPAM_ECHO_REASON}`,
-    sql`${spamEmails.spamReason} IS DISTINCT FROM ${KNOWN_SPAM_CC_ONLY_REASON}`,
+    gte(spamEmails.createdDate, windowStart),
+    notExcludedReason,
   ];
   if (afterLead) {
-    conditions.push(sql`${spamEmails.createdDate} > ${afterLead}`);
+    conditions.push(gt(spamEmails.createdDate, afterLead));
   }
 
   const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ value: count() })
     .from(spamEmails)
     .where(and(...conditions));
 
-  return Number(row?.count ?? 0);
+  return Number(row?.value ?? 0);
 }
 
 function llmUsageDetails(usage: {
