@@ -103,6 +103,8 @@ docker compose restart app
 docker compose down
 # Rebuild without cache
 docker compose build --no-cache && docker compose up -d
+# Import pipeline email templates (one-shot upsert)
+docker compose exec app node dist/seed-email-templates.js
 ```
 
 ---
@@ -114,3 +116,17 @@ docker compose build --no-cache && docker compose up -d
 - Jobs (Gmail poll, call retries, daily digest) default to **on** in Compose via `ENABLE_JOBS`; override in `.env`.
 - Health: `GET /api/health` (checks DB).
 - Image does not embed `.env`; keep secrets only on the server.
+
+### Seed email templates (one-shot)
+
+Pipeline email templates live in [`scripts/data/email-templates.csv`](../scripts/data/email-templates.csv). They are **not** seeded on every deploy. After the image is up:
+
+```bash
+# Production (Docker)
+docker compose exec app node dist/seed-email-templates.js
+
+# Local / host (DATABASE_URL set)
+npm run db:seed-email-templates
+```
+
+Safe to re-run: upserts by `template_name` + `pipeline_stage`.

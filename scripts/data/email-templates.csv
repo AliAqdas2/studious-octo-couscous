@@ -1,0 +1,318 @@
+"customer_type","template_name","pipeline_stage","is_active","subject","channel","body","category","send_automatically","send_mode","id","created_date","updated_date","created_by_id","created_by","is_sample"
+"Doesn't matter","Thank you - After meeting","Program Planning Discussion","true","Program Planning Discussion - After Meeting","Both","Good morning {{name}},
+ 
+I understand your time is valuable and really appreciate you taking the time to meet with me yesterday. We would be honored to work with you as your {{occasion}} experience provider for your team. 
+ 
+Once you connect with your colleague, let me know what options work best so that we can plan accordingly.
+ 
+Look forward to further planning this with you and that we keep in touch regardless.
+","Lead Follow-Up","true","draft","6a033d4753e7b3476095f1d4","2026-05-12T14:46:31.265000","2026-05-12T14:46:31.265000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","Deposit Reminder","Deposit Requested","true","Deposit Reminder","Both","Good morning {{name}},
+
+We haven't received your deposit. Is everything Ok?
+
+To reserve your date here is the Deposit link: <<deposit Link>>
+
+Please let me know once processed and will confirm this hits our system.
+
+Look forward to further planning this with you.
+
+Sincerely,
+Dave","Reminder","false","send","69aeef04f50b7a4fc987ae23","2026-03-09T16:02:12.749000","2026-03-26T10:25:43.557000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","Deposit reservation","Deposit Requested","true","Deposit reservation","Both","Great news {{name}}.
+
+To reserve your date here is the Deposit link: <<deposit Link>>
+
+Please let me know once processed and will confirm this hits our system.
+
+Look forward to further planning this with you.
+
+Sincerely,
+Dave","Event Confirmation","false","send","69aeeedf95876b832b245a5c","2026-03-09T16:01:35.638000","2026-03-26T10:25:43.542000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","Contract with Deposit","Deposit Requested","true","Contract with Deposit","B2B","See attached for the {{company}} contract at {{venue}} at {{preferred_date}}. Please review, sign, and return when you have a moment.
+
+Once signed, to reserve your date, here are the deposit links: {{Deposit_Number}}
+
+Please let me know when processed and will confirm this is our system.""","Event Confirmation","false","send","69aeeec89c1f0ffd1d014f54","2026-03-09T16:01:12.125000","2026-03-26T10:25:43.572000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Old","After meeting 3rd Follow up - Old Client","After Meeting Follow-Up","true","After meeting 3rd Follow up","Both","Good morning {{name}}- I want to thank you for taking the time to further plan your {{event_type}} with us.
+
+Also wanted to update you from our conversation. We received interest on {{preferred_date}}. Please know me mentioning this is not to force an option but to keep you updated. {{company}} is a returning client for us... we prefer to offer you a priority and that we took time planning to this point. Totally here to help to confirm with you if {{preferred_date}} works or if would you be open to an alternative day that week.
+
+Here to help and look forward to further planning this with you.
+
+Sincerely,
+Dave","Lead Follow-Up","false","send","69aee9d02a53d2469a7a70ee","2026-03-09T15:40:00.332000","2026-03-26T10:26:33.781000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"New","After meeting 2nd Follow up - First Time Client","After Meeting Follow-Up","true","After meeting 2nd Follow up ","B2C","Good morning {{name}},
+I hope your week is off to a great start!
+
+I wanted to check in with you about the cooking function {{preferred_date}} we’re planning for your {{event_type}}. A client has expressed interest in booking that date, but I haven't received your confirmation yet to solidly your reservation. Is everything okay?
+
+As promised, I wanted to keep you in the loop before having someone take one of your preferred time slots.
+
+Please let me know if you need any assistance. Look forward to further planning this with you!
+
+Sincerely,
+Dave","Proposal","false","send","69aee97e1862f5a70786015e","2026-03-09T15:38:38.706000","2026-03-26T10:26:46.697000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"New","After meeting 2nd Follow up - First Time Client","After Meeting Follow-Up","true","After meeting 2nd Follow up","B2B","Good morning {{name}}- I want to thank you for taking the time to further plan your  {{event_type}} with us.
+
+Also wanted to update you from our conversation. We received interest on {{preferred_date}}. Please know me mentioning this is not to force an option but to keep you updated. As a first-time client, we prefer to offer {{company}} priority, and that we took time planning to this point. Totally here to help to confirm with you if {{preferred_date}} works or if would you be open to an alternative day that week.
+
+Here to help and look forward to further planning this with you.
+
+Sincerely,
+Dave","Proposal","false","send","69aee934608873d88e92a3ed","2026-03-09T15:37:24.689000","2026-03-26T10:26:46.718000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Old","After meeting 1st Follow up - Old Client Client Reward","After Meeting Follow-Up","true","After meeting 1st Follow up - Old Client Client Reward","Both","Good morning {{name}},
+
+Hope you are doing well.
+
+Wanted to circle back with you on such a wonderful Tuesday with epic summer news.
+
+The Secretary of State's office approved a proclamation from the District of Columbia Mayor Muriel Bowser recognizing our recent placement on USA Today as one of the Top 10 Best Food Tour companies in the nation! We were presented the proclamation as our team supported a community service project at a local DC elementary school. We all celebrated this wonderful achievement!
+
+I share this wonderful news as I want you to feel at ease that we are positioned to support your team as an experienced team building provider and will ensure your team has a blast!
+
+Our fall is starting to fill and recall you wishing to plan a function at your office. Totally here to help. I’d like to confirm with you if {{preferred_date}} works or if you would be open to an alternative day to plan this with us.
+
+Here to help and look forward to further planning this with you.
+
+Sincerely, 
+Dave","Lead Follow-Up","false","send","69aee81c7af7901cad5ee40f","2026-03-09T15:32:44.373000","2026-03-26T10:26:33.738000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"New","After meeting Follow up - First Time Client (Tripadvisor)","After Meeting Follow-Up","true","After Meeting Follow-Up 1","Both","Good morning {{name}},
+
+Hope you are doing well.
+
+I wanted to send you good news. Earlier this week we were awarded the 2025 #1 Rated Food and Drink Activities on TripAdvisor. This overarching recognition was assessed from experience reviews and ratings that locals, businesses, and travelers share across the globe.
+
+I share this as I want you to feel at ease that we are positioned to support your team as an experience provider that will ensure your team has a blast!
+
+How was your meeting last week to go over options?
+
+Here to help, and look forward to further planning this with you!
+
+Sincerely, 
+Dave","Lead Follow-Up","false","send","69aee78bfca851b95ff1d7c0","2026-03-09T15:30:19.422000","2026-03-26T10:26:33.715000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"","1st after meeting Follow up (24 hours after meeting)","","true","After meeting follow up","","Good morning {{name}},
+ 
+I understand your time is valuable and really appreciate you taking the time to meet with me yesterday. We would be honored to work with you as your (insert occasion) experience provider for your team. 
+ 
+Once you connect with your colleague (Followe up date), let me know what options work best so that we can plan accordingly.
+ 
+Look forward to further planning this with you and that we keep in touch regardless.
+
+Sincerely,
+Dave","Proposal","false","send","69aee73e544722673939acf6","2026-03-09T15:29:02.614000","2026-03-09T15:29:02.614000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","Calendar Invite Resent","Calendar Invite Resent","true","Calendar Invite Resent","B2B","Good morning {{name}},
+
+I wanted to bring this to the front of your inbox before my day became busy. I haven't seen you accept the calendar invite for a <<time>> program planning discussion.
+
+I'm happy to resend the calendar invite. If you could be by a computer for our discussion I’d greatly appreciate it.
+
+Look forward to further planning this with you this afternoon.
+
+Sincerely,
+Dave","Reminder","false","send","69aee5dbc5b22af05c7dfd93","2026-03-09T15:23:07.111000","2026-03-26T10:25:43.501000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","B2C Calendar Invite","Calendar Invite Sent","true","Program Planning Discussion – {{name}}/ Mangia DC","B2C","Program Planning Discussion – {{name}}/ Mangia DC
+Dave from 202.769.4929 will contact {{name}} from {{phone}}
+If you could be by a computer for our discussion, I’d greatly appreciate it.
+","Proposal","false","send","69aee4d9f63ef0ff6118236a","2026-03-09T15:18:49.542000","2026-03-26T10:25:43.455000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","B2B Calendar Invite","Survey Completed – Calendar Invite Sent","true","Program Planning Discussion – {{company}}/ Mangia DC","B2B","Program Planning Discussion – {{company}}/ Mangia DC
+Dave from 202.769.4929 will contact {{name}} from {{phone}}
+If you could be by a computer for our discussion, I’d greatly appreciate it.
+","Proposal","false","send","69aee4a0f3cb55a147104709","2026-03-09T15:17:52.999000","2026-03-26T10:25:43.470000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","Missed Follow up","2nd Follow-Up – Off Radar","true","Missed Follow up","B2C","Good morning {{name}},
+
+Hope you had a wonderful holiday!
+
+It seems this fell through the cracks and want to bring this back to the surface. It's the busiest time of the year and please accept my humble apologies for the delay.
+
+Our spring is starting to fill and recall you wishing to plan a function at your office. Here to help. I’d like to confirm with you if {{preferred_date}} works or if you would be open to an alternative day to plan this with us.
+
+Happy to schedule a call to go over options. We can work together to find what’s best and address questions. I’m available<<Sales Manager Availability>> or let me know a few times that work so we can plan accordingly.
+
+Sincerely,
+Dave","Lead Follow-Up","false","send","69aee44f3a5e2f068856b355","2026-03-09T15:16:31.174000","2026-03-26T10:26:33.795000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","No Response – Follow-Up 2 (Fall Off Radar)","No Response – Follow-Up 2","true","Follow - up ","B2B","Good morning {{name}},
+
+I wanted to follow up with you so that this won't fall off our radar.
+
+Happy to schedule a call to go over options. We can work together to find what’s best and address questions.
+I’m available tomorrow <<Sales Manager Availability>> or let me know a few times that work so we can plan accordingly.
+
+Look forward to further planning this with you.
+
+Sincerely, 
+Dave","Lead Follow-Up","false","send","69aee41a75c8e77d4ca4a81f","2026-03-09T15:15:38.377000","2026-03-26T10:25:43.528000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","No Survey Response – Follow-Up 1 ","No Survey Response – Follow-Up 1","true","Follow-Up 1 ","B2B","Good morning {{name}},
+
+I wanted to bring this to the front of your inbox before my day became busy. The last thing I would want is the survey sent to overwhelm. It will absolutely help narrow down how we can best plan this for your group. When you have time to fill this brief questionnaire out, that would be helpful!
+
+To keep things simple, could we carve out time on <<Sales Manager Availability>> for next week's work? I'll try to be flexible.
+
+Look forward to further planning this with you!","Lead Follow-Up","false","send","69aee32bcb3a757db471e7fa","2026-03-09T15:11:39.770000","2026-03-26T10:25:43.515000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","Awaiting Calendar Acceptance","Awaiting Calendar Acceptance","true","Program Plnning Discussion Meeting Invite Questionnaire","Both","Good morning {{name}},
+
+{{meeting_date}} works perfectly and sent you a calendar invite to reserve our time. If you could be by a computer for our discussion I’d greatly appreciate it.
+
+Also to better understand your group dynamic please fill out this questionnaire and return before our discussion. I went ahead and filled out what you already told me:
+
+Name: {{name}}
+
+What is the occasion?
+
+What date(s) did you have in mind? Please send us multiple available dates when you have a moment? {{preferred_date}}
+
+What time of day is preferred for this event or is that flexible? {{preferred_time}}
+
+Would you like this to be in person, virtual, or hybrid (in-person & virtual)?
+
+What is your day time phone number? {{phone}}
+
+Around how many people do you have in mind?  {{headcount}}
+
+Do you need transportation?
+
+Would you consider the group to be none, light, or moderate drinkers?
+
+Would you consider your group(s) competitive or not so much?
+
+What is your budget for this event?
+
+Would you be responsible for processing this or who else would need to be involved?","Survey","false","send","69aee02a43f91a2ab0658cd2","2026-03-09T14:58:50.124000","2026-03-26T10:25:43.484000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","Feedback/Point of Reference","Confirmed Sales","true","Point of Reference","Both","Hi {{name}},
+
+Music to my ears Ali! Would you be open to being a point of reference should a new client have interest in getting a reference?
+
+We found lots of our clients come to us to entertain clients/prospects and also have multiple seasonal functions throughout the year. If that would help would be honored to keep you updated as the year progresses.
+
+Sincerely,
+Dave","Post-Event","false","send","69aedf5755b9e5f669fee159","2026-03-09T14:55:19.976000","2026-03-26T10:25:43.586000","699c69418e04ef1c530e70c1","admin2@mangiadc.com","false"
+"Doesn't matter","B2B Survey","Survey Sent","true","Event Planning Survey - {{company}}","B2B","Hi {{name}},
+
+Thank you so much for reaching out to plan a future function with us. We've worked with many groups in the past...rest assured you're in good hands and will have a blast!
+
+The good news is that we’d love to work with you. However, we are receiving lots of experience requests around this time and recommend attempting to block off times for your group sooner rather than later.
+
+We’ll do our best to make sure to support your budget and take pride in customizing our experiences to your organization's culture. We have experiences that range from $59-$300 a person but try to customize these experiences to align with your group dynamic. To better understand your group dynamic and to get us started, perhaps you could help address these few questions. I've went ahead and answered what you have already told me:
+
+Name: {{name}}
+
+What is the company name? {{company}}
+
+What is the occasion?
+
+What date(s) did you have in mind? Can you please send us multiple available dates when you have a moment? {{preferred_date}}
+
+What time of day is preferred for this event or is that flexible?
+
+Would you like this to be in-person, virtual, or hybrid (in-person & virtual)?
+
+What is your daytime phone number? {{phone}}
+
+Around how many people do you have in mind? {{headcount}}
+
+Do you need transportation?
+
+Would you consider the group to be none, light, or moderate drinkers?
+
+Would you consider your group(s) competitive or not so much?
+
+What is your budget for this event?
+
+Would you be responsible for processing this or who else would need to be involved?
+
+Sending you documentation and a brief program planning discussion will help customize this experience to help keep this process smooth and seamless. Does <<Sales Manager Availability>> work? Please let me know which time works best for you so we can plan accordingly.
+
+Here to help and look forward to further planning this with you.
+
+Sincerely,
+Dave","Survey","true","draft","698cff00f3862ae2423c04bc","2026-02-11T22:13:20.259000","2026-03-26T10:25:43.428000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"","Cancelled - Newsletter Subscription","","true","Stay Connected with Mangia DC","","Hi {{name}},
+
+Appreciate the update and always love understanding what groups decide to do for their outings. What did your team decide to do this go around?
+
+We send newsletters to keep our clients up to speed with how to celebrate the year. Would you be interested in being ""plugged in"" to our newsletter should the time come to plan something for the future?
+
+Look forward to keeping in touch regardless!
+
+Sincerely,
+Dave","Post-Event","false","send","698cff00f3862ae2423c04c3","2026-02-11T22:13:20.259000","2026-03-09T14:43:04.727000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"","Remaining Balance","","true","Remaining Balance Due - {{company}} Event","","Good morning {{name}},
+
+Hope you had are well!
+
+Thank you for sending us the attendee list. Attached is the itemized view.
+
+Here is the remaining balance link -
+
+Please let me know once processed and will confirm this hits our system.","Reminder","false","send","698cff00f3862ae2423c04c0","2026-02-11T22:13:20.259000","2026-03-03T14:09:40.403000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"","Thank You – With Consumption Invoice","","true","We Loved Hosting You! 🎉","","Hi {{name}},
+
+On behalf of Mangia DC, I wanted to personally extend a warm thank you for joining us and to select us as your {{event_type}}experience provider to celebrate with you {{preferred_date}}.
+
+After speaking with my team, we can agree that we enjoyed working with you. Wonderful energy and an all-around great group. In the planning process, you were thorough, detail-oriented, and exactly the person we would want leading the group to successfully plan and implement this experience. Our goal was for everyone to have a blast and hope we accomplished that.
+
+I've attached your paid consumption invoice.
+
+To kick your weekend off right, I've attached your team photo... we had a blast!
+
+Your feedback is most welcome and appreciated. Look forward to your reply.
+
+Sending warm vibes your way.
+
+Sincerely,
+Dave","Post-Event","false","send","698cff00f3862ae2423c04c2","2026-02-11T22:13:20.259000","2026-03-09T14:41:29.722000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"","Participation List Reminder","","true","Reminder: Participation List Due - {{company}}","","Hi {{name}},
+
+Your {{event_type}} event is just 14 days away on {{preferred_date}}!
+
+Please send us:
+- Final participation list
+- Any dietary restrictions
+- Special requests or preferences
+
+This helps us ensure everything is perfect for your group.
+
+Thank you!
+Mangia DC","Reminder","false","","698cff00f3862ae2423c04bf","2026-02-11T22:13:20.259000","2026-02-11T22:13:20.259000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"","B2C - Private Consumer Reply","","true","Your {{event_type}} Experience with Mangia DC","","Hi {{name}},
+
+Good news... We would love to work with you and can arrange a private party for you on {{preferred_date}}, however, lots of interest is at that time recommend connecting sooner rather than later.
+
+On a high level, have experiences that range from $59-$300 a person but try to customize these experiences to align with your group dynamic. Rather than having multiple email exchanges to discuss options, perhaps I could send you details and reserve time to go over this with you over the phone. Happy to schedule a call to go over options. We can work together to find what’s best and address questions.
+
+If that works, I’m available <<Sales Manager Availability>>. Please let me know which time works best for you so we can plan accordingly.
+
+Is {{phone}} the best number to reach you on?
+
+Look forward to further planning this with you.
+
+Warm regards,
+Mangia DC","Lead Follow-Up","true","draft","698cff00f3862ae2423c04bd","2026-02-11T22:13:20.259000","2026-03-09T14:39:46.748000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"","Thank You – Without Consumption ","","true","Thank You for Choosing Mangia DC!","","Hi {{name}},
+
+On behalf of Mangia DC, I wanted to personally extend a warm thank you for joining us and to select us as your {{event_type}}experience provider to celebrate with you {{preferred_date}}.
+
+After speaking with my team, we can agree that we enjoyed working with you. Wonderful energy and an all-around great group. In the planning process, you were thorough, detail-oriented, and exactly the person we would want leading the group to successfully plan and implement this experience. Our goal was for everyone to have a blast and hope we accomplished that.
+
+To kick your weekend off right, I've attached your team photo... we had a blast!
+
+Your feedback is most welcome and appreciated. Look forward to your reply.
+
+Sending warm vibes your way.
+
+Sincerely,
+Dave","Post-Event","true","draft","698cff00f3862ae2423c04c1","2026-02-11T22:13:20.259000","2026-03-09T14:42:07.210000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"","Deposit Confirms and Final HC","","true","Deposit Received - Final Details for {{company}}","","Good morning {{Name}},
+
+Payment received. We updated our system.
+We need the following participation details to properly prepare for the upcoming {{event type}}: <<deposit Link>>
+We’ll need these details by <<14th day before the event>> or sooner.
+
+Here are the steps to get us ready for your cooking program:
+- {{Name}} places deposit to reserve
+- I send you a participation template
+- {{Name}} completes participation list by <<two weeks before the Event>>  send to me
+- We schedule quick check-in to go over the run of show <<two weeks before the Event>> 
+- I send you the remaining balance invoice covering the final headcount <<12th day bvefore the event>>
+
+Look forward to further planning this with you… it's going to be a blast!","Event Confirmation","true","draft","698cff00f3862ae2423c04be","2026-02-11T22:13:20.259000","2026-03-03T14:08:24.448000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
