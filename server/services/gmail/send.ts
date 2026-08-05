@@ -20,6 +20,12 @@ export interface SendEmailInput {
   leadId?: string;
   userId?: string | null;
   userName?: string | null;
+  /**
+   * When true (or when userName starts with "System ("), adds Auto-Submitted
+   * headers so inbound intake will not re-process this mail if it lands in
+   * the connected inbox.
+   */
+  systemAlert?: boolean;
 }
 
 export async function sendGmailEmail(input: SendEmailInput) {
@@ -27,14 +33,21 @@ export async function sendGmailEmail(input: SendEmailInput) {
   const contentType = input.html
     ? 'text/html; charset="UTF-8"'
     : 'text/plain; charset="UTF-8"';
-  const message = [
+  const isSystem =
+    input.systemAlert === true ||
+    (typeof input.userName === "string" &&
+      input.userName.startsWith("System ("));
+  const headers = [
     `To: ${input.to}`,
     `Subject: ${input.subject}`,
     "MIME-Version: 1.0",
     `Content-Type: ${contentType}`,
-    "",
-    input.body,
-  ].join("\r\n");
+  ];
+  if (isSystem) {
+    headers.push("Auto-Submitted: auto-generated");
+    headers.push("X-Auto-Response-Suppress: All");
+  }
+  const message = [...headers, "", input.body].join("\r\n");
   const encodedMessage = encodeRawMessage(message);
 
   const response = await gmail.users.messages.send({

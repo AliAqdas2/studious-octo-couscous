@@ -12,6 +12,8 @@ export const gmailPollState = pgTable("gmail_poll_state", {
   lastTokenRefreshAt: timestamp("last_token_refresh_at", { withTimezone: true }),
   lastConnectionError: text("last_connection_error"),
   disconnectAlertSentAt: timestamp("disconnect_alert_sent_at", { withTimezone: true }),
+  deadLetterAlertSentAt: timestamp("dead_letter_alert_sent_at", { withTimezone: true }),
+  lastDeadLetterError: text("last_dead_letter_error"),
   createdDate: createdDate(),
   updatedDate: updatedDate(),
   createdBy: createdBy(),

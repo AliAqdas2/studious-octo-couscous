@@ -11,7 +11,14 @@ let started = false;
 
 export function startJobs(): void {
   if (!env.enableJobs()) {
-    console.log("[jobs] ENABLE_JOBS is not set — background jobs disabled");
+    const raw = process.env.ENABLE_JOBS;
+    const label =
+      raw === undefined || raw === ""
+        ? "unset"
+        : JSON.stringify(raw);
+    console.log(
+      `[jobs] ENABLE_JOBS=${label} — background jobs disabled (set ENABLE_JOBS=true to enable)`
+    );
     return;
   }
   if (started) return;

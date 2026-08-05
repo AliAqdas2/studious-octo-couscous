@@ -273,6 +273,24 @@ export const base44 = {
         );
       },
     },
+    async inviteStatus(token) {
+      const q = encodeURIComponent(token || "");
+      return request(
+        `/api/auth/invite/status?token=${q}`,
+        {},
+        { skipAuth: true, retry: false }
+      );
+    },
+    async acceptInvite({ token, password }) {
+      return request(
+        "/api/auth/accept-invite",
+        {
+          method: "POST",
+          body: JSON.stringify({ token, password }),
+        },
+        { skipAuth: true, retry: false }
+      );
+    },
   },
   entities,
   gmail: {
@@ -394,8 +412,17 @@ export const base44 = {
     },
   },
   users: {
-    async inviteUser() {
-      throw new ApiError("User invite is not migrated yet.", 501);
+    async inviteUser({ email, full_name, phone, role, operational_role }) {
+      return request("/api/auth/invite", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          full_name,
+          phone,
+          role,
+          operational_role,
+        }),
+      });
     },
   },
   integrations: {

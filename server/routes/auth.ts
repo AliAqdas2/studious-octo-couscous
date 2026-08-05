@@ -2,7 +2,7 @@ import { Router, type CookieOptions, type Response } from "express";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAdmin, requireAuth } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import {
   getMe,
@@ -11,6 +11,11 @@ import {
   refresh,
   REFRESH_COOKIE_NAME,
 } from "../services/auth/authService.js";
+import {
+  acceptInvite,
+  getInviteStatus,
+  inviteUser,
+} from "../services/auth/inviteUser.js";
 import {
   isPasswordResetAvailable,
   requestPasswordReset,
@@ -21,6 +26,27 @@ import {
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+});
+
+const inviteSchema = z.object({
+  email: z.string().email(),
+  full_name: z.string().min(1),
+  phone: z.string().optional().nullable(),
+  role: z.enum(["admin", "user"]),
+  operational_role: z.enum([
+    "Admin",
+    "Sales",
+    "Ops",
+    "Chef",
+    "Event Host",
+    "Finance",
+    "Instructor",
+  ]),
+});
+
+const acceptInviteSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8),
 });
 
 const resetRequestSchema = z.object({
@@ -50,6 +76,12 @@ const passwordResetRateLimit = rateLimit({
   name: "password-reset",
 });
 
+const inviteAcceptRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  name: "accept-invite",
+});
+
 /** No-op when ENABLE_AUTH_RATE_LIMIT is not set. */
 const maybeAuthRateLimit = env.enableAuthRateLimit()
   ? authRateLimit
@@ -62,6 +94,12 @@ const maybePasswordResetRateLimit = env.enableAuthRateLimit()
   : ((_req, _res, next) => {
       next();
     }) as typeof passwordResetRateLimit;
+
+const maybeInviteAcceptRateLimit = env.enableAuthRateLimit()
+  ? inviteAcceptRateLimit
+  : ((_req, _res, next) => {
+      next();
+    }) as typeof inviteAcceptRateLimit;
 
 /** In-memory cache for password-reset availability (60s). */
 let availabilityCache: { available: boolean; expiresAt: number } | null = null;
@@ -157,6 +195,54 @@ router.get("/me", requireAuth, async (req: AuthenticatedRequest, res, next) => {
     next(err);
   }
 });
+
+router.post(
+  "/invite",
+  requireAuth,
+  requireAdmin,
+  async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const body = inviteSchema.parse(req.body);
+      const result = await inviteUser({
+        email: body.email,
+        full_name: body.full_name,
+        phone: body.phone,
+        role: body.role,
+        operational_role: body.operational_role,
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.get("/invite/status", async (req, res, next) => {
+  try {
+    const token = String(req.query.token || "");
+    const result = await getInviteStatus(token);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post(
+  "/accept-invite",
+  maybeInviteAcceptRateLimit,
+  async (req, res, next) => {
+    try {
+      const body = acceptInviteSchema.parse(req.body);
+      const result = await acceptInvite({
+        token: body.token,
+        password: body.password,
+      });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 router.get("/password-reset/status", async (_req, res, next) => {
   try {

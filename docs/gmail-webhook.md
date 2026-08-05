@@ -276,6 +276,8 @@ When AI classification, DB writes, or Gmail fetch fails during intake:
 2. **Attempts 2–3** — `retryGmailIntake` job (every 5 min) re-fetches the message by Gmail message ID from `gmail_intake_retries` (not `history.list`, so cursor advancement does not lose the email).
 3. **After 2 failed retries** (3 total attempts) — full email snapshot saved to `gmail_intake_dead_letters`, terminal `failed` row in `processed_gmail_messages`, admin alert emailed to `DIGEST_RECIPIENTS`.
 
+**Permanent errors** (e.g. missing `ANTHROPIC_API_KEY` / “AI is not configured”, or DB not configured) skip the retry loop and go **straight to dead-letter** on the first failure. Successful lead create still requires `ANTHROPIC_API_KEY`. Each retry-queued and dead-letter outcome also writes an `activity_logs` row (`Intake Failed (Retry Queued)` / `Intake Failed (Dead Letter)`) under user `System (Email Intake)`, visible in the **AI Logs → Intake Failures** filter (with View Source when a Gmail message id is present).
+
 | Job | Schedule | Purpose |
 |-----|----------|---------|
 | `retryGmailIntake` | Every 5 min | Re-run intake on due retry rows (max 10/run) |
@@ -321,9 +323,9 @@ Log prefixes: `[retry-gmail-intake]`, `[gmail-intake-dead-letter]`.
 | Webhook hits but `created: 0`, empty IDs | Cursor seed-only first hit; or no new INBOX mail; catch-up also returned 0 |
 | Webhook 0 history IDs but history advanced | Catch-up scan runs (`in:inbox newer_than:2d`); look for `catch-up recovered N` in logs |
 | Fetch / OAuth errors | Gmail disconnected or token revoked |
-| 503 AI not configured | Missing `ANTHROPIC_API_KEY` on create path |
+| 503 AI not configured | Missing `ANTHROPIC_API_KEY` → **immediate dead-letter** + AI Logs “Intake Failures” (no retry loop) |
 | Duplicate prevention | Row already in `processed_gmail_messages` |
-| AI/DB error on intake | Retried up to 2 times (3 total attempts) via `gmail_intake_retries`; then dead-letter + admin email — body preserved in DB |
+| AI/DB error on intake | Transient: retried up to 2 times via `gmail_intake_retries`, then dead-letter. Permanent (missing AI key / DB): immediate dead-letter. Both write ActivityLog for AI Logs. |
 | Poller always skipping | Webhooks healthy (&lt; 90 min since last hit) — expected |
 | Jobs never start | `ENABLE_JOBS` unset/`false` in env; Compose should default to true |
 

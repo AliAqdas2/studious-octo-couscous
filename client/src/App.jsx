@@ -16,6 +16,7 @@ import { AuthProvider, useAuth } from "@/lib/AuthContext";
 import Users from "@/pages/Users";
 import Login from "@/pages/Login";
 import ForgotPassword from "@/pages/ForgotPassword";
+import AcceptInvite from "@/pages/AcceptInvite";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -40,7 +41,7 @@ const AuthenticatedApp = () => {
     );
   }
 
-  const isPublicPage = ["/login", "/forgot-password"].includes(
+  const isPublicPage = ["/login", "/forgot-password", "/accept-invite"].includes(
     location.pathname
   );
 
@@ -56,6 +57,7 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route
         path="/"
         element={

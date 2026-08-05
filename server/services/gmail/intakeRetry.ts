@@ -1,9 +1,12 @@
+import { randomUUID } from "crypto";
 import { eq, lte } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
 import {
+  activityLogs,
   gmailIntakeDeadLetters,
   gmailIntakeRetries,
+  gmailPollState,
   processedGmailMessages,
 } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
@@ -20,7 +23,8 @@ const LOG = "[gmail-intake-dead-letter]";
 export const MAX_INTAKE_RETRIES = 2;
 
 const RETRY_BACKOFF_MS = [2 * 60_000, 10 * 60_000];
-const ALERT_DEDUP_MS = 60 * 60 * 1000;
+/** Global coalesced alert window — at most one dead-letter email per period. */
+const ALERT_DEDUP_MS = 12 * 60 * 60 * 1000;
 
 export type IntakeSource = "webhook" | "poller";
 
@@ -30,6 +34,16 @@ export const TERMINAL_PROCESSED_STATUSES = new Set([
   "ignored",
   "failed",
 ]);
+
+/** Errors that will never succeed on retry (config / missing resources). */
+export function isPermanentIntakeError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("AI is not configured") ||
+    msg.includes("ANTHROPIC_API_KEY") ||
+    msg.includes("Database is not configured")
+  );
+}
 
 function requireDb() {
   const db = getDb();
@@ -77,6 +91,61 @@ async function fetchMessageSnapshot(messageId: string): Promise<{
   }
 }
 
+async function logIntakeFailureActivity(params: {
+  messageId: string;
+  /** Must be a UUID — activity_logs.entity_id is uuid-typed. */
+  entityId: string;
+  source: IntakeSource;
+  error: string;
+  stage: "retry_queued" | "dead_letter";
+  attemptCount: number;
+  snapshot?: {
+    from?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    threadId?: string | null;
+    snippet?: string | null;
+  } | null;
+}): Promise<void> {
+  try {
+    const db = requireDb();
+    const action =
+      params.stage === "dead_letter"
+        ? "Intake Failed (Dead Letter)"
+        : "Intake Failed (Retry Queued)";
+    const bodySnippet = (params.snapshot?.body || params.snapshot?.snippet || "")
+      .toString()
+      .slice(0, 2000);
+
+    await db.insert(activityLogs).values({
+      entityType: "Email",
+      entityId: params.entityId,
+      action,
+      details: {
+        gmail_message_id: params.messageId,
+        gmail_thread_id: params.snapshot?.threadId || null,
+        from: params.snapshot?.from || null,
+        subject: params.snapshot?.subject || null,
+        body_snippet: bodySnippet,
+        error: params.error,
+        attempt_count: params.attemptCount,
+        source: params.source,
+        stage: params.stage,
+        ...(params.stage === "dead_letter"
+          ? { dead_letter_id: params.entityId }
+          : {}),
+      },
+      userName: "System (Email Intake)",
+      timestamp: new Date(),
+    });
+  } catch (e) {
+    console.warn(
+      `${LOG} ActivityLog insert failed:`,
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
 async function recordFailedProcessed(
   messageId: string,
   source: IntakeSource
@@ -105,34 +174,60 @@ async function sendDeadLetterAlert(params: {
   attemptCount: number;
 }): Promise<void> {
   const db = requireDb();
-  const existing = await db
-    .select()
-    .from(gmailIntakeDeadLetters)
-    .where(eq(gmailIntakeDeadLetters.gmailMessageId, params.messageId))
-    .limit(1);
+  const now = new Date();
 
-  const prior = existing[0];
-  if (
-    prior?.alertSentAt &&
-    Date.now() - new Date(prior.alertSentAt).getTime() < ALERT_DEDUP_MS
-  ) {
+  const pollRows = await db
+    .select()
+    .from(gmailPollState)
+    .where(eq(gmailPollState.key, "default"))
+    .limit(1);
+  const poll = pollRows[0];
+  const lastAlert = poll?.deadLetterAlertSentAt
+    ? new Date(poll.deadLetterAlertSentAt).getTime()
+    : 0;
+  const shouldAlert = now.getTime() - lastAlert > ALERT_DEDUP_MS;
+
+  // Always keep the latest error on poll state for ops visibility.
+  if (poll) {
+    await db
+      .update(gmailPollState)
+      .set({
+        lastDeadLetterError: params.lastError.slice(0, 2000),
+        ...(shouldAlert ? { deadLetterAlertSentAt: now } : {}),
+        updatedDate: now,
+      })
+      .where(eq(gmailPollState.id, poll.id));
+  } else {
+    await db.insert(gmailPollState).values({
+      key: "default",
+      lastDeadLetterError: params.lastError.slice(0, 2000),
+      ...(shouldAlert ? { deadLetterAlertSentAt: now } : {}),
+    });
+  }
+
+  if (!shouldAlert) {
+    console.warn(
+      `${LOG} Suppressing dead-letter alert (already sent within 12h): ${params.messageId}`
+    );
     return;
   }
 
   const appUrl = env.appUrl().replace(/\/$/, "");
-  const subject = `Mangia CRM: Gmail intake failed — ${params.subject || params.messageId}`;
+  const subject = "Mangia CRM: Gmail intake failing";
   const body = `<!DOCTYPE html>
 <html><body style="font-family:sans-serif;padding:24px;">
-  <h2 style="color:#C84B31;">Gmail intake dead-letter</h2>
-  <p>An inbound email could not be processed after ${params.attemptCount} attempt(s).</p>
+  <h2 style="color:#C84B31;">Gmail intake failing</h2>
+  <p>Inbound email processing is failing. Messages are being moved to dead-letter for recovery.</p>
+  <p><strong>Latest error:</strong> ${params.lastError.replace(/</g, "&lt;")}</p>
   <ul>
-    <li><strong>Message ID:</strong> ${params.messageId}</li>
+    <li><strong>Example message ID:</strong> ${params.messageId}</li>
     <li><strong>From:</strong> ${params.from.replace(/</g, "&lt;")}</li>
     <li><strong>Subject:</strong> ${params.subject.replace(/</g, "&lt;")}</li>
-    <li><strong>Error:</strong> ${params.lastError.replace(/</g, "&lt;")}</li>
+    <li><strong>Attempts:</strong> ${params.attemptCount}</li>
   </ul>
-  <p>The full email body is preserved in <code>gmail_intake_dead_letters</code>.</p>
+  <p>If this mentions <code>ANTHROPIC_API_KEY</code> or AI is not configured, set the key and restart. Full bodies are in <code>gmail_intake_dead_letters</code>.</p>
   <p>Review at <a href="${appUrl}">${appUrl}</a></p>
+  <p style="color:#888;font-size:13px;">This alert is sent at most once every 12 hours while intake keeps failing. Further failed messages will not send additional emails.</p>
 </body></html>`;
 
   for (const to of env.digestRecipients()) {
@@ -143,6 +238,7 @@ async function sendDeadLetterAlert(params: {
         body,
         html: true,
         userName: "System (Gmail Intake)",
+        systemAlert: true,
       });
     } catch (sendErr) {
       console.error(
@@ -154,7 +250,7 @@ async function sendDeadLetterAlert(params: {
 
   await db
     .update(gmailIntakeDeadLetters)
-    .set({ alertSentAt: new Date(), updatedDate: new Date() })
+    .set({ alertSentAt: now, updatedDate: now })
     .where(eq(gmailIntakeDeadLetters.gmailMessageId, params.messageId));
 }
 
@@ -173,23 +269,35 @@ export async function moveToDeadLetter(params: {
     `${LOG} CRITICAL: message ${params.messageId} moved to dead-letter after ${params.attemptCount} failure(s): ${lastError}`
   );
 
+  let deadLetterId: string | null = null;
   try {
-    await db.insert(gmailIntakeDeadLetters).values({
-      gmailMessageId: params.messageId,
-      from: snapshot?.from || null,
-      subject: snapshot?.subject || null,
-      body: snapshot?.body || null,
-      threadId: snapshot?.threadId || null,
-      snippet: snapshot?.snippet || null,
-      attemptCount: params.attemptCount,
-      lastError,
-      source: params.source,
-      failedAt: now,
-    });
+    const [row] = await db
+      .insert(gmailIntakeDeadLetters)
+      .values({
+        gmailMessageId: params.messageId,
+        from: snapshot?.from || null,
+        subject: snapshot?.subject || null,
+        body: snapshot?.body || null,
+        threadId: snapshot?.threadId || null,
+        snippet: snapshot?.snippet || null,
+        attemptCount: params.attemptCount,
+        lastError,
+        source: params.source,
+        failedAt: now,
+      })
+      .returning({ id: gmailIntakeDeadLetters.id });
+    deadLetterId = row?.id ?? null;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!msg.includes("duplicate") && !msg.includes("unique")) {
       console.error(`${LOG} insert dead-letter failed:`, msg);
+    } else {
+      const existing = await db
+        .select({ id: gmailIntakeDeadLetters.id })
+        .from(gmailIntakeDeadLetters)
+        .where(eq(gmailIntakeDeadLetters.gmailMessageId, params.messageId))
+        .limit(1);
+      deadLetterId = existing[0]?.id ?? null;
     }
   }
 
@@ -198,6 +306,16 @@ export async function moveToDeadLetter(params: {
   await db
     .delete(gmailIntakeRetries)
     .where(eq(gmailIntakeRetries.gmailMessageId, params.messageId));
+
+  await logIntakeFailureActivity({
+    messageId: params.messageId,
+    entityId: deadLetterId || randomUUID(),
+    source: params.source,
+    error: lastError,
+    stage: "dead_letter",
+    attemptCount: params.attemptCount,
+    snapshot,
+  });
 
   await sendDeadLetterAlert({
     messageId: params.messageId,
@@ -218,7 +336,10 @@ export async function scheduleIntakeRetry(params: {
   const db = requireDb();
   const lastError = truncateError(params.error);
 
-  if (params.immediateDeadLetter) {
+  const forceDeadLetter =
+    params.immediateDeadLetter || isPermanentIntakeError(params.error);
+
+  if (forceDeadLetter) {
     await moveToDeadLetter({
       messageId: params.messageId,
       source: params.source,
@@ -273,6 +394,18 @@ export async function scheduleIntakeRetry(params: {
   console.warn(
     `[email-intake] Scheduled retry ${newCount}/${MAX_INTAKE_RETRIES} for ${params.messageId} at ${nextAt.toISOString()}: ${lastError.slice(0, 200)}`
   );
+
+  // Best-effort snapshot for AI Logs (don't block on Gmail failures).
+  const snapshot = await fetchMessageSnapshot(params.messageId);
+  await logIntakeFailureActivity({
+    messageId: params.messageId,
+    entityId: existing[0]?.id || randomUUID(),
+    source: params.source,
+    error: lastError,
+    stage: "retry_queued",
+    attemptCount: newCount,
+    snapshot,
+  });
 
   return { scheduled: true, deadLetter: false, attemptCount: newCount };
 }

@@ -195,6 +195,17 @@ export function shouldSilentlySkip(
     return { skip: true, reason: "Bounce (X-Failed-Recipients header)" };
   }
 
+  const subject = getHeader(headers, "Subject");
+  if (
+    subject.startsWith("Mangia CRM: Gmail intake") ||
+    subject.startsWith("Mangia CRM: Gmail disconnected")
+  ) {
+    return {
+      skip: true,
+      reason: `CRM system alert subject: ${subject.substring(0, 120)}`,
+    };
+  }
+
   const localPart = (senderEmail.split("@")[0] || "").toLowerCase();
   if (
     AUTOMATED_SENDER_LOCALPARTS.some(

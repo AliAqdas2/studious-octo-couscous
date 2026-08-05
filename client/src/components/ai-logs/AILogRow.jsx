@@ -40,6 +40,9 @@ function categorize(action) {
   if (action?.startsWith('Routed to Spam')) {
     return { kind: 'spam-routed', icon: ShieldAlert, color: 'bg-orange-100 text-orange-700 border-orange-200', label: action.replace('Routed to ', '') };
   }
+  if (action === 'Intake Failed (Dead Letter)' || action === 'Intake Failed (Retry Queued)') {
+    return { kind: 'intake-failure', icon: ShieldAlert, color: 'bg-red-100 text-red-700 border-red-200', label: action };
+  }
   return { kind: 'other', icon: Bot, color: 'bg-gray-100 text-gray-700 border-gray-200', label: action };
 }
 
@@ -59,6 +62,7 @@ const SOURCE_EMAIL_KINDS = new Set([
   'lead-created',
   'lead-appended',
   'spam-routed',
+  'intake-failure',
 ]);
 
 /**
@@ -167,6 +171,11 @@ export default function AILogRow({ log, leadName, lead, spamById, onView }) {
     if (details.sender_role) summaryLines.push(`Sender role: ${details.sender_role.replace(/_/g, ' ')}`);
     if (details.ai_category) summaryLines.push(`Category: ${details.ai_category}`);
     if (details.ai_reason) summaryLines.push(details.ai_reason);
+  } else if (cat.kind === 'intake-failure') {
+    if (details.from) summaryLines.push(`From: ${details.from}`);
+    if (details.subject) summaryLines.push(`Subject: ${details.subject}`);
+    if (details.attempt_count != null) summaryLines.push(`Attempt: ${details.attempt_count}`);
+    if (details.error) summaryLines.push(`Error: ${details.error}`);
   }
 
   const canViewDraft = cat.kind === 'survey-draft' && !!details.draft_id;

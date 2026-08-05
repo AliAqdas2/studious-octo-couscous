@@ -42,6 +42,7 @@ import {
 } from "../leads/enrichLeadOnCreate.js";
 import {
   clearRetry,
+  isPermanentIntakeError,
   isTerminalProcessedStatus,
   scheduleIntakeRetry,
   MAX_INTAKE_RETRIES,
@@ -141,6 +142,21 @@ async function recordProcessed(
     });
     if (status !== "failed") {
       await clearRetry(gmailMessageId);
+      // Intake is healthy again — allow the next outage to alert immediately.
+      try {
+        const poll = await getPollState();
+        if (poll?.deadLetterAlertSentAt || poll?.lastDeadLetterError) {
+          await upsertPollState({
+            deadLetterAlertSentAt: null,
+            lastDeadLetterError: null,
+          });
+        }
+      } catch (clearErr) {
+        console.warn(
+          `[email-intake] clear dead-letter alert stamp failed:`,
+          clearErr instanceof Error ? clearErr.message : clearErr
+        );
+      }
     }
   } catch (e) {
     console.warn(
@@ -370,7 +386,8 @@ export async function handleContactFormEmail(input: {
           messageId,
           source,
           error: fetchErr,
-          immediateDeadLetter: statusCode === 404,
+          immediateDeadLetter:
+            statusCode === 404 || isPermanentIntakeError(fetchErr),
         });
         skippedCount++;
         results.push({
@@ -1015,6 +1032,7 @@ export async function handleContactFormEmail(input: {
         messageId,
         source,
         error: perMsgErr,
+        immediateDeadLetter: isPermanentIntakeError(perMsgErr),
       });
       skippedCount++;
       results.push({
@@ -1164,6 +1182,8 @@ export async function upsertPollState(patch: {
   lastTokenRefreshAt?: Date | null;
   lastConnectionError?: string | null;
   disconnectAlertSentAt?: Date | null;
+  deadLetterAlertSentAt?: Date | null;
+  lastDeadLetterError?: string | null;
 }): Promise<void> {
   const db = requireDb();
   const rows = await db

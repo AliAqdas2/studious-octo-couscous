@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { Check, Copy } from 'lucide-react';
 
 export default function AddUserDialog({ onClose }) {
   const queryClient = useQueryClient();
@@ -15,18 +16,24 @@ export default function AddUserDialog({ onClose }) {
     email: '',
     phone: '',
     role: 'Sales',
-    portal_access: false
+    portal_access: true
   });
   const [error, setError] = useState('');
+  const [inviteResult, setInviteResult] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      // If portal access is checked, invite them to the Base44 app
       if (data.portal_access) {
-        await base44.users.inviteUser(data.email, data.role === 'Admin' ? 'admin' : 'user');
+        return base44.users.inviteUser({
+          email: data.email.trim(),
+          full_name: data.name.trim(),
+          phone: data.phone.trim(),
+          role: data.role === 'Admin' ? 'admin' : 'user',
+          operational_role: data.role,
+        });
       }
 
-      // Create the RoleAssignment with contact details
       return base44.entities.RoleAssignment.create({
         role: data.role,
         user_email: data.email,
@@ -37,9 +44,20 @@ export default function AddUserDialog({ onClose }) {
         is_active: true
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['role-assignments'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
+
+      if (formData.portal_access && result?.inviteUrl) {
+        setInviteResult(result);
+        toast.success(
+          result.emailSent
+            ? 'Invite sent — copy the link as backup'
+            : 'User invited — copy the invite link'
+        );
+        return;
+      }
+
       toast.success('User added successfully');
       onClose();
     },
@@ -58,6 +76,58 @@ export default function AddUserDialog({ onClose }) {
 
     mutation.mutate(formData);
   };
+
+  const handleCopy = async () => {
+    if (!inviteResult?.inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteResult.inviteUrl);
+      setCopied(true);
+      toast.success('Invite link copied');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy link');
+    }
+  };
+
+  if (inviteResult?.inviteUrl) {
+    return (
+      <Dialog open onOpenChange={onClose}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-[#C84B31]">
+              Invite ready
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              {inviteResult.emailSent
+                ? `An invite email was sent to ${inviteResult.user?.email || formData.email}. Share this link if they do not receive it:`
+                : `Share this invite link with ${inviteResult.user?.email || formData.email} so they can set a password:`}
+            </p>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={inviteResult.inviteUrl}
+                className="text-xs font-mono"
+              />
+              <Button type="button" variant="outline" onClick={handleCopy} className="shrink-0">
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500">Link expires in 7 days.</p>
+            <div className="flex justify-end pt-2">
+              <Button
+                onClick={onClose}
+                className="bg-gradient-to-r from-[#C84B31] to-[#E8B55F] text-white"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open onOpenChange={onClose}>

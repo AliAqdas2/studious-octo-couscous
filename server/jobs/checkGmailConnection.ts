@@ -74,6 +74,7 @@ export async function checkGmailConnection(): Promise<{
             body,
             html: true,
             userName: "System (Gmail Health)",
+            systemAlert: true,
           });
         } catch (sendErr) {
           console.error(

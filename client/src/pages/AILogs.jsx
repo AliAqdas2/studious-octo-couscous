@@ -39,7 +39,9 @@ const AI_ACTIONS = new Set([
   'Meeting Proposal Draft Created (No-Answer Fallback)',
   'Created from Direct Email',
   'Created from Contact Form',
-  'Inbound Email Received (Follow-up)'
+  'Inbound Email Received (Follow-up)',
+  'Intake Failed (Dead Letter)',
+  'Intake Failed (Retry Queued)',
 ]);
 
 function isAILog(log) {
@@ -58,7 +60,8 @@ const CATEGORIES = [
   { value: 'call', label: 'Call Analysis' },
   { value: 'staff', label: 'Staff Assignment' },
   { value: 'event', label: 'Auto Event Created' },
-  { value: 'spam-routed', label: 'Spam Routed' }
+  { value: 'spam-routed', label: 'Spam Routed' },
+  { value: 'intake-failure', label: 'Intake Failures' },
 ];
 
 function actionToCategory(action) {
@@ -70,6 +73,9 @@ function actionToCategory(action) {
   if (action === 'Event Created' || action === 'Created from Won Lead') return 'event';
   if (action === 'Call Analyzed') return 'call';
   if (action?.startsWith('Routed to Spam')) return 'spam-routed';
+  if (action === 'Intake Failed (Dead Letter)' || action === 'Intake Failed (Retry Queued)') {
+    return 'intake-failure';
+  }
   return 'other';
 }
 

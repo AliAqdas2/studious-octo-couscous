@@ -197,6 +197,47 @@ async function main(): Promise<void> {
     } else {
       console.log("gmail_intake_retries and gmail_intake_dead_letters already present");
     }
+
+    // Re-read poll columns after possible earlier migrations
+    const pollColsAfter = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public' and table_name = 'gmail_poll_state'
+    `;
+    const pollColNamesAfter = new Set(
+      pollColsAfter.map((row) => String(row.column_name))
+    );
+    const needsDeadLetterAlertDedup = !pollColNamesAfter.has(
+      "dead_letter_alert_sent_at"
+    );
+
+    if (needsDeadLetterAlertDedup) {
+      console.log("Applying gmail dead-letter alert dedup migration (0005)...");
+      const migSql = readFileSync(
+        join(__dirname, "../drizzle/0005_gmail_dead_letter_alert_dedup.sql"),
+        "utf8"
+      );
+      for (const statement of migSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("gmail dead-letter alert dedup migration applied");
+    } else {
+      console.log("gmail_poll_state dead-letter alert columns already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }
