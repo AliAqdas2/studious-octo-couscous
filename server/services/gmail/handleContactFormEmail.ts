@@ -142,7 +142,10 @@ async function recordProcessed(
     });
     if (status !== "failed") {
       await clearRetry(gmailMessageId);
-      // Intake is healthy again — allow the next outage to alert immediately.
+    }
+    // Only a real lead proves AI intake recovered — do not clear on
+    // ignored/spam (silent skips would unlock another alert email).
+    if (status === "lead") {
       try {
         const poll = await getPollState();
         if (poll?.deadLetterAlertSentAt || poll?.lastDeadLetterError) {

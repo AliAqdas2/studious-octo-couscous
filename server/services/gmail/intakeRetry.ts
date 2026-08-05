@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, lte } from "drizzle-orm";
+import { and, eq, isNull, lt, lte, or } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
 import {
@@ -175,40 +175,67 @@ async function sendDeadLetterAlert(params: {
 }): Promise<void> {
   const db = requireDb();
   const now = new Date();
+  const errorSnippet = params.lastError.slice(0, 2000);
+  const alertCutoff = new Date(now.getTime() - ALERT_DEDUP_MS);
 
+  // Ensure poll-state row exists, then always refresh latest error.
   const pollRows = await db
     .select()
     .from(gmailPollState)
     .where(eq(gmailPollState.key, "default"))
     .limit(1);
-  const poll = pollRows[0];
-  const lastAlert = poll?.deadLetterAlertSentAt
-    ? new Date(poll.deadLetterAlertSentAt).getTime()
-    : 0;
-  const shouldAlert = now.getTime() - lastAlert > ALERT_DEDUP_MS;
 
-  // Always keep the latest error on poll state for ops visibility.
-  if (poll) {
+  if (!pollRows[0]) {
+    try {
+      await db.insert(gmailPollState).values({
+        key: "default",
+        lastDeadLetterError: errorSnippet,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes("duplicate") && !msg.includes("unique")) {
+        throw e;
+      }
+    }
+  } else {
     await db
       .update(gmailPollState)
       .set({
-        lastDeadLetterError: params.lastError.slice(0, 2000),
-        ...(shouldAlert ? { deadLetterAlertSentAt: now } : {}),
+        lastDeadLetterError: errorSnippet,
         updatedDate: now,
       })
-      .where(eq(gmailPollState.id, poll.id));
-  } else {
-    await db.insert(gmailPollState).values({
-      key: "default",
-      lastDeadLetterError: params.lastError.slice(0, 2000),
-      ...(shouldAlert ? { deadLetterAlertSentAt: now } : {}),
-    });
+      .where(eq(gmailPollState.id, pollRows[0].id));
   }
 
-  if (!shouldAlert) {
+  // Atomic claim: only one sender wins the 12h window.
+  const claimed = await db
+    .update(gmailPollState)
+    .set({
+      deadLetterAlertSentAt: now,
+      lastDeadLetterError: errorSnippet,
+      updatedDate: now,
+    })
+    .where(
+      and(
+        eq(gmailPollState.key, "default"),
+        or(
+          isNull(gmailPollState.deadLetterAlertSentAt),
+          lt(gmailPollState.deadLetterAlertSentAt, alertCutoff)
+        )
+      )
+    )
+    .returning({ id: gmailPollState.id });
+
+  if (claimed.length === 0) {
     console.warn(
       `${LOG} Suppressing dead-letter alert (already sent within 12h): ${params.messageId}`
     );
+    return;
+  }
+
+  const to = env.digestRecipients()[0];
+  if (!to) {
+    console.error(`${LOG} No digest recipient configured; skipping alert email`);
     return;
   }
 
@@ -230,22 +257,20 @@ async function sendDeadLetterAlert(params: {
   <p style="color:#888;font-size:13px;">This alert is sent at most once every 12 hours while intake keeps failing. Further failed messages will not send additional emails.</p>
 </body></html>`;
 
-  for (const to of env.digestRecipients()) {
-    try {
-      await sendGmailEmail({
-        to,
-        subject,
-        body,
-        html: true,
-        userName: "System (Gmail Intake)",
-        systemAlert: true,
-      });
-    } catch (sendErr) {
-      console.error(
-        `${LOG} Failed to send alert to ${to}:`,
-        sendErr instanceof Error ? sendErr.message : sendErr
-      );
-    }
+  try {
+    await sendGmailEmail({
+      to,
+      subject,
+      body,
+      html: true,
+      userName: "System (Gmail Intake)",
+      systemAlert: true,
+    });
+  } catch (sendErr) {
+    console.error(
+      `${LOG} Failed to send alert to ${to}:`,
+      sendErr instanceof Error ? sendErr.message : sendErr
+    );
   }
 
   await db
