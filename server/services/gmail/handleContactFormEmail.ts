@@ -1,5 +1,6 @@
-import { desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { inspect } from "node:util";
+import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
 import {
   activityLogs,
@@ -32,6 +33,7 @@ import {
   GENERIC_DOMAINS,
   getHeader,
   getRootDomain,
+  isWebsiteFormSender,
   parseSenderEmail,
   parseSenderEmailRaw,
   shouldSilentlySkip,
@@ -60,10 +62,58 @@ function requireDb() {
 const CLOSED_LEAD_STAGES = new Set(["Completed", "Lost/Canceled"]);
 const KNOWN_SENDER_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
+/** Auto-block only after this many content-spam hits (not 1-strike). */
+const KNOWN_SPAM_AUTO_BLOCK_MIN = 3;
+const KNOWN_SPAM_AUTO_BLOCK_WINDOW_DAYS = 30;
+const KNOWN_SPAM_ECHO_REASON =
+  "Known spam sender (previously routed to spam)";
+/** CC-only routing is not sender reputation — exclude from count. */
+const KNOWN_SPAM_CC_ONLY_REASON =
+  "Mangia DC was only CCed, not in To field — not a direct customer inquiry";
+
 function isActiveRecentLead(lead: typeof leads.$inferSelect): boolean {
   if (CLOSED_LEAD_STAGES.has(String(lead.stage || ""))) return false;
   const ts = lead.lastContactDate || lead.createdDate;
   return !!ts && Date.now() - new Date(ts).getTime() <= KNOWN_SENDER_WINDOW_MS;
+}
+
+/**
+ * Content-spam hits for a sender since the last lead for that email (reputation
+ * reset) and within the rolling window. Echo / CC-only rows do not count.
+ */
+async function countContentSpamForSender(
+  db: ReturnType<typeof requireDb>,
+  senderEmail: string
+): Promise<number> {
+  const windowStart = new Date(
+    Date.now() - KNOWN_SPAM_AUTO_BLOCK_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  );
+
+  const [lastLead] = await db
+    .select({ createdDate: leads.createdDate })
+    .from(leads)
+    .where(sql`lower(${leads.email}) = ${senderEmail}`)
+    .orderBy(desc(leads.createdDate))
+    .limit(1);
+
+  const afterLead = lastLead?.createdDate ?? null;
+
+  const conditions = [
+    sql`lower(${spamEmails.senderEmail}) = ${senderEmail}`,
+    sql`${spamEmails.createdDate} >= ${windowStart}`,
+    sql`${spamEmails.spamReason} IS DISTINCT FROM ${KNOWN_SPAM_ECHO_REASON}`,
+    sql`${spamEmails.spamReason} IS DISTINCT FROM ${KNOWN_SPAM_CC_ONLY_REASON}`,
+  ];
+  if (afterLead) {
+    conditions.push(sql`${spamEmails.createdDate} > ${afterLead}`);
+  }
+
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(spamEmails)
+    .where(and(...conditions));
+
+  return Number(row?.count ?? 0);
 }
 
 function llmUsageDetails(usage: {
@@ -89,7 +139,9 @@ function intakeLog(...args: unknown[]): void {
   console.log(INTAKE_LOG, ...args);
 }
 
+/** Full object dumps — only when GMAIL_INTAKE_DEBUG is on. */
 function intakeDump(label: string, value: unknown): void {
+  if (!env.gmailIntakeDebug()) return;
   const text =
     typeof value === "string"
       ? value
@@ -101,6 +153,24 @@ function intakeDump(label: string, value: unknown): void {
           breakLength: 120,
         });
   console.log(`${INTAKE_LOG} ${label}\n${text}`);
+}
+
+function trunc(s: string | undefined | null, max = 80): string {
+  const t = (s || "").replace(/\s+/g, " ").trim();
+  if (!t) return "-";
+  return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
+}
+
+function logMessageOutcome(r: MessageResult): void {
+  const parts = [
+    `messageId=${r.messageId}`,
+    `outcome=${r.outcome}`,
+  ];
+  if (r.from) parts.push(`from=${trunc(r.from, 60)}`);
+  if (r.subject) parts.push(`subject=${trunc(r.subject, 60)}`);
+  if (r.reason) parts.push(`reason=${trunc(r.reason, 120)}`);
+  if (r.lead_id) parts.push(`leadId=${r.lead_id}`);
+  intakeLog(parts.join(" "));
 }
 
 export type ProcessedSource = "webhook" | "poller";
@@ -342,7 +412,10 @@ export async function handleContactFormEmail(input: {
   const source: ProcessedSource = input.source || "webhook";
   const messageIds = input.messageIds || [];
 
-  intakeLog("========== handleContactFormEmail START ==========");
+  intakeLog(
+    `start source=${source} markWebhook=${input.markWebhook !== false && source === "webhook"}` +
+      ` isRetry=${input.isRetry ?? false} messageCount=${messageIds.length}`
+  );
   intakeDump("input", {
     source,
     markWebhook: input.markWebhook,
@@ -353,11 +426,10 @@ export async function handleContactFormEmail(input: {
 
   if (input.markWebhook !== false && source === "webhook") {
     await markWebhookHealth();
-    intakeLog("markWebhookHealth: lastWebhookReceivedAt updated");
   }
 
   if (messageIds.length === 0) {
-    intakeLog("No messageIds — returning empty result");
+    intakeLog("no messageIds — empty result");
     return { ok: true, created: 0, spam: 0, skipped: 0, results: [] };
   }
 
@@ -365,7 +437,6 @@ export async function handleContactFormEmail(input: {
 
   const db = requireDb();
   const gmail = await getGmailApi();
-  intakeLog("Gmail API client ready");
 
   let createdCount = 0;
   let skippedCount = 0;
@@ -373,7 +444,6 @@ export async function handleContactFormEmail(input: {
   const results: MessageResult[] = [];
 
   for (const messageId of messageIds) {
-    intakeLog(`----- message ${messageId} -----`);
     try {
       const already = await db
         .select()
@@ -465,8 +535,11 @@ export async function handleContactFormEmail(input: {
       });
       intakeDump("FULL email body", emailBody);
 
-      const isWebsiteForm = senderEmail === "itsupport@mangiadc.com";
-      intakeLog(`isWebsiteForm=${isWebsiteForm}`);
+      const isWebsiteForm = isWebsiteFormSender(senderEmail);
+      intakeLog(
+        `messageId=${messageId} from=${trunc(from, 60)} subject=${trunc(subject, 60)}` +
+          ` websiteForm=${isWebsiteForm}`
+      );
 
       if (isWebsiteForm) {
         if (
@@ -484,7 +557,6 @@ export async function handleContactFormEmail(input: {
             outcome: "skipped",
             reason: "Contact-form pattern not matched",
           });
-          intakeLog("SKIP: contact-form pattern not matched");
           continue;
         }
       }
@@ -501,7 +573,6 @@ export async function handleContactFormEmail(input: {
             outcome: "silent-skip",
             reason: silentSkip.reason,
           });
-          intakeLog(`SKIP silent: ${silentSkip.reason}`);
           continue;
         }
 
@@ -509,7 +580,6 @@ export async function handleContactFormEmail(input: {
         const ccHeader = (getHeader(headers, "Cc") || "").toLowerCase();
         const mangiaInTo = toHeader.includes("@mangiadc.com");
         const mangiaInCc = ccHeader.includes("@mangiadc.com");
-        intakeLog(`To/Cc check mangiaInTo=${mangiaInTo} mangiaInCc=${mangiaInCc}`);
         if (!mangiaInTo && mangiaInCc) {
           await createSpamRow({
             from,
@@ -588,7 +658,6 @@ export async function handleContactFormEmail(input: {
             outcome: "silent-skip",
             reason: calendarCheck.reason,
           });
-          intakeLog(`SKIP calendar: ${calendarCheck.reason}`);
           continue;
         }
 
@@ -614,42 +683,11 @@ export async function handleContactFormEmail(input: {
               outcome: "silent-skip",
               reason: "Known operational contact",
             });
-            intakeLog(`SKIP ops contact: ${senderEmail}`);
-            continue;
-          }
-
-          // Known spam sender — no AI.
-          const [priorSpam] = await db
-            .select({ id: spamEmails.id })
-            .from(spamEmails)
-            .where(sql`lower(${spamEmails.senderEmail}) = ${senderEmail}`)
-            .limit(1);
-          if (priorSpam) {
-            await createSpamRow({
-              from,
-              senderEmail,
-              subject,
-              body: emailBody,
-              messageId,
-              threadId,
-              spamCategory: "Other",
-              spamReason: "Known spam sender (previously routed to spam)",
-              action: "Routed to Spam (Known Sender)",
-            });
-            await recordProcessed(messageId, "spam", source);
-            spamCount++;
-            results.push({
-              messageId,
-              from,
-              subject,
-              outcome: "spam",
-              reason: "Known spam sender (previously routed to spam)",
-            });
-            intakeLog(`SKIP known spam: ${senderEmail}`);
             continue;
           }
 
           // Active recent lead by exact email — append, no AI.
+          // Runs before known-spam so an open lead is never blocked by old reputation.
           const [byEmailEarly] = await db
             .select()
             .from(leads)
@@ -685,7 +723,36 @@ export async function handleContactFormEmail(input: {
               reason: `Known active lead ${knownLead.id} — skipped AI`,
               lead_id: knownLead.id,
             });
-            intakeLog(`SKIP AI known active lead: ${knownLead.id}`);
+            continue;
+          }
+
+          // Known spam sender — only after ≥N content-spam hits in the window
+          // since the last lead for this address (lead create resets the count).
+          const priorSpamCount = await countContentSpamForSender(
+            db,
+            senderEmail
+          );
+          if (priorSpamCount >= KNOWN_SPAM_AUTO_BLOCK_MIN) {
+            await createSpamRow({
+              from,
+              senderEmail,
+              subject,
+              body: emailBody,
+              messageId,
+              threadId,
+              spamCategory: "Other",
+              spamReason: KNOWN_SPAM_ECHO_REASON,
+              action: "Routed to Spam (Known Sender)",
+            });
+            await recordProcessed(messageId, "spam", source);
+            spamCount++;
+            results.push({
+              messageId,
+              from,
+              subject,
+              outcome: "spam",
+              reason: `Known spam sender (count=${priorSpamCount} in ${KNOWN_SPAM_AUTO_BLOCK_WINDOW_DAYS}d since last lead)`,
+            });
             continue;
           }
         }
@@ -1243,6 +1310,11 @@ export async function handleContactFormEmail(input: {
             }`,
       });
     }
+
+    const last = results[results.length - 1];
+    if (last?.messageId === messageId) {
+      logMessageOutcome(last);
+    }
   }
 
   const summary = {
@@ -1252,6 +1324,9 @@ export async function handleContactFormEmail(input: {
     skipped: skippedCount,
     results,
   };
+  intakeLog(
+    `done created=${createdCount} spam=${spamCount} skipped=${skippedCount} results=${results.length}`
+  );
   intakeDump("========== handleContactFormEmail END summary ==========", summary);
   return summary;
 }

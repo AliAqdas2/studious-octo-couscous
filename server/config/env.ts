@@ -40,6 +40,10 @@ export const env = {
     process.env.AI_MODEL?.trim() || "claude-sonnet-4-20250514",
   gmailPubsubTopic: () => process.env.GMAIL_PUBSUB_TOPIC?.trim() || "",
   gmailWebhookSecret: () => process.env.GMAIL_WEBHOOK_SECRET?.trim() || "",
+  /** Verbose Gmail Pub/Sub + intake dumps (headers, bodies, LLM). Off by default. */
+  gmailIntakeDebug: () =>
+    process.env.GMAIL_INTAKE_DEBUG === "true" ||
+    process.env.GMAIL_INTAKE_DEBUG === "1",
   enableJobs: () =>
     process.env.ENABLE_JOBS === "true" || process.env.ENABLE_JOBS === "1",
   /** Login / password-reset rate limits (5 / 15 min). Off unless explicitly enabled. */

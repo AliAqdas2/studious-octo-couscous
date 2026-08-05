@@ -18,8 +18,13 @@ import {
 const router = Router();
 const LOG = "[gmail-webhook]";
 
-/** Dump anything — large objects fully expanded for debugging. */
+function log(...args: unknown[]): void {
+  console.log(LOG, ...args);
+}
+
+/** Full object dumps — only when GMAIL_INTAKE_DEBUG is on. */
 function dump(label: string, value: unknown): void {
+  if (!env.gmailIntakeDebug()) return;
   const text =
     typeof value === "string"
       ? value
@@ -33,10 +38,6 @@ function dump(label: string, value: unknown): void {
   console.log(`${LOG} ${label}\n${text}`);
 }
 
-function log(...args: unknown[]): void {
-  console.log(LOG, ...args);
-}
-
 function checkWebhookSecret(
   req: Request,
   _res: Response,
@@ -44,7 +45,6 @@ function checkWebhookSecret(
 ): void {
   const secret = env.gmailWebhookSecret();
   if (!secret) {
-    log("Secret check: GMAIL_WEBHOOK_SECRET unset — allowing request");
     next();
     return;
   }
@@ -52,11 +52,7 @@ function checkWebhookSecret(
     req.header("X-Gmail-Webhook-Secret") ||
     req.header("x-gmail-webhook-secret") ||
     "";
-  const ok = provided === secret;
-  log(
-    `Secret check: provided=${provided ? "[set len=" + provided.length + "]" : "[empty]"} match=${ok}`
-  );
-  if (!ok) {
+  if (provided !== secret) {
     next(new AppError("Invalid Gmail webhook secret", 403));
     return;
   }
@@ -167,7 +163,8 @@ async function resolveMessageIds(body: unknown): Promise<{
       : "webhook";
 
   if (direct.length > 0) {
-    log(`resolveMessageIds: direct IDs from body (${direct.length})`, direct);
+    log(`direct IDs from body count=${direct.length}`);
+    dump("direct messageIds", direct);
     return {
       messageIds: direct,
       source: sourceHint,
@@ -181,7 +178,7 @@ async function resolveMessageIds(body: unknown): Promise<{
     Boolean((body as { message?: unknown }).message);
 
   if (!isPubSub) {
-    log("resolveMessageIds: not Pub/Sub and no direct message IDs");
+    log("no Pub/Sub envelope and no direct message IDs");
     return {
       messageIds: [],
       source: "webhook",
@@ -193,7 +190,6 @@ async function resolveMessageIds(body: unknown): Promise<{
   dump("Pub/Sub message meta", pubsub.messageMeta);
   dump("Pub/Sub decoded raw", pubsub.decodedRaw);
   dump("Pub/Sub decoded JSON", pubsub.decodedJson);
-  log(`Pub/Sub historyId hint: ${pubsub.historyId ?? "(none)"}`);
 
   const state = await getPollState();
   dump("poll state before history.list", state);
@@ -201,9 +197,7 @@ async function resolveMessageIds(body: unknown): Promise<{
 
   if (!startHistoryId) {
     const current = await getCurrentHistoryId();
-    log(
-      `No stored lastHistoryId — seeding cursor to current historyId=${current} (no messages processed this hit)`
-    );
+    log(`seed history cursor historyId=${current} (no messages this hit)`);
     await upsertPollState({
       lastHistoryId: current,
       lastWebhookReceivedAt: new Date(),
@@ -219,25 +213,17 @@ async function resolveMessageIds(body: unknown): Promise<{
     };
   }
 
-  log(`Calling history.list startHistoryId=${startHistoryId} max=20`);
   let { messageIds, newHistoryId } = await listNewInboxMessageIds(
     startHistoryId,
     20
-  );
-  log(
-    `history.list result: ${messageIds.length} message(s), newHistoryId=${newHistoryId}`
   );
   dump("history.list messageIds", messageIds);
 
   let catchUpCount = 0;
   if (messageIds.length === 0 && newHistoryId !== startHistoryId) {
-    log(
-      `history advanced ${startHistoryId} → ${newHistoryId} with 0 IDs — running INBOX catch-up`
-    );
     try {
       messageIds = await listUnprocessedInboxMessageIds(20);
       catchUpCount = messageIds.length;
-      log(`catch-up recovered ${catchUpCount} message(s)`);
       dump("catch-up messageIds", messageIds);
     } catch (catchUpErr) {
       console.error(
@@ -251,16 +237,23 @@ async function resolveMessageIds(body: unknown): Promise<{
     lastHistoryId: newHistoryId,
     lastWebhookReceivedAt: new Date(),
   });
-  log("poll state updated after history.list");
+
+  const path =
+    catchUpCount > 0
+      ? "pubsub_history_list_with_catchup"
+      : "pubsub_history_list";
+  log(
+    `history.list path=${path} start=${startHistoryId} → ${newHistoryId}` +
+      ` messages=${messageIds.length}` +
+      (catchUpCount > 0 ? ` catchUp=${catchUpCount}` : "") +
+      (pubsub.historyId ? ` pubsubHint=${pubsub.historyId}` : "")
+  );
 
   return {
     messageIds,
     source: "webhook",
     detail: {
-      path:
-        catchUpCount > 0
-          ? "pubsub_history_list_with_catchup"
-          : "pubsub_history_list",
+      path,
       startHistoryId,
       newHistoryId,
       pubsubHistoryHint: pubsub.historyId,
@@ -272,8 +265,6 @@ async function resolveMessageIds(body: unknown): Promise<{
 
 router.post("/", checkWebhookSecret, async (req, res, next) => {
   const started = Date.now();
-  log("========== INCOMING REQUEST ==========");
-  log(`time=${new Date().toISOString()} method=${req.method} path=${req.originalUrl}`);
   dump("request headers", {
     "content-type": req.headers["content-type"],
     "user-agent": req.headers["user-agent"],
@@ -292,7 +283,6 @@ router.post("/", checkWebhookSecret, async (req, res, next) => {
     const resolved = await resolveMessageIds(req.body);
     const { messageIds, source, detail } = resolved;
     dump("resolveMessageIds detail", detail);
-    log(`source=${source} rawMessageIds=${messageIds.length}`);
 
     let toProcess = messageIds;
     const dedupeSkipped: { id: string; status: string }[] = [];
@@ -323,9 +313,12 @@ router.post("/", checkWebhookSecret, async (req, res, next) => {
 
     dump("dedupe: already processed (skipped)", dedupeSkipped);
     dump("dedupe: toProcess", toProcess);
-    log(
-      `Processing ${toProcess.length}/${messageIds.length} message(s) via handleContactFormEmail`
-    );
+
+    if (messageIds.length > 0 || toProcess.length > 0) {
+      log(
+        `process source=${source} raw=${messageIds.length} dedupeSkip=${dedupeSkipped.length} toProcess=${toProcess.length}`
+      );
+    }
 
     const result = await handleContactFormEmail({
       messageIds: toProcess,
@@ -336,9 +329,8 @@ router.post("/", checkWebhookSecret, async (req, res, next) => {
     const elapsedMs = Date.now() - started;
     dump("handleContactFormEmail FULL result", result);
     log(
-      `DONE ok=${result.ok} created=${result.created} spam=${result.spam} skipped=${result.skipped} elapsedMs=${elapsedMs}`
+      `done ok=${result.ok} created=${result.created} spam=${result.spam} skipped=${result.skipped} elapsedMs=${elapsedMs}`
     );
-    log("========== REQUEST COMPLETE ==========");
 
     res.json(result);
   } catch (err) {
@@ -348,7 +340,6 @@ router.post("/", checkWebhookSecret, async (req, res, next) => {
       err instanceof Error ? err.stack || err.message : err
     );
     dump("error object", err);
-    log("========== REQUEST FAILED ==========");
     next(err);
   }
 });

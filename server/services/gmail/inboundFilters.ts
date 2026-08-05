@@ -1,3 +1,11 @@
+/** Website contact / opportunities form bot — not treated as internal team mail. */
+export const WEBSITE_FORM_SENDERS = new Set(["itsupport@mangiadc.com"]);
+
+export function isWebsiteFormSender(email: string): boolean {
+  const normalized = (email || "").trim().toLowerCase();
+  return WEBSITE_FORM_SENDERS.has(normalized);
+}
+
 export const AUTOMATED_SENDER_LOCALPARTS = [
   "mailer-daemon",
   "postmaster",
@@ -339,7 +347,7 @@ export function shouldSilentlySkip(
 
   if (
     senderEmail.endsWith("@mangiadc.com") &&
-    senderEmail !== "itsupport@mangiadc.com"
+    !isWebsiteFormSender(senderEmail)
   ) {
     return { skip: true, reason: `Internal team email: ${senderEmail}` };
   }
