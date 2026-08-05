@@ -7,6 +7,7 @@ import {
 } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 import { triggerCall } from "../twilio/triggerCall.js";
+import { sendSurveyDraftOnCallFailure } from "./sendSurveyDraftOnCallFailure.js";
 
 function requireDb() {
   const db = getDb();
@@ -22,6 +23,7 @@ export interface OnLeadCreatedResult {
   triggered?: boolean;
   call_log_id?: string | null;
   call_sid?: string | null;
+  survey_draft?: boolean;
 }
 
 function isPastClientForAutoCall(client: {
@@ -31,9 +33,35 @@ function isPastClientForAutoCall(client: {
   return (client.totalEvents ?? 0) > 0 || client.isReturning === true;
 }
 
+async function runSurveyDraftFallback(
+  leadId: string,
+  reason: string
+): Promise<boolean> {
+  try {
+    const result = await sendSurveyDraftOnCallFailure(leadId, reason);
+    if (result.ok && !result.skipped) {
+      console.log(
+        `[onLeadCreated] Survey draft fallback OK for ${leadId} draftId=${result.draftId || "?"}`
+      );
+      return true;
+    }
+    console.log(
+      `[onLeadCreated] Survey draft fallback skipped for ${leadId}: ${result.skipped || "unknown"}`
+    );
+    return false;
+  } catch (e) {
+    console.error(
+      `[onLeadCreated] Survey draft fallback failed for ${leadId}:`,
+      e instanceof Error ? e.message : e
+    );
+    return false;
+  }
+}
+
 /**
  * Auto-call hook after a Lead is created (form Save & Call, Gmail intake, etc.).
  * Applies Base44 skip guards, then invokes triggerCall.
+ * On call failure / Twilio misconfig: create Survey Sent Gmail draft + digest notice.
  * Safe to fire-and-forget — catches/logs errors and does not rethrow to create paths.
  */
 export async function onLeadCreated(leadId: string): Promise<OnLeadCreatedResult> {
@@ -152,23 +180,38 @@ export async function onLeadCreated(leadId: string): Promise<OnLeadCreatedResult
     }
 
     console.log(`[onLeadCreated] Lead ${lead.id} created — triggering call`);
-    const result = await triggerCall({
-      leadId: lead.id,
-      attemptNumber: 1,
-    });
+    try {
+      const result = await triggerCall({
+        leadId: lead.id,
+        attemptNumber: 1,
+      });
 
-    return {
-      ok: true,
-      triggered: true,
-      call_log_id:
-        "call_log_id" in result
-          ? ((result as { call_log_id?: string }).call_log_id ?? null)
-          : null,
-      call_sid:
-        "call_sid" in result
-          ? ((result as { call_sid?: string | null }).call_sid ?? null)
-          : null,
-    };
+      return {
+        ok: true,
+        triggered: true,
+        call_log_id:
+          "call_log_id" in result
+            ? ((result as { call_log_id?: string }).call_log_id ?? null)
+            : null,
+        call_sid:
+          "call_sid" in result
+            ? ((result as { call_sid?: string | null }).call_sid ?? null)
+            : null,
+      };
+    } catch (callErr) {
+      const reason =
+        callErr instanceof Error ? callErr.message : "Automated call failed";
+      console.error(
+        "[onLeadCreated] Call failed — running survey draft fallback:",
+        reason
+      );
+      const drafted = await runSurveyDraftFallback(lead.id, reason);
+      return {
+        ok: true,
+        skipped: `error:${reason}`,
+        survey_draft: drafted,
+      };
+    }
   } catch (error) {
     console.error(
       "[onLeadCreated] Error:",

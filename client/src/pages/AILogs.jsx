@@ -22,16 +22,6 @@ const AI_USER_NAMES = new Set([
   'system'
 ]);
 
-// Actions that indicate the LLM was actually invoked for an email
-const LLM_EMAIL_ACTIONS = new Set([
-  'Created from Contact Form',
-  'Created from Direct Email',
-  'Inbound Email Received (Follow-up)',
-  'Routed to Spam (Promotion)',
-  'Routed to Spam (CC-Only)',
-  'Routed to Spam (Other)'
-]);
-
 // AI-driven actions in ActivityLog (regardless of user_name, these are always AI).
 const AI_ACTIONS = new Set([
   'Auto-Classification',
@@ -87,7 +77,7 @@ export default function AILogs() {
   // Fetch recent ActivityLog (descending by timestamp)
   const { data: activityLogs = [], isLoading: loadingLogs } = useQuery({
     queryKey: ['ai-logs-activity'],
-    queryFn: () => base44.entities.ActivityLog.list('-timestamp', 500)
+    queryFn: () => base44.entities.ActivityLog.list('-timestamp', 2000)
   });
 
   // Fetch analyzed CallLogs to surface as synthetic "Call Analyzed" entries.
@@ -178,44 +168,10 @@ export default function AILogs() {
 
   const isLoading = loadingLogs || loadingCalls;
 
-  // Daily LLM email processing + token usage chart — last 30 days
-  // Only count emails that actually went through the LLM:
-  //   - Prefer logs that store input_tokens (new path)
-  //   - Legacy: New leads / LLM follow-ups / LLM spam (not cheap filters)
-  const BULK_HEADER_PATTERNS = ['List-Unsubscribe', 'List-Id', 'Feedback-ID', 'List-Unsubscribe-Post'];
-  const PRE_LLM_PATTERNS = ['Bot name prefix', 'url= injection', 'Spam phrase:'];
-  const isLlmClassifiedSpam = (log) => {
-    if (log.action === 'Routed to Spam (CC-Only)') return false;
-    if (log.details?.input_tokens != null) return true;
-    const reason = log.details?.ai_reason || '';
-    if (BULK_HEADER_PATTERNS.some(p => reason.includes(p))) return false;
-    if (PRE_LLM_PATTERNS.some(p => reason.includes(p))) return false;
-    // Known-spam short-circuit has no AI
-    if ((log.details?.ai_reason || '').includes('Known spam sender')) return false;
-    return true;
-  };
-
-  const isLlmEmailLog = (log) => {
-    if (!LLM_EMAIL_ACTIONS.has(log.action) && !log.action?.startsWith('Routed to Spam')) {
-      return false;
-    }
-    // Token fields prove an LLM call happened
-    if (log.details?.input_tokens != null || log.details?.output_tokens != null) {
-      return true;
-    }
-    // Pre-AI appends (thread match / known active lead) have no tokens
-    if (log.action === 'Inbound Email Received (Follow-up)') {
-      const reason = log.details?.match_reason || '';
-      if (reason === 'same_gmail_thread' || reason === 'known_sender_active_lead') {
-        return false;
-      }
-      // Legacy follow-ups without match_reason: assume LLM
-      return true;
-    }
-    const isSpamAction = log.action?.startsWith('Routed to Spam');
-    if (isSpamAction) return isLlmClassifiedSpam(log);
-    return LLM_EMAIL_ACTIONS.has(log.action);
-  };
+  // Daily LLM email processing + token usage chart — last 30 days.
+  // Only count rows that store token usage (written after a real LLM call).
+  const isLlmEmailLog = (log) =>
+    log.details?.input_tokens != null || log.details?.output_tokens != null;
 
   const dailyEmailData = useMemo(() => {
     const llmLogs = activityLogs.filter(isLlmEmailLog);

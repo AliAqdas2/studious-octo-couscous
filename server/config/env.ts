@@ -65,4 +65,6 @@ export const env = {
       .map((e) => e.trim())
       .filter((e) => e.includes("@"));
   },
+  /** Alert when daily LLM intake email count exceeds threshold. */
+  debugEmailAddress: () => process.env.DEBUG_EMAIL_ADDRESS?.trim() || "",
 };

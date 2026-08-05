@@ -45,6 +45,7 @@ import {
   enrichLeadOnCreate,
   logAutoClassification,
 } from "../leads/enrichLeadOnCreate.js";
+import { maybeAlertLlmDailyQuotaExceeded } from "../ai/llmDailyQuota.js";
 import {
   clearRetry,
   isPermanentIntakeError,
@@ -986,6 +987,15 @@ export async function handleContactFormEmail(input: {
       if (!isValidClassifyResult(rawLlmResult)) {
         throw new Error(
           `Malformed LLM response: ${JSON.stringify(rawLlmResult)?.substring(0, 300)}`
+        );
+      }
+
+      try {
+        await maybeAlertLlmDailyQuotaExceeded({ includePendingCall: true });
+      } catch (quotaErr) {
+        console.warn(
+          "[email-intake] LLM daily quota check failed:",
+          quotaErr instanceof Error ? quotaErr.message : quotaErr
         );
       }
 

@@ -1,10 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
-import {
-  activityLogs,
-  automationConfig,
-  clients,
-} from "../../db/schema/index.js";
+import { activityLogs, clients } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 
 const CONSUMER_DOMAINS = new Set([
@@ -78,6 +74,8 @@ export function detectLeadChannel(input: {
 /**
  * Synchronous create-time enrichment (no cron).
  * Always sets channel; may link returning client, priority, estimate flag, stage.
+ * Does NOT jump to Survey Sent on estimate keywords — that happens after a real
+ * survey draft is created (call-failure fallback).
  */
 export async function enrichLeadOnCreate(
   input: LeadEnrichInput
@@ -115,21 +113,8 @@ export async function enrichLeadOnCreate(
   );
 
   let stage = input.stage || "New Inquiry";
-  if (stage === "New Inquiry") {
-    if (input.source === "Call") {
-      stage = "Initial Follow Up";
-    } else if (estimateKeywordsDetected) {
-      const db = requireDb();
-      const configs = await db
-        .select()
-        .from(automationConfig)
-        .where(eq(automationConfig.key, "default"))
-        .limit(1);
-      const callingEnabled = configs[0]?.enabled !== false;
-      if (callingEnabled) {
-        stage = "Survey Sent";
-      }
-    }
+  if (stage === "New Inquiry" && input.source === "Call") {
+    stage = "Initial Follow Up";
   }
 
   return {
