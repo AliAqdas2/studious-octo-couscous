@@ -300,6 +300,12 @@ export const base44 = {
     async getOAuthUrl() {
       return request("/api/gmail/oauth/url");
     },
+    async disconnect({ confirmPhrase } = {}) {
+      return request("/api/gmail/disconnect", {
+        method: "POST",
+        body: JSON.stringify({ confirmPhrase }),
+      });
+    },
   },
   appLogs: {
     async logUserInApp() {
@@ -402,6 +408,28 @@ export const base44 = {
           method: "POST",
           body: JSON.stringify(payload ?? {}),
         });
+        return { data: body };
+      }
+
+      if (name === "analyzeCall") {
+        const callLogId =
+          payload?.call_log_id ||
+          payload?.callLogId ||
+          payload?.id;
+        if (!callLogId) {
+          throw new ApiError("call_log_id is required", 400);
+        }
+        const qs =
+          payload?.reanalyze === true || payload?.reanalyze === "true"
+            ? "?reanalyze=true"
+            : "";
+        const body = await request(
+          `/api/calls/${encodeURIComponent(callLogId)}/analyze${qs}`,
+          {
+            method: "POST",
+            body: JSON.stringify(payload ?? {}),
+          }
+        );
         return { data: body };
       }
 

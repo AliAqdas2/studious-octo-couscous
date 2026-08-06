@@ -6,6 +6,7 @@ import {
   callLogs,
   leads,
 } from "../../db/schema/index.js";
+import { sendSurveyDraftOnCallFailure } from "../leads/sendSurveyDraftOnCallFailure.js";
 
 function escapeXml(text: string): string {
   return String(text)
@@ -39,6 +40,13 @@ function hangupTwiML(message: string): string {
 </Response>`;
 }
 
+function silentHangupTwiML(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Hangup/>
+</Response>`;
+}
+
 async function resetLeadIfCallInitiated(leadId: string | null | undefined) {
   if (!leadId) return;
   const db = getDb();
@@ -51,6 +59,19 @@ async function resetLeadIfCallInitiated(leadId: string | null | undefined) {
       .set({ stage: "New Inquiry", updatedDate: new Date() })
       .where(eq(leads.id, leadId));
   }
+}
+
+function scheduleSurveyDraft(
+  leadId: string | null | undefined,
+  reason: string
+): void {
+  if (!leadId) return;
+  void sendSurveyDraftOnCallFailure(leadId, reason).catch((e) =>
+    console.error(
+      `[twimlCallbacks] survey draft (${reason}) failed:`,
+      e instanceof Error ? e.message : e
+    )
+  );
 }
 
 export interface TwimlHandlerResult {
@@ -157,6 +178,7 @@ export async function handleTwimlCallback(params: {
         })
         .where(eq(callLogs.id, callLogId));
       await resetLeadIfCallInitiated(callLog.leadId);
+      scheduleSurveyDraft(callLog.leadId, "rep_no_response");
       return {
         contentType: "text/xml",
         body: hangupTwiML("No input received. Goodbye."),
@@ -173,6 +195,7 @@ export async function handleTwimlCallback(params: {
         })
         .where(eq(callLogs.id, callLogId));
       await resetLeadIfCallInitiated(callLog.leadId);
+      scheduleSurveyDraft(callLog.leadId, "rep_declined");
       return {
         contentType: "text/xml",
         body: hangupTwiML("Call declined. Goodbye."),
@@ -260,6 +283,7 @@ export async function handleTwimlCallback(params: {
           })
           .where(eq(callLogs.id, callLogId));
         await resetLeadIfCallInitiated(current.leadId);
+        scheduleSurveyDraft(current.leadId, "rep_line_dropped");
         return { contentType: "text/plain", body: "", status: 200 };
       }
     }
@@ -282,8 +306,6 @@ export async function handleTwimlCallback(params: {
           canceled: "Failed",
         };
 
-        // One auto-retry +1h — only if no prior CallLog for this lead
-        // already had a retry scheduled/processed.
         let retryAt: Date | null = null;
         try {
           const priorForLead = await db
@@ -318,6 +340,7 @@ export async function handleTwimlCallback(params: {
           })
           .where(eq(callLogs.id, callLogId));
         await resetLeadIfCallInitiated(current.leadId);
+        scheduleSurveyDraft(current.leadId, "rep_unreachable");
       }
     }
 
@@ -349,11 +372,12 @@ export async function handleTwimlCallback(params: {
 
     if (status !== "Completed") {
       await resetLeadIfCallInitiated(callLog.leadId);
+      scheduleSurveyDraft(callLog.leadId, "lead_no_answer");
     }
 
     return {
       contentType: "text/xml",
-      body: hangupTwiML("Call complete. Thank you. Goodbye."),
+      body: silentHangupTwiML(),
     };
   }
 
@@ -367,6 +391,15 @@ export async function handleTwimlCallback(params: {
           updatedDate: new Date(),
         })
         .where(eq(callLogs.id, callLogId));
+      // Lazy import avoids circular deps with analyzeCall → survey draft
+      void import("./analyzeCall.js")
+        .then(({ analyzeCall }) => analyzeCall({ callLogId }))
+        .catch((e) =>
+          console.error(
+            "[twimlCallbacks] analyzeCall failed:",
+            e instanceof Error ? e.message : e
+          )
+        );
     }
     return { contentType: "text/plain", body: "", status: 200 };
   }

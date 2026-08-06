@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { google } from "googleapis";
 import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
-import { gmailConnections } from "../../db/schema/index.js";
+import { gmailConnections, gmailPollState } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 
 const SCOPES = [
@@ -57,12 +57,91 @@ export async function getGmailConnection() {
 export async function getGmailStatus(): Promise<{
   connected: boolean;
   email: string | null;
+  watchExpiration: string | null;
+  watchRegisteredAt: string | null;
+  lastConnectionError: string | null;
 }> {
+  const db = requireDb();
   const row = await getGmailConnection();
+  const pollRows = await db
+    .select()
+    .from(gmailPollState)
+    .where(eq(gmailPollState.key, "default"))
+    .limit(1);
+  const poll = pollRows[0] ?? null;
+  const watchExpiration = poll?.watchExpiration
+    ? poll.watchExpiration.toISOString()
+    : null;
+  const watchRegisteredAt = poll?.watchRegisteredAt
+    ? poll.watchRegisteredAt.toISOString()
+    : null;
+  const lastConnectionError = poll?.lastConnectionError || null;
+
   if (!row) {
-    return { connected: false, email: null };
+    return {
+      connected: false,
+      email: null,
+      watchExpiration,
+      watchRegisteredAt,
+      lastConnectionError,
+    };
   }
-  return { connected: true, email: row.email };
+  return {
+    connected: true,
+    email: row.email,
+    watchExpiration,
+    watchRegisteredAt,
+    lastConnectionError,
+  };
+}
+
+/**
+ * Revoke Google token (best-effort), delete shared connection, clear watch state.
+ */
+export async function disconnectGmail(): Promise<{ ok: true }> {
+  const db = requireDb();
+  const connection = await getGmailConnection();
+
+  if (connection) {
+    try {
+      const client = createOAuth2Client();
+      const tokenToRevoke =
+        connection.refreshToken || connection.accessToken || "";
+      if (tokenToRevoke) {
+        await client.revokeToken(tokenToRevoke);
+      }
+    } catch (err) {
+      console.warn(
+        "[gmail] Token revoke failed (continuing disconnect):",
+        err instanceof Error ? err.message : err
+      );
+    }
+
+    await db
+      .delete(gmailConnections)
+      .where(eq(gmailConnections.id, connection.id));
+  }
+
+  const now = new Date();
+  const pollRows = await db
+    .select()
+    .from(gmailPollState)
+    .where(eq(gmailPollState.key, "default"))
+    .limit(1);
+  if (pollRows[0]) {
+    await db
+      .update(gmailPollState)
+      .set({
+        watchExpiration: null,
+        watchRegisteredAt: null,
+        lastConnectionError: null,
+        disconnectAlertSentAt: null,
+        updatedDate: now,
+      })
+      .where(eq(gmailPollState.id, pollRows[0].id));
+  }
+
+  return { ok: true };
 }
 
 export async function saveOAuthTokens(params: {

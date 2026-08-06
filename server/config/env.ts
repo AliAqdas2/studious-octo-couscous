@@ -33,6 +33,7 @@ export const env = {
   twilioAccountSid: () => process.env.TWILIO_ACCOUNT_SID?.trim() || "",
   twilioAuthToken: () => process.env.TWILIO_AUTH_TOKEN?.trim() || "",
   twilioPhoneNumber: () => process.env.TWILIO_PHONE_NUMBER?.trim() || "",
+  deepgramApiKey: () => process.env.DEEPGRAM_API_KEY?.trim() || "",
   aiProvider: () =>
     (process.env.AI_PROVIDER?.trim() || "anthropic").toLowerCase(),
   anthropicApiKey: () => process.env.ANTHROPIC_API_KEY?.trim() || "",

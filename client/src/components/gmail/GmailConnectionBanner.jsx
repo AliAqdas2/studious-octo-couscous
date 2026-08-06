@@ -1,10 +1,12 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { isGmailAdminEmail } from '@/lib/gmailAdminEmails';
+import { createPageUrl } from '@/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
@@ -13,6 +15,7 @@ const GmailConnectionBanner = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [connecting, setConnecting] = React.useState(false);
+  const canConnect = isGmailAdminEmail(user?.email);
 
   const { data: status, isLoading, isError } = useQuery({
     queryKey: ['gmail-status'],
@@ -67,18 +70,37 @@ const GmailConnectionBanner = () => {
       <AlertTitle>Gmail is not connected</AlertTitle>
       <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span>
-          Connect the shared CRM mailbox to send and sync email, and to run
-          inbox → lead intake.
+          {canConnect ? (
+            <>
+              Connect the shared CRM mailbox to send and sync email, and to run
+              inbox → lead intake. You can also manage this in{' '}
+              <Link
+                to={createPageUrl('Settings')}
+                className="underline font-medium"
+              >
+                Settings
+              </Link>
+              .
+            </>
+          ) : (
+            <>
+              The shared CRM mailbox is disconnected. Ask an authorized admin
+              (aa03095276332@gmail.com or info@mangiadc.com) to reconnect it in
+              Settings.
+            </>
+          )}
         </span>
-        <Button
-          type="button"
-          size="sm"
-          onClick={handleConnect}
-          disabled={connecting}
-          className="shrink-0 bg-[#C84B31] hover:bg-[#A03A23] text-white"
-        >
-          {connecting ? 'Connecting…' : 'Connect'}
-        </Button>
+        {canConnect && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleConnect}
+            disabled={connecting}
+            className="shrink-0 bg-[#C84B31] hover:bg-[#A03A23] text-white"
+          >
+            {connecting ? 'Connecting…' : 'Connect'}
+          </Button>
+        )}
       </AlertDescription>
     </Alert>
   );

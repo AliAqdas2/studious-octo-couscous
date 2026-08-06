@@ -18,11 +18,13 @@ import {
   LogOut,
   ChefHat,
   Phone,
-  Bot } from
+  Bot,
+  SlidersHorizontal } from
 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import GmailConnectionBanner from '@/components/gmail/GmailConnectionBanner';
+import { isGmailAdminEmail } from '@/lib/gmailAdminEmails';
 
 function SpamLeadsCounter() {
   const { data: count = 0 } = useQuery({
@@ -154,6 +156,7 @@ export default function Layout({ children, currentPageName }) {
 
   // Role-based navigation visibility
   const isAdmin = user?.role === 'admin';
+  const canManageGmail = isGmailAdminEmail(user?.email);
 
   const navItems = isAdmin ? [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
@@ -163,9 +166,15 @@ export default function Layout({ children, currentPageName }) {
   { name: 'Calendar', icon: Calendar, page: 'CalendarView' },
   { name: 'Email', icon: Mail, page: 'Email' },
   { name: 'Templates', icon: FileText, page: 'EventTemplates' },
-  { name: 'Activity Log', icon: Activity, page: 'ActivityLog' }] :
+  { name: 'Activity Log', icon: Activity, page: 'ActivityLog' },
+  ...(canManageGmail
+    ? [{ name: 'Settings', icon: Settings, page: 'Settings' }]
+    : [])] :
   [
-  { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' }];
+  { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' },
+  ...(canManageGmail
+    ? [{ name: 'Settings', icon: Settings, page: 'Settings' }]
+    : [])];
 
 
   const historyItems = isAdmin ? [
@@ -174,7 +183,7 @@ export default function Layout({ children, currentPageName }) {
   [];
 
   const adminItems = [
-  { name: 'Role Assignment', icon: Settings, page: 'RoleAssignment' },
+  { name: 'Role Assignment', icon: SlidersHorizontal, page: 'RoleAssignment' },
   { name: 'Users', icon: Users, page: 'Users' },
   { name: 'Email Automations', icon: Mail, page: 'PipelineEmailAutomations' },
   { name: 'Automated Calls', icon: Phone, page: 'AutomatedCallsDashboard' },

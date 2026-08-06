@@ -67,6 +67,7 @@ import LeadDetail from './pages/LeadDetail';
 import Leads from './pages/Leads';
 import PipelineEmailAutomations from './pages/PipelineEmailAutomations';
 import RoleAssignment from './pages/RoleAssignment';
+import Settings from './pages/Settings';
 import SpamEmails from './pages/SpamEmails';
 import TaskSyncAdmin from './pages/TaskSyncAdmin';
 import Tasks from './pages/Tasks';
@@ -94,6 +95,7 @@ export const PAGES = {
     "Leads": Leads,
     "PipelineEmailAutomations": PipelineEmailAutomations,
     "RoleAssignment": RoleAssignment,
+    "Settings": Settings,
     "SpamEmails": SpamEmails,
     "TaskSyncAdmin": TaskSyncAdmin,
     "Tasks": Tasks,

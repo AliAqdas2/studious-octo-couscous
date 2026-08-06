@@ -1,6 +1,8 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import twilio from "twilio";
 import { env } from "../../config/env.js";
+import { getDb } from "../../db/index.js";
+import { twilioWebhookLogs } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 import { handleTwimlCallback } from "../../services/twilio/twimlCallbacks.js";
 
@@ -80,5 +82,52 @@ async function handleVoiceOrStatus(req: Request, res: Response, next: NextFuncti
 
 router.post("/voice", validateTwilioSignature, handleVoiceOrStatus);
 router.post("/status", validateTwilioSignature, handleVoiceOrStatus);
+
+router.post(
+  "/business-profile",
+  validateTwilioSignature,
+  async (req, res, next) => {
+    try {
+      const db = getDb();
+      if (!db) {
+        throw new AppError("Database is not configured", 503);
+      }
+
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const status = String(
+        payload.Status || payload.status || payload.AccountStatus || ""
+      );
+      const errorCode = String(
+        payload.ErrorCode || payload.errorCode || payload.error_code || ""
+      );
+      const errorMessage = String(
+        payload.ErrorMessage ||
+          payload.errorMessage ||
+          payload.error_message ||
+          ""
+      );
+      const businessProfileSid = String(
+        payload.BusinessProfileSid ||
+          payload.businessProfileSid ||
+          payload.business_profile_sid ||
+          ""
+      );
+
+      await db.insert(twilioWebhookLogs).values({
+        eventType: "business_profile_status",
+        status: status || null,
+        errorCode: errorCode || null,
+        errorMessage: errorMessage || null,
+        businessProfileSid: businessProfileSid || null,
+        rawPayload: payload,
+        receivedAt: new Date(),
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;

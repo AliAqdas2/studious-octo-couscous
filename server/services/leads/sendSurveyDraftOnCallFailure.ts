@@ -14,6 +14,19 @@ const LOG = "[survey-draft-fallback]";
 const FALLBACK_ACTION = "Meeting Proposal Draft Created (No-Answer Fallback)";
 const SURVEY_STAGE = "Survey Sent";
 
+const REASON_TEXT: Record<string, string> = {
+  rep_no_response: "the rep didn't respond to the briefing prompt",
+  rep_declined: "the rep declined the briefing prompt",
+  rep_unreachable: "the rep's phone couldn't be reached (no-answer / busy / failed)",
+  rep_line_dropped: "the rep line dropped before the lead was dialed",
+  lead_no_answer: "the lead didn't pick up the call",
+  voicemail: "the call reached voicemail / no two-way conversation",
+};
+
+export function humanizeCallFailureReason(reason: string): string {
+  return REASON_TEXT[reason] || reason || "the automated call could not be completed";
+}
+
 function requireDb() {
   const db = getDb();
   if (!db) throw new AppError("Database is not configured", 503);
@@ -158,6 +171,7 @@ export async function sendSurveyDraftOnCallFailure(
       : "";
 
   const now = new Date();
+  const reasonText = humanizeCallFailureReason(reason);
   await db
     .update(leads)
     .set({
@@ -165,6 +179,7 @@ export async function sendSurveyDraftOnCallFailure(
       surveySent: true,
       surveySentDate: now,
       lastContactDate: now,
+      awaitingMeetingConfirmation: true,
       updatedDate: now,
     })
     .where(eq(leads.id, lead.id));
@@ -176,6 +191,7 @@ export async function sendSurveyDraftOnCallFailure(
     details: {
       draft_id: draftId,
       reason,
+      reason_text: reasonText,
       template_name: template.templateName,
       template_id: template.id,
       to: lead.email,
@@ -194,7 +210,7 @@ export async function sendSurveyDraftOnCallFailure(
         body: [
           "A survey follow-up email has been added to Drafts in Gmail and is awaiting review.",
           "",
-          `Reason: ${reason}`,
+          `Reason: ${reasonText}`,
           "",
           `Lead: ${lead.name || "(no name)"}${lead.company ? ` (${lead.company})` : ""}`,
           `Email: ${lead.email}`,

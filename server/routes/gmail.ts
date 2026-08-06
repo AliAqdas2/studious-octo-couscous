@@ -8,6 +8,11 @@ import {
 } from "../middleware/auth.js";
 import { createGmailDraft } from "../services/gmail/drafts.js";
 import {
+  assertGmailAdmin,
+  GMAIL_DISCONNECT_PHRASE,
+} from "../services/gmail/gmailAdminEmails.js";
+import {
+  disconnectGmail,
   getGmailStatus,
   getOAuthConsentUrl,
   isGoogleOAuthConfigured,
@@ -25,6 +30,7 @@ const router = Router();
 
 router.get("/gmail/oauth/start", requireAuth, (req, res, next) => {
   try {
+    assertGmailAdmin((req as AuthenticatedRequest).user?.email);
     if (!isGoogleOAuthConfigured()) {
       throw new AppError(
         "Gmail OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
@@ -42,6 +48,7 @@ router.get("/gmail/oauth/start", requireAuth, (req, res, next) => {
 /** JSON consent URL for SPA Connect button (JWT cannot be sent via plain navigation). */
 router.get("/gmail/oauth/url", requireAuth, (req, res, next) => {
   try {
+    assertGmailAdmin((req as AuthenticatedRequest).user?.email);
     if (!isGoogleOAuthConfigured()) {
       throw new AppError(
         "Gmail OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
@@ -67,8 +74,21 @@ router.get("/gmail/oauth/callback", optionalAuth, async (req, res, next) => {
       (req as AuthenticatedRequest).user?.id ||
       null;
     const { email } = await saveOAuthTokens({ code, userId });
+
+    try {
+      await renewGmailWatch();
+      console.log("[gmail] Watch registered after OAuth connect");
+    } catch (watchErr) {
+      console.warn(
+        "[gmail] Auto watch after OAuth failed (tokens still saved):",
+        watchErr instanceof Error ? watchErr.message : watchErr
+      );
+    }
+
     const appUrl = env.appUrl().replace(/\/$/, "");
-    res.redirect(`${appUrl}/?gmail=connected&email=${encodeURIComponent(email)}`);
+    res.redirect(
+      `${appUrl}/Settings?gmail=connected&email=${encodeURIComponent(email)}`
+    );
   } catch (err) {
     next(err);
   }
@@ -78,6 +98,25 @@ router.get("/gmail/status", requireAuth, async (_req, res, next) => {
   try {
     const status = await getGmailStatus();
     res.json(status);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/gmail/disconnect", requireAuth, async (req, res, next) => {
+  try {
+    assertGmailAdmin((req as AuthenticatedRequest).user?.email);
+    const phrase = String(
+      req.body?.confirmPhrase ?? req.body?.confirm_phrase ?? ""
+    ).trim();
+    if (phrase !== GMAIL_DISCONNECT_PHRASE) {
+      throw new AppError(
+        `Type "${GMAIL_DISCONNECT_PHRASE}" exactly to disconnect`,
+        400
+      );
+    }
+    const result = await disconnectGmail();
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -190,8 +229,9 @@ router.post("/gmail/log-activity", requireAuth, async (req, res, next) => {
 });
 
 /** Register Gmail users.watch for Pub/Sub push to /webhook/gmail */
-router.post("/gmail/watch", requireAuth, async (_req, res, next) => {
+router.post("/gmail/watch", requireAuth, async (req, res, next) => {
   try {
+    assertGmailAdmin((req as AuthenticatedRequest).user?.email);
     const result = await renewGmailWatch();
     res.json(result);
   } catch (err) {

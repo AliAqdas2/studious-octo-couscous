@@ -36,30 +36,43 @@ export function createAnthropicProvider(params: {
         },
       ];
 
+      const hasSystem = Boolean(req.system?.trim());
+
+      // Explicit breakpoint on the last *static* block (tools → system → user).
+      // Tools are included in the prefix hash when system is marked; only mark
+      // tools when there is no system prompt.
+      const tools: Anthropic.Tool[] = [
+        {
+          name: toolName,
+          description:
+            "Return the structured classification and extraction result as JSON matching the schema.",
+          input_schema: jsonSchemaToAnthropicInputSchema(req.jsonSchema),
+          ...(hasSystem
+            ? {}
+            : { cache_control: { type: "ephemeral" as const } }),
+        },
+      ];
+
+      const system: Anthropic.TextBlockParam[] | undefined = hasSystem
+        ? [
+            {
+              type: "text",
+              text: req.system!,
+              cache_control: { type: "ephemeral" },
+            },
+          ]
+        : undefined;
+
       const response = await client.messages.create({
         model,
         max_tokens: req.maxTokens ?? 4096,
         temperature: req.temperature ?? 0,
-        // Prompt caching: system instructions are stable across classify calls.
-        system: req.system
-          ? [
-              {
-                type: "text",
-                text: req.system,
-                cache_control: { type: "ephemeral" },
-              },
-            ]
-          : undefined,
-        tools: [
-          {
-            name: toolName,
-            description:
-              "Return the structured classification and extraction result as JSON matching the schema.",
-            input_schema: jsonSchemaToAnthropicInputSchema(req.jsonSchema),
-            // Cache tool schema with the system prefix (last marked block).
-            cache_control: { type: "ephemeral" },
-          },
-        ],
+        // Top-level automatic caching (docs). Combined with the explicit
+        // static-prefix breakpoint above so classify/analyze can hit cache
+        // across varying user messages.
+        cache_control: { type: "ephemeral" },
+        system,
+        tools,
         tool_choice: { type: "tool", name: toolName },
         messages,
       });
@@ -78,6 +91,15 @@ export function createAnthropicProvider(params: {
         cache_read_input_tokens?: number;
       };
 
+      const cacheCreate = usageRaw?.cache_creation_input_tokens ?? 0;
+      const cacheRead = usageRaw?.cache_read_input_tokens ?? 0;
+      if (cacheCreate === 0 && cacheRead === 0) {
+        console.warn(
+          `[anthropic] Prompt cache unused (cache_create=0 cache_read=0 model=${model}). ` +
+            "Cached prefix may be under the model minimum token threshold."
+        );
+      }
+
       return {
         data: toolBlock.input as T,
         model,
@@ -85,8 +107,8 @@ export function createAnthropicProvider(params: {
         usage: {
           inputTokens: usageRaw?.input_tokens ?? 0,
           outputTokens: usageRaw?.output_tokens ?? 0,
-          cacheCreationInputTokens: usageRaw?.cache_creation_input_tokens ?? 0,
-          cacheReadInputTokens: usageRaw?.cache_read_input_tokens ?? 0,
+          cacheCreationInputTokens: cacheCreate,
+          cacheReadInputTokens: cacheRead,
         },
       };
     },
