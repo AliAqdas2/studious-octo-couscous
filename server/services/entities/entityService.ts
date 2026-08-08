@@ -11,7 +11,10 @@ import {
 } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { AppError } from "../../lib/errors.js";
-import type { AuthUser } from "../auth/authService.js";
+import {
+  revokeAllUserRefreshTokens,
+  type AuthUser,
+} from "../auth/authService.js";
 import { getEntityDefinition, type EntityDefinition } from "./registry.js";
 import { mapPostgresWriteError, normalizeRowForDb } from "./normalizeRow.js";
 import { fromApiBody, toApiRecord, toCamelCase } from "./serialize.js";
@@ -475,6 +478,24 @@ export async function updateEntity(
 
   const db = requireDb();
   const idColumn = getColumn(def.table, "id") as Parameters<typeof eq>[0];
+
+  if (entityName === "users" && data.isActive === false && user.id === id) {
+    throw new AppError("Cannot deactivate yourself", 400);
+  }
+
+  if (entityName === "role_assignments" && data.isActive === false) {
+    const [existing] = await db
+      .select()
+      .from(def.table)
+      .where(eq(idColumn, id))
+      .limit(1);
+    const assignmentUserId = (existing as { userId?: string | null } | undefined)
+      ?.userId;
+    if (assignmentUserId && assignmentUserId === user.id) {
+      throw new AppError("Cannot deactivate yourself", 400);
+    }
+  }
+
   try {
     const [row] = await db
       .update(def.table)
@@ -484,6 +505,17 @@ export async function updateEntity(
 
     if (!row) {
       throw new AppError("Not found", 404);
+    }
+
+    if (entityName === "users" && data.isActive === false) {
+      try {
+        await revokeAllUserRefreshTokens(id);
+      } catch (err) {
+        console.warn(
+          "[updateEntity] revokeAllUserRefreshTokens failed:",
+          err instanceof Error ? err.message : err
+        );
+      }
     }
 
     const record = toApiRecord(row as Record<string, unknown>);
@@ -530,6 +562,20 @@ export async function deleteEntity(
 
   const db = requireDb();
   const idColumn = getColumn(def.table, "id") as Parameters<typeof eq>[0];
+
+  if (entityName === "role_assignments") {
+    const [existing] = await db
+      .select()
+      .from(def.table)
+      .where(eq(idColumn, id))
+      .limit(1);
+    const assignmentUserId = (existing as { userId?: string | null } | undefined)
+      ?.userId;
+    if (assignmentUserId && assignmentUserId === user.id) {
+      throw new AppError("Cannot remove yourself", 400);
+    }
+  }
+
   const [row] = await db
     .delete(def.table)
     .where(eq(idColumn, id))

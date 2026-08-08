@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +25,31 @@ const roleColors = {
   'Instructor': 'bg-teal-100 text-teal-800'
 };
 
+async function resolveLinkedUserId(assignment) {
+  if (assignment.user_id) return assignment.user_id;
+  const email = (
+    assignment.contact_email ||
+    assignment.user_email ||
+    ''
+  ).trim().toLowerCase();
+  if (!email) return null;
+  const matches = await base44.entities.User.filter({ email });
+  return matches[0]?.id || null;
+}
+
+function isSelfAssignment(assignment, currentUser) {
+  if (!currentUser) return false;
+  if (assignment.user_id && assignment.user_id === currentUser.id) return true;
+  const email = (
+    assignment.contact_email ||
+    assignment.user_email ||
+    ''
+  ).trim().toLowerCase();
+  return Boolean(email && email === String(currentUser.email || '').toLowerCase());
+}
+
 export default function Users() {
+  const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [showAddUser, setShowAddUser] = useState(false);
   const [search, setSearch] = useState('');
@@ -39,25 +64,52 @@ export default function Users() {
   });
 
   const deactivateMutation = useMutation({
-    mutationFn: (id) => base44.entities.RoleAssignment.update(id, { is_active: false }),
+    mutationFn: async (assignment) => {
+      if (isSelfAssignment(assignment, currentUser)) {
+        throw new Error('Cannot deactivate yourself');
+      }
+      const userId = await resolveLinkedUserId(assignment);
+      if (userId) {
+        await base44.entities.User.update(userId, { is_active: false });
+      }
+      await base44.entities.RoleAssignment.update(assignment.id, { is_active: false });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['role-assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('User deactivated');
+    },
+    onError: (err) => {
+      toast.error(err?.body?.error || err?.message || 'Failed to deactivate user');
     },
   });
 
   const reactivateMutation = useMutation({
-    mutationFn: (id) => base44.entities.RoleAssignment.update(id, { is_active: true }),
+    mutationFn: async (assignment) => {
+      const userId = await resolveLinkedUserId(assignment);
+      if (userId) {
+        await base44.entities.User.update(userId, { is_active: true });
+      }
+      await base44.entities.RoleAssignment.update(assignment.id, { is_active: true });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['role-assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('User reactivated');
+    },
+    onError: (err) => {
+      toast.error(err?.body?.error || err?.message || 'Failed to reactivate user');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (assignment) => {
-      if (assignment.user_id) {
-        await base44.entities.User.delete(assignment.user_id);
+      if (isSelfAssignment(assignment, currentUser)) {
+        throw new Error('Cannot remove yourself');
+      }
+      const userId = await resolveLinkedUserId(assignment);
+      if (userId) {
+        await base44.entities.User.delete(userId);
       }
       await base44.entities.RoleAssignment.delete(assignment.id);
     },
@@ -65,6 +117,9 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ['role-assignments'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('User removed');
+    },
+    onError: (err) => {
+      toast.error(err?.body?.error || err?.message || 'Failed to remove user');
     },
   });
 
@@ -80,7 +135,6 @@ export default function Users() {
   const filteredAndSorted = useMemo(() => {
     let list = [...assignments];
 
-    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(a =>
@@ -89,18 +143,15 @@ export default function Users() {
       );
     }
 
-    // Role filter
     if (roleFilter !== 'all') {
       list = list.filter(a => a.role === roleFilter);
     }
 
-    // Status filter
     if (statusFilter !== 'all') {
       const active = statusFilter === 'active';
       list = list.filter(a => a.is_active === active);
     }
 
-    // Sort
     list.sort((a, b) => {
       let va, vb;
       if (sortKey === 'name') {
@@ -155,7 +206,6 @@ export default function Users() {
         </Button>
       </div>
 
-      {/* Filters Bar */}
       <div className="flex flex-wrap items-center gap-3 bg-white/80 backdrop-blur-sm rounded-xl border border-orange-100 p-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -202,7 +252,6 @@ export default function Users() {
         )}
       </div>
 
-      {/* Table */}
       <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-orange-100 overflow-hidden">
         <Table>
           <TableHeader>
@@ -222,73 +271,86 @@ export default function Users() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredAndSorted.map(assignment => (
-                <TableRow key={assignment.id} className="hover:bg-orange-50/50">
-                  <TableCell className="font-medium text-gray-900">
-                    {assignment.contact_name || assignment.user_name || '—'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={roleColors[assignment.role]}>
-                      {assignment.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={assignment.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
-                      {assignment.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                        {assignment.contact_email || assignment.user_email || '—'}
-                      </div>
-                      {assignment.contact_phone && (
+              filteredAndSorted.map(assignment => {
+                const isSelf = isSelfAssignment(assignment, currentUser);
+                return (
+                  <TableRow key={assignment.id} className="hover:bg-orange-50/50">
+                    <TableCell className="font-medium text-gray-900">
+                      {assignment.contact_name || assignment.user_name || '—'}
+                      {isSelf && (
+                        <span className="ml-2 text-xs text-gray-400">(you)</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={roleColors[assignment.role]}>
+                        {assignment.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={assignment.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
+                        {assignment.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="space-y-1">
                         <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                          <Phone className="w-3.5 h-3.5 text-gray-400" />
-                          {assignment.contact_phone}
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          {assignment.contact_email || assignment.user_email || '—'}
+                        </div>
+                        {assignment.contact_phone && (
+                          <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                            <Phone className="w-3.5 h-3.5 text-gray-400" />
+                            {assignment.contact_phone}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {isSelf ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          {assignment.is_active ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => deactivateMutation.mutate(assignment)}
+                              disabled={deactivateMutation.isPending}
+                              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-8 px-2 text-xs"
+                            >
+                              Deactivate
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => reactivateMutation.mutate(assignment)}
+                              disabled={reactivateMutation.isPending}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50 h-8 px-2 text-xs"
+                            >
+                              Activate
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const name = assignment.contact_name || assignment.user_name;
+                              if (confirm(`Remove ${name}?`)) {
+                                deleteMutation.mutate(assignment);
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {assignment.is_active ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => deactivateMutation.mutate(assignment.id)}
-                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-8 px-2 text-xs"
-                        >
-                          Deactivate
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => reactivateMutation.mutate(assignment.id)}
-                          className="text-green-600 hover:text-green-700 hover:bg-green-50 h-8 px-2 text-xs"
-                        >
-                          Activate
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          const name = assignment.contact_name || assignment.user_name;
-                          if (confirm(`Remove ${name}?`)) {
-                            deleteMutation.mutate(assignment);
-                          }
-                        }}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
