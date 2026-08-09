@@ -9,6 +9,12 @@ import {
 import { AppError } from "../../lib/errors.js";
 import { getAiProvider, isAiConfigured } from "../ai/client.js";
 import type { JsonSchemaObject } from "../ai/types.js";
+import {
+  isLocalFileUrl,
+  parseFileIdFromUrl,
+  readFileBuffer,
+  saveBuffer,
+} from "../files/storage.js";
 import { sendGmailEmail } from "../gmail/send.js";
 import { sendSurveyDraftOnCallFailure } from "../leads/sendSurveyDraftOnCallFailure.js";
 
@@ -123,6 +129,15 @@ function twilioBasicAuth(): string {
 }
 
 async function downloadRecording(recordingUrl: string): Promise<Buffer> {
+  if (isLocalFileUrl(recordingUrl)) {
+    const id = parseFileIdFromUrl(recordingUrl);
+    if (!id) {
+      throw new AppError("Invalid local recording URL", 400);
+    }
+    const { buffer } = await readFileBuffer(id);
+    return buffer;
+  }
+
   const audioUrl = recordingUrl.endsWith(".mp3")
     ? recordingUrl
     : `${recordingUrl}.mp3`;
@@ -387,6 +402,31 @@ export async function analyzeCall(
       .set({ errorMessage: msg, updatedDate: new Date() })
       .where(eq(callLogs.id, callLogId));
     throw err;
+  }
+
+  // Persist Twilio recording to local storage so the UI can play it without Twilio auth.
+  if (!isLocalFileUrl(recordingUrl)) {
+    try {
+      const saved = await saveBuffer({
+        buffer: audio,
+        filename: `call-${callLogId}.mp3`,
+        contentType: "audio/mpeg",
+      });
+      recordingUrl = saved.fileUrl;
+      await db
+        .update(callLogs)
+        .set({
+          recordingUrl: saved.fileUrl,
+          updatedDate: new Date(),
+        })
+        .where(eq(callLogs.id, callLogId));
+      console.log(`${LOG} Saved recording to ${saved.fileUrl}`);
+    } catch (err) {
+      console.warn(
+        `${LOG} Failed to persist recording locally (continuing with analysis):`,
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
   let transcript: string;

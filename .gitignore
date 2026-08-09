@@ -3,3 +3,5 @@ dist
 .env
 .DS_Store
 .env.example
+data/uploads/*
+!data/uploads/.gitkeep

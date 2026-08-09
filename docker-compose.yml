@@ -7,9 +7,16 @@ services:
     environment:
       # Poller + intake retry + Gmail watch renew. Override with ENABLE_JOBS=false in .env if needed.
       ENABLE_JOBS: ${ENABLE_JOBS:-true}
+      STORAGE_DIR: /app/data/uploads
+    volumes:
+      # Survives image rebuilds / redeploys — uploads + call recordings
+      - mangia_uploads:/app/data/uploads
     networks:
       - db_network    # Can talk to central_db
       - caddy_network # Can be seen by central_caddy
+
+volumes:
+  mangia_uploads:
 
 networks:
   db_network:

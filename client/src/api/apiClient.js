@@ -455,11 +455,58 @@ export const base44 = {
   },
   integrations: {
     Core: {
-      async UploadFile() {
-        throw new ApiError("File upload is not migrated yet.", 501);
+      async UploadFile({ file } = {}) {
+        if (!file) {
+          throw new ApiError("file is required", 400);
+        }
+        const doUpload = async () => {
+          const form = new FormData();
+          form.append("file", file, file.name || "upload.bin");
+          const headers = {};
+          if (accessToken) {
+            headers.Authorization = `Bearer ${accessToken}`;
+          }
+          return fetch("/api/files/upload", {
+            method: "POST",
+            credentials: "include",
+            headers,
+            body: form,
+          });
+        };
+        let res = await doUpload();
+        if (res.status === 401) {
+          try {
+            await refreshAccessToken();
+            res = await doUpload();
+          } catch {
+            clearAccessToken();
+            redirectToLoginPage();
+            throw new ApiError("Authentication required", 401);
+          }
+        }
+        const body = await parseJson(res);
+        if (!res.ok) {
+          throw new ApiError(
+            body?.error || res.statusText || "Upload failed",
+            res.status,
+            body
+          );
+        }
+        return body;
       },
-      async ExtractDataFromUploadedFile() {
-        throw new ApiError("File extract is not migrated yet.", 501);
+      async ExtractDataFromUploadedFile({
+        file_url,
+        fileUrl,
+        json_schema,
+        jsonSchema,
+      } = {}) {
+        return request("/api/files/extract", {
+          method: "POST",
+          body: JSON.stringify({
+            file_url: file_url || fileUrl,
+            json_schema: json_schema || jsonSchema,
+          }),
+        });
       },
     },
   },

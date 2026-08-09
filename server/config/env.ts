@@ -34,6 +34,14 @@ export const env = {
   twilioAuthToken: () => process.env.TWILIO_AUTH_TOKEN?.trim() || "",
   twilioPhoneNumber: () => process.env.TWILIO_PHONE_NUMBER?.trim() || "",
   deepgramApiKey: () => process.env.DEEPGRAM_API_KEY?.trim() || "",
+  /** Local upload directory (Twilio recordings + Import uploads). */
+  storageDir: () => {
+    const raw = process.env.STORAGE_DIR?.trim();
+    if (raw) return raw;
+    return process.env.NODE_ENV === "production"
+      ? "/app/data/uploads"
+      : "data/uploads";
+  },
   aiProvider: () =>
     (process.env.AI_PROVIDER?.trim() || "anthropic").toLowerCase(),
   anthropicApiKey: () => process.env.ANTHROPIC_API_KEY?.trim() || "",

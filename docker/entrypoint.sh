@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
+STORAGE_DIR="${STORAGE_DIR:-/app/data/uploads}"
+mkdir -p "$STORAGE_DIR"
+echo "[deploy] Storage dir ready: $STORAGE_DIR"
+
 if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
   echo "[deploy] Applying database migrations..."
   if node dist/migrate-apply.js; then

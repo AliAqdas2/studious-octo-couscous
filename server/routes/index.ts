@@ -2,6 +2,7 @@ import type { Express } from "express";
 import authRouter from "./auth.js";
 import callsRouter from "./calls.js";
 import entitiesRouter from "./entities/index.js";
+import filesRouter from "./files.js";
 import gmailRouter from "./gmail.js";
 import healthRouter from "./health.js";
 import leadsCreateEventRouter from "./leads-create-event.js";
@@ -20,9 +21,11 @@ export function registerRoutes(app: Express): void {
   app.use("/api", leadsCreateEventRouter);
   app.use("/api", gmailRouter);
   app.use("/api", callsRouter);
+  app.use("/api", filesRouter);
   app.use("/api", entitiesRouter);
 
   app.use("/api/*", (_req, res) => {
     res.status(404).json({ error: "Not found" });
   });
 }
+
