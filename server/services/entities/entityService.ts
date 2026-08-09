@@ -25,7 +25,9 @@ import {
   enrichLeadOnCreate,
   logAutoClassification,
 } from "../leads/enrichLeadOnCreate.js";
-import { syncClientMetrics } from "../clients/syncClientMetrics.js";
+import { assignEventStaff } from "../events/assignEventStaff.js";
+import { cleanupEventTasks } from "../events/cleanupTasks.js";
+import { postEventAutomation } from "../events/postEventAutomation.js";
 
 export interface ListQuery {
   sort?: string;
@@ -433,6 +435,20 @@ export async function createEntity(
         );
       }
     }
+    if (entityName === "events" && typeof record.id === "string") {
+      try {
+        await assignEventStaff(record.id);
+        const refreshed = await findByUniqueField(def, "id", record.id);
+        if (refreshed) {
+          return toApiRecord(refreshed);
+        }
+      } catch (err) {
+        console.warn(
+          "[createEntity] assignEventStaff failed:",
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
     return record;
   } catch (err) {
     if (def.idempotentUniqueField && isUniqueViolation(err)) {
@@ -496,6 +512,17 @@ export async function updateEntity(
     }
   }
 
+  let previousEventStage: string | undefined;
+  if (entityName === "events") {
+    const [existingEvent] = await db
+      .select()
+      .from(def.table)
+      .where(eq(idColumn, id))
+      .limit(1);
+    previousEventStage = (existingEvent as { stage?: string } | undefined)
+      ?.stage;
+  }
+
   try {
     const [row] = await db
       .update(def.table)
@@ -522,13 +549,12 @@ export async function updateEntity(
 
     if (entityName === "events") {
       const stage = (row as { stage?: string }).stage;
-      const clientId = (row as { clientId?: string | null }).clientId;
-      if (stage === "Completed" && clientId) {
+      if (stage === "Completed" && previousEventStage !== "Completed") {
         try {
-          await syncClientMetrics(clientId);
+          await postEventAutomation(row as never);
         } catch (err) {
           console.warn(
-            "[updateEntity] syncClientMetrics failed:",
+            "[updateEntity] postEventAutomation failed:",
             err instanceof Error ? err.message : err
           );
         }
@@ -573,6 +599,17 @@ export async function deleteEntity(
       ?.userId;
     if (assignmentUserId && assignmentUserId === user.id) {
       throw new AppError("Cannot remove yourself", 400);
+    }
+  }
+
+  if (entityName === "events") {
+    try {
+      await cleanupEventTasks(id);
+    } catch (err) {
+      console.warn(
+        "[deleteEntity] cleanupEventTasks failed:",
+        err instanceof Error ? err.message : err
+      );
     }
   }
 

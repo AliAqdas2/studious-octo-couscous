@@ -10,6 +10,7 @@ import { AppError } from "../../lib/errors.js";
 import { getGmailConnection } from "../gmail/gmailClient.js";
 import { sendGmailEmail } from "../gmail/send.js";
 import { linkEventToClient } from "../events/linkEventToClient.js";
+import { assignEventStaff } from "../events/assignEventStaff.js";
 
 function requireDb() {
   const db = getDb();
@@ -238,6 +239,15 @@ export async function createEventFromWonLead(
       console.warn(
         "[createEventFromWonLead] linkEventToClient failed:",
         linkErr instanceof Error ? linkErr.message : linkErr
+      );
+    }
+
+    try {
+      await assignEventStaff(newEvent.id);
+    } catch (staffErr) {
+      console.warn(
+        "[createEventFromWonLead] assignEventStaff failed:",
+        staffErr instanceof Error ? staffErr.message : staffErr
       );
     }
   } catch (err) {

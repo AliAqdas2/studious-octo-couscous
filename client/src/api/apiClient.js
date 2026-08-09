@@ -419,6 +419,49 @@ export const base44 = {
         return { data: body };
       }
 
+      if (name === "generateEventWorkflow") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/generate-workflow`,
+          {
+            method: "POST",
+            body: JSON.stringify(payload ?? {}),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "postSystemMessage") {
+        const body = await request("/api/tasks/system-message", {
+          method: "POST",
+          body: JSON.stringify(payload ?? {}),
+        });
+        return { data: body };
+      }
+
+      if (name === "validateTaskSync") {
+        const body = await request("/api/tasks/validate-sync", {
+          method: "POST",
+          body: JSON.stringify(payload ?? {}),
+        });
+        return { data: body };
+      }
+
+      if (name === "autoRepairTaskSync") {
+        const eventId = payload.eventId || payload.event_id || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request("/api/tasks/repair-sync", {
+          method: "POST",
+          body: JSON.stringify({ eventId, ...(payload ?? {}) }),
+        });
+        return { data: body };
+      }
+
       if (name === "triggerCallTwiML") {
         const body = await request("/api/calls/trigger", {
           method: "POST",
