@@ -6,7 +6,7 @@ import {
   requireAuth,
   type AuthenticatedRequest,
 } from "../middleware/auth.js";
-import { createGmailDraft } from "../services/gmail/drafts.js";
+import { createGmailDraft, getDraftDetail } from "../services/gmail/drafts.js";
 import {
   assertGmailAdmin,
   GMAIL_DISCONNECT_PHRASE,
@@ -145,6 +145,15 @@ router.post("/gmail/sync", requireAuth, async (req, res, next) => {
     const leadEmail =
       req.body?.leadEmail || req.body?.email || req.body?.lead_email;
     const result = await syncGmailEmails(String(leadEmail || ""));
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/gmail/drafts/:id", requireAuth, async (req, res, next) => {
+  try {
+    const result = await getDraftDetail(req.params.id);
     res.json(result);
   } catch (err) {
     next(err);

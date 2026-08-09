@@ -5,10 +5,13 @@ import { getDb } from "../../db/index.js";
 import { gmailConnections, gmailPollState } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 
+/** Gmail + Calendar. After adding scopes, reconnect Gmail in Settings. */
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/userinfo.email",
 ];
 
@@ -247,8 +250,11 @@ export async function forceRefreshGmailToken(): Promise<{
   };
 }
 
-/** Authenticated Gmail API client for the shared CRM mailbox. */
-export async function getGmailApi() {
+/**
+ * OAuth2 client with a fresh access token for the shared CRM mailbox.
+ * Used by Gmail and Calendar APIs.
+ */
+export async function getGoogleAuthClient() {
   const connection = await getGmailConnection();
   if (!connection) {
     throw new AppError(
@@ -281,7 +287,19 @@ export async function getGmailApi() {
     refresh_token: connection.refreshToken || undefined,
   });
 
-  return google.gmail({ version: "v1", auth: client });
+  return { auth: client, email: connection.email };
+}
+
+/** Authenticated Gmail API client for the shared CRM mailbox. */
+export async function getGmailApi() {
+  const { auth } = await getGoogleAuthClient();
+  return google.gmail({ version: "v1", auth });
+}
+
+/** Authenticated Google Calendar API client (same OAuth connection as Gmail). */
+export async function getCalendarApi() {
+  const { auth } = await getGoogleAuthClient();
+  return google.calendar({ version: "v3", auth });
 }
 
 export function encodeRawMessage(rfc2822: string): string {

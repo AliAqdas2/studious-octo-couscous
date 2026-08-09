@@ -7,6 +7,10 @@ import {
   leads,
 } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
+import {
+  findNextFreeSlot,
+  replaceSalesManagerAvailability,
+} from "../calendar/findNextFreeSlot.js";
 import { createGmailDraft } from "../gmail/drafts.js";
 import { sendGmailEmail } from "../gmail/send.js";
 
@@ -35,13 +39,14 @@ function requireDb() {
 
 function replaceVariables(
   text: string,
-  lead: typeof leads.$inferSelect
+  lead: typeof leads.$inferSelect,
+  availabilityText: string
 ): string {
   if (!text) return "";
   const preferred = lead.preferredDate
     ? new Date(lead.preferredDate).toLocaleDateString()
     : "";
-  return text
+  const withLeadVars = text
     .replace(/\{\{name\}\}/gi, lead.name || "")
     .replace(/\{\{company\}\}/gi, lead.company || "")
     .replace(/\{\{email\}\}/gi, lead.email || "")
@@ -52,6 +57,7 @@ function replaceVariables(
       lead.headcountEstimate != null ? String(lead.headcountEstimate) : ""
     )
     .replace(/\{\{phone\}\}/gi, lead.phone || "");
+  return replaceSalesManagerAvailability(withLeadVars, availabilityText);
 }
 
 async function pickSurveyTemplate(
@@ -154,8 +160,10 @@ export async function sendSurveyDraftOnCallFailure(
     return { ok: false, skipped: "no_template" };
   }
 
-  const subject = replaceVariables(template.subject, lead);
-  const body = replaceVariables(template.body, lead);
+  const slot = await findNextFreeSlot();
+  const availabilityText = slot.formatted;
+  const subject = replaceVariables(template.subject, lead, availabilityText);
+  const body = replaceVariables(template.body, lead, availabilityText);
 
   const draft = await createGmailDraft({
     to: lead.email,
@@ -180,6 +188,7 @@ export async function sendSurveyDraftOnCallFailure(
       surveySentDate: now,
       lastContactDate: now,
       awaitingMeetingConfirmation: true,
+      ...(slot.slotUtc ? { proposedMeetingDate: slot.slotUtc } : {}),
       updatedDate: now,
     })
     .where(eq(leads.id, lead.id));
@@ -196,6 +205,10 @@ export async function sendSurveyDraftOnCallFailure(
       template_id: template.id,
       to: lead.email,
       subject,
+      proposed_meeting_time_et: slot.slotUtc ? availabilityText : null,
+      proposed_meeting_time_utc: slot.slotUtc
+        ? slot.slotUtc.toISOString()
+        : null,
     },
     userName: "System (Call Fallback)",
     timestamp: now,

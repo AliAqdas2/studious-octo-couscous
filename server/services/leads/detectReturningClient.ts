@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { clients, events, leads } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
+import { isPastClient } from "./clientHistory.js";
 
 function requireDb() {
   const db = getDb();
@@ -15,8 +16,9 @@ function asContactList(value: unknown): { email?: string; [key: string]: unknown
 }
 
 /**
- * Base44 detectReturningClient — after lead insert:
- * create Client if email is new, or link + summary if returning.
+ * After lead insert: create Client if email is new, or link existing Client.
+ * Only marks is_returning_client when the Client has real past business
+ * (events / is_returning) — stub Client rows from prior inquiries do not count.
  */
 export async function detectReturningClient(leadId: string): Promise<{
   success: boolean;
@@ -88,6 +90,47 @@ export async function detectReturningClient(leadId: string): Promise<{
   }
 
   const client = existing[0];
+
+  // Merge additional contacts even for stub clients
+  const existingExtras = asContactList(client.additionalContacts);
+  const incomingExtras = asContactList(lead.additionalContacts);
+  const seenEmails = new Set(
+    existingExtras
+      .map((c) => (c.email || "").toLowerCase().trim())
+      .filter(Boolean)
+  );
+  const merged = [...existingExtras];
+  for (const c of incomingExtras) {
+    const key = (c.email || "").toLowerCase().trim();
+    if (key && seenEmails.has(key)) continue;
+    if (key) seenEmails.add(key);
+    merged.push(c);
+  }
+  if (merged.length !== existingExtras.length) {
+    await db
+      .update(clients)
+      .set({ additionalContacts: merged, updatedDate: new Date() })
+      .where(eq(clients.id, client.id));
+  }
+
+  // Stub Client (0 events, not marked returning) — link only, not a past client
+  if (!isPastClient(client)) {
+    await db
+      .update(leads)
+      .set({
+        clientId: client.id,
+        isReturningClient: false,
+        returningClientChecked: true,
+        updatedDate: new Date(),
+      })
+      .where(eq(leads.id, leadId));
+
+    console.log(
+      `[detectReturningClient] Linked stub client ${client.id} to lead ${leadId} (not returning)`
+    );
+    return { success: true, returning: false, clientId: client.id };
+  }
+
   const clientEvents = await db
     .select()
     .from(events)
@@ -110,27 +153,6 @@ export async function detectReturningClient(leadId: string): Promise<{
     last_venue: lastEvent?.venue || "",
     last_satisfaction: lastEvent?.satisfactionRating || "",
   };
-
-  const existingExtras = asContactList(client.additionalContacts);
-  const incomingExtras = asContactList(lead.additionalContacts);
-  const seenEmails = new Set(
-    existingExtras
-      .map((c) => (c.email || "").toLowerCase().trim())
-      .filter(Boolean)
-  );
-  const merged = [...existingExtras];
-  for (const c of incomingExtras) {
-    const key = (c.email || "").toLowerCase().trim();
-    if (key && seenEmails.has(key)) continue;
-    if (key) seenEmails.add(key);
-    merged.push(c);
-  }
-  if (merged.length !== existingExtras.length) {
-    await db
-      .update(clients)
-      .set({ additionalContacts: merged, updatedDate: new Date() })
-      .where(eq(clients.id, client.id));
-  }
 
   await db
     .update(leads)

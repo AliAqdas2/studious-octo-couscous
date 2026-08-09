@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { activityLogs, clients } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
+import { isPastClient } from "./clientHistory.js";
 
 const CONSUMER_DOMAINS = new Set([
   "gmail.com",
@@ -101,8 +102,10 @@ export async function enrichLeadOnCreate(
       .limit(1);
     if (existingClients[0]) {
       clientId = existingClients[0].id;
-      isReturningClient = true;
-      priorityTag = "Previous Client Priority";
+      if (isPastClient(existingClients[0])) {
+        isReturningClient = true;
+        priorityTag = "Previous Client Priority";
+      }
     }
   }
 

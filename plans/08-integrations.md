@@ -52,18 +52,29 @@ S3_BUCKET=
 
 Base44 connector: `googlecalendar.jsonc` — scopes for calendar events.
 
-Current CRM uses `calendar_link` string in `automation_config` (booking URL in emails), not full calendar sync.
+Mangia reuses the **same Gmail OAuth connection** with Calendar scopes
+(`calendar.readonly` + `calendar.events`). Reconnect Gmail after scope changes
+and enable the Google Calendar API on the GCP project.
 
-### MVP
+### Implemented
 
-Keep `calendar_link` as manual URL in automation config — **no API needed**.
+- `findNextFreeSlot` — Mon–Fri **9:00–17:00 America/New_York**, 30-min slots,
+  skip primary busy + US holidays (`server/services/calendar/findNextFreeSlot.ts`)
+- Survey call-failure drafts replace `<<Sales Manager Availability>>` and set
+  `proposed_meeting_date`
+- `GET /api/calendar/next-slot` — UI draft template merge
+- Meeting confirmation replies → stage update + ICS invite
+  (`handleMeetingConfirmationReply`)
+
+### Also still used
+
+`calendar_link` string in `automation_config` — booking URL in post-call emails
+when a live call succeeds (separate from freeBusy proposals).
 
 ### Future
 
-- OAuth connect Google Calendar
-- Sync `events.event_date` to calendar
-- Read availability for meeting scheduling
-
+- Sync `events.event_date` to Google Calendar
+- Multi-calendar / per-rep calendars
 ## OpenAI usage summary
 
 | Feature | Function |

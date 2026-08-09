@@ -24,6 +24,7 @@ import {
   type ClassifyInboundEmailLlmResult,
 } from "../ai/prompts/classifyInboundEmail.js";
 import { getGmailApi } from "./gmailClient.js";
+import { tryHandleMeetingConfirmationReply } from "./handleMeetingConfirmationReply.js";
 import {
   decodeGmailBody,
   detectBulkMailHeaders,
@@ -441,8 +442,6 @@ export async function handleContactFormEmail(input: {
     return { ok: true, created: 0, spam: 0, skipped: 0, results: [] };
   }
 
-  // Meeting-confirmation fan-out intentionally skipped (not ported yet).
-
   const db = requireDb();
   const gmail = await getGmailApi();
 
@@ -692,6 +691,37 @@ export async function handleContactFormEmail(input: {
               reason: "Known operational contact",
             });
             continue;
+          }
+
+          // Meeting confirmation replies — classify before known-lead append.
+          if (senderEmail) {
+            try {
+              const meetingResult = await tryHandleMeetingConfirmationReply({
+                messageId,
+                message,
+                senderEmail,
+              });
+              if (meetingResult.handled) {
+                await recordProcessed(messageId, "ignored", source);
+                skippedCount++;
+                results.push({
+                  messageId,
+                  from,
+                  subject,
+                  outcome: "meeting-confirmation",
+                  reason: `Meeting reply classified as ${meetingResult.classification}`,
+                  lead_id: meetingResult.leadId,
+                });
+                continue;
+              }
+            } catch (meetingErr) {
+              console.error(
+                "[email-intake] meeting confirmation handler failed:",
+                meetingErr instanceof Error
+                  ? meetingErr.message
+                  : meetingErr
+              );
+            }
           }
 
           // Active recent lead by exact email — append, no AI.

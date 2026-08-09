@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Mail, Send, FileText, ChevronDown, ChevronUp, Loader2, X, Save } from 'lucide-react';
 import { toast } from 'sonner';
 
-function replaceVariables(text, lead) {
+function replaceLeadVariables(text, lead) {
   if (!text) return '';
   return text
     .replace(/\{\{name\}\}/g, lead.name || '')
@@ -20,6 +20,20 @@ function replaceVariables(text, lead) {
     .replace(/\{\{preferred_date\}\}/g, lead.preferred_date ? new Date(lead.preferred_date).toLocaleDateString() : '')
     .replace(/\{\{headcount\}\}/g, lead.headcount_estimate || '')
     .replace(/\{\{phone\}\}/g, lead.phone || '');
+}
+
+async function replaceVariables(text, lead) {
+  let out = replaceLeadVariables(text, lead);
+  if (/<<\s*Sales Manager Availability\s*>>/i.test(out)) {
+    try {
+      const slot = await base44.calendar.getNextSlot();
+      const formatted = slot?.formatted || '<Meeting Date And Time>';
+      out = out.replace(/<<\s*Sales Manager Availability\s*>>/gi, formatted);
+    } catch {
+      out = out.replace(/<<\s*Sales Manager Availability\s*>>/gi, '<Meeting Date And Time>');
+    }
+  }
+  return out;
 }
 
 /** Reply subject for thread: if already "Re: ..." keep as-is, else add "Re: " (keeps email trail correct) */
@@ -116,21 +130,28 @@ export default function LeadEmailDraft({ lead, templates, emailActivities }) {
   // Re-run when templates load (so we don't miss the match if templates arrive after the lead).
   useEffect(() => {
     if (!lead) return;
-    if (matchingTemplates.length > 0) {
-      const first = matchingTemplates[0];
-      setSelectedTemplateId(first.id);
-      setFormData({
-        to: lead.email || '',
-        subject: replaceVariables(first.subject, lead),
-        body: replaceVariables(first.body, lead)
-      });
-      hasPrefilledSubjectFromLatestRef.current = false;
-      setIsReplyToLatest(false);
-    } else {
-      setSelectedTemplateId('');
-      setFormData({ to: lead.email || '', subject: '', body: '' });
-      hasPrefilledSubjectFromLatestRef.current = false;
-    }
+    let cancelled = false;
+    (async () => {
+      if (matchingTemplates.length > 0) {
+        const first = matchingTemplates[0];
+        setSelectedTemplateId(first.id);
+        const subject = await replaceVariables(first.subject, lead);
+        const body = await replaceVariables(first.body, lead);
+        if (cancelled) return;
+        setFormData({
+          to: lead.email || '',
+          subject,
+          body
+        });
+        hasPrefilledSubjectFromLatestRef.current = false;
+        setIsReplyToLatest(false);
+      } else {
+        setSelectedTemplateId('');
+        setFormData({ to: lead.email || '', subject: '', body: '' });
+        hasPrefilledSubjectFromLatestRef.current = false;
+      }
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.stage, lead?.id, lead?.channel, lead?.client_type, safeTemplates.length]);
 
@@ -145,7 +166,7 @@ export default function LeadEmailDraft({ lead, templates, emailActivities }) {
 
   const [showLatestEmailExpanded, setShowLatestEmailExpanded] = useState(false);
 
-  const handleTemplateChange = (templateId) => {
+  const handleTemplateChange = async (templateId) => {
     setSelectedTemplateId(templateId);
     if (!templateId) {
       const replySubject = isReplyToLatest && latestEmailDetail ? getReplySubject(latestEmailDetail) : '';
@@ -155,31 +176,36 @@ export default function LeadEmailDraft({ lead, templates, emailActivities }) {
     const template = safeTemplates.find(t => t.id === templateId);
     if (template) {
       if (isReplyToLatest) {
+        const body = await replaceVariables(template.body, lead);
         setFormData(prev => ({
           to: lead?.email || '',
           subject: prev.subject,
-          body: replaceVariables(template.body, lead)
+          body
         }));
       } else {
+        const subject = await replaceVariables(template.subject, lead);
+        const body = await replaceVariables(template.body, lead);
         setFormData({
           to: lead?.email || '',
-          subject: replaceVariables(template.subject, lead),
-          body: replaceVariables(template.body, lead)
+          subject,
+          body
         });
       }
     }
   };
 
-  const handleCancelReply = () => {
+  const handleCancelReply = async () => {
     setIsReplyToLatest(false);
     const templateId = selectedTemplateId;
     if (templateId) {
       const template = safeTemplates.find(t => t.id === templateId);
       if (template) {
+        const subject = await replaceVariables(template.subject, lead);
+        const body = await replaceVariables(template.body, lead);
         setFormData({
           to: lead?.email || '',
-          subject: replaceVariables(template.subject, lead),
-          body: replaceVariables(template.body, lead)
+          subject,
+          body
         });
       } else {
         setFormData(prev => ({ ...prev, subject: '' }));

@@ -7,6 +7,7 @@ import {
 } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 import { triggerCall } from "../twilio/triggerCall.js";
+import { isPastClient } from "./clientHistory.js";
 import { sendSurveyDraftOnCallFailure } from "./sendSurveyDraftOnCallFailure.js";
 
 function requireDb() {
@@ -24,13 +25,6 @@ export interface OnLeadCreatedResult {
   call_log_id?: string | null;
   call_sid?: string | null;
   survey_draft?: boolean;
-}
-
-function isPastClientForAutoCall(client: {
-  totalEvents: number | null;
-  isReturning: boolean | null;
-}): boolean {
-  return (client.totalEvents ?? 0) > 0 || client.isReturning === true;
 }
 
 async function runSurveyDraftFallback(
@@ -115,10 +109,30 @@ export async function onLeadCreated(leadId: string): Promise<OnLeadCreatedResult
     }
 
     if (lead.isReturningClient) {
-      console.log(
-        `[onLeadCreated] Lead ${lead.id} is_returning_client — skipping call`
-      );
-      return { ok: true, skipped: "returning_client" };
+      // Defense in depth: stale flag on a stub Client must not block auto-call
+      if (lead.clientId) {
+        const clientRows = await db
+          .select()
+          .from(clients)
+          .where(eq(clients.id, lead.clientId))
+          .limit(1);
+        const client = clientRows[0];
+        if (client && !isPastClient(client)) {
+          console.log(
+            `[onLeadCreated] Lead ${lead.id} is_returning_client but linked client ${client.id} has no past business — allowing call`
+          );
+        } else {
+          console.log(
+            `[onLeadCreated] Lead ${lead.id} is_returning_client — skipping call`
+          );
+          return { ok: true, skipped: "returning_client" };
+        }
+      } else {
+        console.log(
+          `[onLeadCreated] Lead ${lead.id} is_returning_client — skipping call`
+        );
+        return { ok: true, skipped: "returning_client" };
+      }
     }
 
     if (lead.clientId) {
@@ -128,7 +142,7 @@ export async function onLeadCreated(leadId: string): Promise<OnLeadCreatedResult
         .where(eq(clients.id, lead.clientId))
         .limit(1);
       const client = clientRows[0];
-      if (client && isPastClientForAutoCall(client)) {
+      if (client && isPastClient(client)) {
         console.log(
           `[onLeadCreated] Lead ${lead.id} linked to past client ${client.id} — skipping call`
         );
@@ -171,7 +185,7 @@ export async function onLeadCreated(leadId: string): Promise<OnLeadCreatedResult
         .from(clients)
         .where(sql`lower(${clients.email}) = ${emailLower}`)
         .limit(1);
-      if (existingClients[0] && isPastClientForAutoCall(existingClients[0])) {
+      if (existingClients[0] && isPastClient(existingClients[0])) {
         console.log(
           `[onLeadCreated] Lead ${lead.id} — email ${lead.email} found in Client DB with event history — skipping call`
         );

@@ -60,19 +60,34 @@ export default function CreateDraftDialog({ lead, templates, onClose }) {
     onSettled: () => setIsSending(false)
   });
 
-  const handleTemplateSelect = (template) => {
+  const handleTemplateSelect = async (template) => {
     let body = template.body;
-    
-    // Replace variables
+    let subject = template.subject;
+
     if (lead) {
       body = body.replace(/{{name}}/g, lead.name || '');
       body = body.replace(/{{company}}/g, lead.company || '');
       body = body.replace(/{{email}}/g, lead.email || '');
+      subject = subject.replace(/{{name}}/g, lead.name || '');
+      subject = subject.replace(/{{company}}/g, lead.company || '');
+      subject = subject.replace(/{{email}}/g, lead.email || '');
+    }
+
+    if (/<<\s*Sales Manager Availability\s*>>/i.test(body) || /<<\s*Sales Manager Availability\s*>>/i.test(subject)) {
+      try {
+        const slot = await base44.calendar.getNextSlot();
+        const formatted = slot?.formatted || '<Meeting Date And Time>';
+        body = body.replace(/<<\s*Sales Manager Availability\s*>>/gi, formatted);
+        subject = subject.replace(/<<\s*Sales Manager Availability\s*>>/gi, formatted);
+      } catch {
+        body = body.replace(/<<\s*Sales Manager Availability\s*>>/gi, '<Meeting Date And Time>');
+        subject = subject.replace(/<<\s*Sales Manager Availability\s*>>/gi, '<Meeting Date And Time>');
+      }
     }
 
     setFormData({
       ...formData,
-      subject: template.subject,
+      subject,
       body
     });
   };

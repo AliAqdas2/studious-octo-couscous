@@ -4,11 +4,69 @@ import { getDb } from "../../db/index.js";
 import { activityLogs, leads } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 import { encodeRawMessage, getGmailApi } from "./gmailClient.js";
+import { getBody, headerValue } from "./messages.js";
 
 function requireDb() {
   const db = getDb();
   if (!db) throw new AppError("Database is not configured", 503);
   return db;
+}
+
+function gmailStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const e = err as {
+    code?: number | string;
+    response?: { status?: number };
+    status?: number;
+  };
+  if (typeof e.code === "number") return e.code;
+  if (typeof e.code === "string" && /^\d+$/.test(e.code)) {
+    return parseInt(e.code, 10);
+  }
+  return e.response?.status ?? e.status;
+}
+
+export async function getDraftDetail(draftId: string) {
+  if (!draftId) {
+    throw new AppError("draftId is required", 400);
+  }
+
+  const gmail = await getGmailApi();
+  let draft;
+  try {
+    const res = await gmail.users.drafts.get({
+      userId: "me",
+      id: draftId,
+      format: "full",
+    });
+    draft = res.data;
+  } catch (err) {
+    if (gmailStatus(err) === 404) {
+      throw new AppError("Draft not found. It may have been sent or deleted.", 404);
+    }
+    throw err;
+  }
+
+  const msg = draft.message || {};
+  const headers = msg.payload?.headers || [];
+  const bodyResult = getBody(msg.payload || {});
+
+  return {
+    success: true,
+    email: {
+      id: msg.id,
+      draftId: draft.id,
+      threadId: msg.threadId,
+      subject: headerValue(headers, "Subject"),
+      from: headerValue(headers, "From"),
+      to: headerValue(headers, "To"),
+      cc: headerValue(headers, "Cc"),
+      date: headerValue(headers, "Date"),
+      body: bodyResult.content,
+      bodyMimeType: bodyResult.mimeType,
+      snippet: msg.snippet || "",
+    },
+  };
 }
 
 export interface CreateDraftInput {

@@ -307,6 +307,11 @@ export const base44 = {
       });
     },
   },
+  calendar: {
+    async getNextSlot() {
+      return request("/api/calendar/next-slot");
+    },
+  },
   appLogs: {
     async logUserInApp() {
       // Analytics not migrated yet — no-op
@@ -329,6 +334,17 @@ export const base44 = {
         }
         const body = await request(
           `/api/gmail/messages/${encodeURIComponent(messageId)}`
+        );
+        return { data: body };
+      }
+
+      if (name === "getDraftDetail") {
+        const draftId = payload.draftId || payload.id;
+        if (!draftId) {
+          throw new ApiError("draftId is required", 400);
+        }
+        const body = await request(
+          `/api/gmail/drafts/${encodeURIComponent(draftId)}`
         );
         return { data: body };
       }

@@ -6,7 +6,7 @@ interface BodyResult {
   mimeType: string;
 }
 
-function getBody(payload: {
+export function getBody(payload: {
   body?: { data?: string | null } | null;
   mimeType?: string | null;
   parts?: Array<{
@@ -46,7 +46,7 @@ function getBody(payload: {
   return { content: "", mimeType: "text/plain" };
 }
 
-function headerValue(
+export function headerValue(
   headers: Array<{ name?: string | null; value?: string | null }> | undefined,
   name: string
 ): string {
