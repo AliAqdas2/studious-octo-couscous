@@ -97,7 +97,9 @@ async function eraseData(): Promise<void> {
   console.log(
     "[erase-data] Done. Run `npm run db:seed` if you need to ensure the admin user exists."
   );
-  console.log("[erase-data] Next: `npm run db:load-data` to import scripts/data CSVs.");
+  console.log(
+    "[erase-data] Next: `npm run db:load-data` (local) or `node dist/load-data.js` (Docker)."
+  );
 }
 
 eraseData()

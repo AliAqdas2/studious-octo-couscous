@@ -925,24 +925,45 @@ async function loadData(): Promise<void> {
   // ── Email templates via existing seed script ─────────────────────────
   {
     console.log(`${LOG} Running seed-email-templates...`);
-    const result = spawnSync(
-      process.execPath,
-      [
-        join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
-        join(__dirname, "seed-email-templates.ts"),
-      ],
-      { stdio: "inherit", env: process.env }
-    );
-    if (result.status !== 0) {
-      // Fallback: npx tsx
-      const fallback = spawnSync(
-        "npx",
-        ["tsx", join(__dirname, "seed-email-templates.ts")],
-        { stdio: "inherit", env: process.env, shell: true }
+    const distSeed = join(process.cwd(), "dist", "seed-email-templates.js");
+    const tsSeed = join(__dirname, "seed-email-templates.ts");
+    let status: number | null = 1;
+
+    if (existsSync(distSeed)) {
+      // Production Docker image (compiled)
+      status =
+        spawnSync(process.execPath, [distSeed], {
+          stdio: "inherit",
+          env: process.env,
+        }).status ?? 1;
+    } else if (existsSync(tsSeed)) {
+      const tsxCli = join(
+        process.cwd(),
+        "node_modules",
+        "tsx",
+        "dist",
+        "cli.mjs"
       );
-      if (fallback.status !== 0) {
-        console.warn(`${LOG} seed-email-templates failed — run manually later`);
+      if (existsSync(tsxCli)) {
+        status =
+          spawnSync(process.execPath, [tsxCli, tsSeed], {
+            stdio: "inherit",
+            env: process.env,
+          }).status ?? 1;
+      } else {
+        status =
+          spawnSync("npx", ["tsx", tsSeed], {
+            stdio: "inherit",
+            env: process.env,
+            shell: true,
+          }).status ?? 1;
       }
+    }
+
+    if (status !== 0) {
+      console.warn(
+        `${LOG} seed-email-templates failed — run manually: node dist/seed-email-templates.js`
+      );
     }
   }
 

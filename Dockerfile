@@ -29,6 +29,18 @@ RUN npm run build \
     --platform=node \
     --packages=external \
     --outfile=dist/seed-email-templates.js \
+    --format=esm \
+  && npx esbuild scripts/erase-data.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/erase-data.js \
+    --format=esm \
+  && npx esbuild scripts/load-data.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/load-data.js \
     --format=esm
 
 FROM node:22-bookworm-slim AS runner

@@ -140,24 +140,35 @@ For a production refresh from Base44 CSV exports in [`scripts/data/`](../scripts
    You must type exactly: `ERASE PRODUCTION DATA`
 
 ```bash
-# Local (DATABASE_URL set, interactive terminal)
+# Local (DATABASE_URL set, interactive terminal; needs tsx/dev deps)
 npm run db:erase
 
-# Docker
-docker compose exec -it app npx tsx scripts/erase-data.ts
+# Docker / production image (compiled scripts in dist/)
+docker exec -it mangia_app node dist/erase-data.js
+# or:
+docker exec -it mangia_app npm run db:erase:prod
 ```
 
 2. **Load** CSVs (remaps Base44 IDs → UUIDs). Prefer after erase + migrations:
 
 ```bash
+# Local
 npm run db:load-data
-# Faster (skip ActivityLog + ProcessedGmail + SpamEmail):
 npm run db:load-data -- --skip-heavy
 
-# Or erase (confirm) then load in one shot:
-npm run db:reset-data
+# Docker / production
+docker exec -it mangia_app node dist/load-data.js
+docker exec -it mangia_app node dist/load-data.js --skip-heavy
+# or:
+docker exec -it mangia_app npm run db:load-data:prod
 ```
 
-3. Ensure admin exists: `npm run db:seed`
+3. Ensure admin exists:
+
+```bash
+docker exec -it mangia_app node dist/seed.js
+```
 
 Local file uploads under `STORAGE_DIR` / `data/uploads` are **not** wiped by erase — remove that volume separately if needed.
+
+> The production image does **not** include TypeScript sources or `tsx`. Always use `node dist/erase-data.js` / `node dist/load-data.js` (or the `*:prod` npm scripts) inside the container. Rebuild the image after pulling these script changes.
