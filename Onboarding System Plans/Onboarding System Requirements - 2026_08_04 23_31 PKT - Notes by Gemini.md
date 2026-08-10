@@ -31,6 +31,8 @@ Development of the Base 44 interface will prioritize clickable documentation ove
 
 * **Floor plans removed from workflow** The onboarding workflow document is updated to remove the inclusion of floor plans, as they are not deemed necessary.
 
+* **CRM credentials only after hire (Dave)** The CRM / onboarding tool is for **employees**, not applicants. Candidates do **not** get login credentials while they are still in recruitment or pre-hire. Credentials are issued **after they are hired**. Until then, managers (Belle, Zach, Dave, trainers, etc.) run the pipeline and onboarding steps on the candidate’s behalf inside the tool. New-hire self-service portal access is out of scope for applicants.
+
 We've **updated the Decisions section** using your feedback.
 
 Let us know what you think: [Helpful](https://google.qualtrics.com/jfe/form/SV_5bXzKQfylMIhSXc?isHelpful=True&entryPoint=decisions&confid=aT7SMgVijvpVkYOZfNrGDxIPOAIIigIgABgBCA&isGoogler=False) or [Not Helpful](https://google.qualtrics.com/jfe/form/SV_5bXzKQfylMIhSXc?isHelpful=False&entryPoint=decisions&confid=aT7SMgVijvpVkYOZfNrGDxIPOAIIigIgABgBCA&isGoogler=False)

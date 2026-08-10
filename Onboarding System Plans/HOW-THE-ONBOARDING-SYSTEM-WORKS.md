@@ -10,6 +10,17 @@ Mangia DC hires event staff over and over: find candidates at university career 
 
 > **Dave's exact ask (first meeting, 00:15:11):** "Ali needs to be able to source this document to know where everything is… so that when someone is going through the steps of the process, that said someone can click to those respective places rather than like need to go through a document."
 
+### Who gets CRM credentials (requirement)
+
+**Dave:** the tool is for **employees**. People get credentials **after they are hired**.
+
+| Stage | CRM login? |
+|-------|------------|
+| Applicant / candidate (recruitment, interview, offer) | **No** — managers track them in the tool; they never log in |
+| Hired (paperwork / training / active staff) | **Yes** — credentials issued after hire |
+
+So: no applicant portal, no invite-before-offer flow. Recruitment and early onboarding are **internal** (staff ticking steps, attaching links, chasing paperwork). Account creation is a **post-hire** step, not part of the candidate pipeline.
+
 ---
 
 ## 2. Why you're confused (three different things got handed to you as one)
@@ -242,7 +253,7 @@ Plumbing reminder from the existing codebase: a new page needs a file in `client
 Your action item from the first meeting was literally "send questions to Dave." Here they are, ordered by how much they change the build.
 
 **Architecture-defining:**
-1. **Do new hires log into this tool themselves, or is it internal-only?** If the new hire watches videos, takes the quiz, and uploads paperwork *inside* the app, you need external accounts, an invite flow, and a restricted portal. If it's managers ticking boxes on someone's behalf, it's a fraction of the work. Everything downstream depends on this answer.
+1. ~~**Do new hires log into this tool themselves, or is it internal-only?**~~ **Answered (Dave):** CRM is for employees; credentials are issued **after hire**. Candidates never get accounts. Pre-hire pipeline is manager-driven. (See §1 “Who gets CRM credentials.”)
 2. **Where do documents live?** There is no file upload in the CRM today — it's stubbed and returns a 501. Options: Google Drive links, a real upload endpoint you build, or an external service (DocuSign etc.) with the tool just tracking status.
 3. **Are I-9 / W-4 / W-9 filled out in the tool or outside it?** Real tax and eligibility forms have compliance and retention implications. Strong recommendation: track status only, don't collect them in-app.
 
