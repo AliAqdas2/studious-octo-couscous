@@ -1,0 +1,7 @@
+"user_email","role","is_active","coverage_rules","user_id","user_name","id","created_date","updated_date","created_by_id","created_by","is_sample"
+"aa03095276332@gmail.com","Admin","true","","69ac6ff6dddf668fea62c7a9","Ali Aqdas","69ae69aa0aaa7fc69a4f05a5","2026-03-09T06:33:14.014000","2026-03-09T06:33:14.014000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"aa03095276332@gmail.com","Admin","true","","69ac6ff6dddf668fea62c7a9","Ali Aqdas","69ae69a97032866cbf71f9b6","2026-03-09T06:33:13.352000","2026-03-09T06:33:13.352000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"admin2@mangiadc.com","Admin","true","","699c69418e04ef1c530e70c1","Monica Lacuata","699c6a4f452fada118394c22","2026-02-23T14:55:11.287000","2026-02-23T14:55:11.287000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"mvdeleon20@gmail.com","Ops","false","","698e5a84ab81d519a1c0583b","Maria Vivian De Leon (Iyan)","698e677c92e126ac533c4815","2026-02-12T23:51:24.893000","2026-03-28T10:44:26.863000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"deleon.mv83@gmail.com","Admin","false","","698e51bffbc1362a5b37a2f5","Maria Vivian De Leon","698e53598e6286b92da3d1f0","2026-02-12T22:25:29.524000","2026-03-06T17:26:07.402000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"
+"info@mangiadc.com","Admin","true","","698cc111bc3a023371f4ad30","info","698e5255b8cae2f6a7ecf47b","2026-02-12T22:21:09.072000","2026-02-12T22:21:09.072000","698cc111bc3a023371f4ad30","info@mangiadc.com","false"

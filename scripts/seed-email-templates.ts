@@ -14,6 +14,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** Resolve CSV for tsx (scripts/data) and Docker (cwd/scripts/data). */
 function resolveCsvPath(): string {
   const candidates = [
+    // Prefer Base44 export if present (often fresher than curated file)
+    join(__dirname, "data", "EmailTemplate_export (1).csv"),
+    join(process.cwd(), "scripts", "data", "EmailTemplate_export (1).csv"),
     join(__dirname, "data", "email-templates.csv"),
     join(process.cwd(), "scripts", "data", "email-templates.csv"),
   ];

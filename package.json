@@ -14,7 +14,10 @@
     "db:check": "tsx scripts/db-check.ts",
     "db:migrate-apply": "tsx scripts/migrate-apply.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "db:seed-email-templates": "tsx scripts/seed-email-templates.ts"
+    "db:seed-email-templates": "tsx scripts/seed-email-templates.ts",
+    "db:erase": "tsx scripts/erase-data.ts",
+    "db:load-data": "tsx scripts/load-data.ts",
+    "db:reset-data": "tsx scripts/erase-data.ts && tsx scripts/load-data.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

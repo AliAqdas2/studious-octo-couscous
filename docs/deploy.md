@@ -130,3 +130,34 @@ npm run db:seed-email-templates
 ```
 
 Safe to re-run: upserts by `template_name` + `pipeline_stage`.
+
+### Erase + load CRM data from `scripts/data`
+
+For a production refresh from Base44 CSV exports in [`scripts/data/`](../scripts/data/):
+
+1. **Erase** business tables (leads, events, tasks, clients, logs, templates, etc.).  
+   **Kept:** `users`, `refresh_tokens`, `gmail_connections`, Drizzle migrations.  
+   You must type exactly: `ERASE PRODUCTION DATA`
+
+```bash
+# Local (DATABASE_URL set, interactive terminal)
+npm run db:erase
+
+# Docker
+docker compose exec -it app npx tsx scripts/erase-data.ts
+```
+
+2. **Load** CSVs (remaps Base44 IDs → UUIDs). Prefer after erase + migrations:
+
+```bash
+npm run db:load-data
+# Faster (skip ActivityLog + ProcessedGmail + SpamEmail):
+npm run db:load-data -- --skip-heavy
+
+# Or erase (confirm) then load in one shot:
+npm run db:reset-data
+```
+
+3. Ensure admin exists: `npm run db:seed`
+
+Local file uploads under `STORAGE_DIR` / `data/uploads` are **not** wiped by erase — remove that volume separately if needed.
