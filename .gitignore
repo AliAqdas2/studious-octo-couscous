@@ -5,4 +5,10 @@ dist
 .env.example
 data/uploads/*
 !data/uploads/.gitkeep
-videos/*
+videos/
+!videos/.gitkeep
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.m4v
