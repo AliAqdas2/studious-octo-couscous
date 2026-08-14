@@ -66,7 +66,6 @@ RUN npm ci --omit=dev \
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 COPY scripts/data ./scripts/data
-COPY videos ./videos
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
