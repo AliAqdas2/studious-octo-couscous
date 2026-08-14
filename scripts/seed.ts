@@ -106,6 +106,19 @@ async function seed(): Promise<void> {
     });
     console.log("[seed] Created automation_config key=default");
   }
+
+  try {
+    const { seedOnboardingWorkflows } = await import(
+      "../server/services/onboarding/seedWorkflows.js"
+    );
+    await seedOnboardingWorkflows();
+    console.log("[seed] Onboarding workflow templates seeded");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[seed] Onboarding seed skipped (run migrations first if tables missing): ${message}`
+    );
+  }
 }
 
 seed()

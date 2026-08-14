@@ -41,6 +41,12 @@ RUN npm run build \
     --platform=node \
     --packages=external \
     --outfile=dist/load-data.js \
+    --format=esm \
+  && npx esbuild scripts/seed-onboarding.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed-onboarding.js \
     --format=esm
 
 FROM node:22-bookworm-slim AS runner
@@ -60,6 +66,7 @@ RUN npm ci --omit=dev \
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 COPY scripts/data ./scripts/data
+COPY videos ./videos
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

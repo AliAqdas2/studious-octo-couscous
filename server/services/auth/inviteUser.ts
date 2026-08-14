@@ -22,6 +22,7 @@ const OPERATIONAL_ROLES = [
   "Event Host",
   "Finance",
   "Instructor",
+  "Onboarding",
 ] as const;
 
 export type OperationalRole = (typeof OPERATIONAL_ROLES)[number];

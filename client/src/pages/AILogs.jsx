@@ -1,45 +1,17 @@
-import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Bot, Loader2, Search, Sparkles, Mail } from 'lucide-react';
 import AILogRow from '@/components/ai-logs/AILogRow';
 import AILogDraftModal from '@/components/ai-logs/AILogDraftModal';
 import EmailViewModal from '@/components/email/EmailViewModal';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, Bar, Line } from 'recharts';
 
-// AI / system actors whose actions show up in this feed.
-const AI_USER_NAMES = new Set([
-  'System (Email Intake)',
-  'System (Contact Form Watcher)',
-  'Lead Auto-Detection',
-  'Automated Call Fallback',
-  'Staff Assignment System',
-  'System',
-  'system'
-]);
-
-// AI-driven actions in ActivityLog (regardless of user_name, these are always AI).
-const AI_ACTIONS = new Set([
-  'Auto-Classification',
-  'Staff Auto-Assigned',
-  'Meeting Proposal Draft Created (No-Answer Fallback)',
-  'Created from Direct Email',
-  'Created from Contact Form',
-  'Inbound Email Received (Follow-up)',
-  'Intake Failed (Dead Letter)',
-  'Intake Failed (Retry Queued)',
-]);
-
-function isAILog(log) {
-  if (AI_ACTIONS.has(log.action)) return true;
-  if (log.action?.startsWith('Routed to Spam')) return true;
-  if (log.user_name && AI_USER_NAMES.has(log.user_name)) return true;
-  return false;
-}
+const PAGE_SIZE = 50;
 
 const CATEGORIES = [
   { value: 'all', label: 'All AI Activity' },
@@ -54,193 +26,71 @@ const CATEGORIES = [
   { value: 'intake-failure', label: 'Intake Failures' },
 ];
 
-function actionToCategory(action) {
-  if (action?.includes('Meeting Proposal Draft')) return 'survey-draft';
-  if (action === 'Auto-Classification') return 'classification';
-  if (action === 'Staff Auto-Assigned') return 'staff';
-  if (action === 'Created from Direct Email' || action === 'Created from Contact Form') return 'lead-created';
-  if (action === 'Inbound Email Received (Follow-up)') return 'lead-appended';
-  if (action === 'Event Created' || action === 'Created from Won Lead') return 'event';
-  if (action === 'Call Analyzed') return 'call';
-  if (action?.startsWith('Routed to Spam')) return 'spam-routed';
-  if (action === 'Intake Failed (Dead Letter)' || action === 'Intake Failed (Retry Queued)') {
-    return 'intake-failure';
-  }
-  return 'other';
-}
-
 export default function AILogs() {
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
-  const [viewing, setViewing] = useState(null); // { type: 'draft', log }
+  const [viewing, setViewing] = useState(null);
 
-  // Fetch recent ActivityLog (descending by timestamp)
-  const { data: activityLogs = [], isLoading: loadingLogs } = useQuery({
-    queryKey: ['ai-logs-activity'],
-    queryFn: () => base44.entities.ActivityLog.list('-timestamp', 2000)
+  // Debounce search so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const {
+    data: feedPages,
+    isLoading: loadingFeed,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['ai-logs-feed', category, search],
+    queryFn: ({ pageParam = 0 }) =>
+      base44.aiLogs.list({
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        category,
+        q: search,
+      }),
+    getNextPageParam: (lastPage) => {
+      const next = (lastPage.offset || 0) + (lastPage.data?.length || 0);
+      if (next >= (lastPage.total || 0)) return undefined;
+      if (!(lastPage.data?.length > 0)) return undefined;
+      return next;
+    },
+    initialPageParam: 0,
   });
 
-  // Fetch analyzed CallLogs to surface as synthetic "Call Analyzed" entries.
-  const { data: callLogs = [], isLoading: loadingCalls } = useQuery({
-    queryKey: ['ai-logs-calls'],
-    queryFn: async () => {
-      const all = await base44.entities.CallLog.filter({ status: 'Analyzed' }, '-ended_at', 200);
-      return all;
-    }
+  const { data: stats, isLoading: loadingStats } = useQuery({
+    queryKey: ['ai-logs-stats'],
+    queryFn: () => base44.aiLogs.stats(),
+    staleTime: 60_000,
   });
 
-  // Fetch leads so we can show "<Lead Name> — Action" on each row.
-  const { data: leads = [] } = useQuery({
-    queryKey: ['ai-logs-leads'],
-    queryFn: () => base44.entities.Lead.list('-updated_date', 1000)
-  });
-  const leadById = useMemo(() => {
-    const map = {};
-    for (const l of leads) map[l.id] = l;
-    return map;
-  }, [leads]);
+  const feedItems = useMemo(
+    () => (feedPages?.pages || []).flatMap((p) => p.data || []),
+    [feedPages]
+  );
 
-  // Spam rows for resolving gmail_message_id from spam_email_id on routed logs.
-  const { data: spamEmails = [] } = useQuery({
-    queryKey: ['ai-logs-spam'],
-    queryFn: () => base44.entities.SpamEmail.list('-received_at', 500)
-  });
+  const totalMatching = feedPages?.pages?.[0]?.total ?? feedItems.length;
+
   const spamById = useMemo(() => {
     const map = {};
-    for (const s of spamEmails) map[s.id] = s;
+    for (const log of feedItems) {
+      if (log.spam?.id) map[log.spam.id] = log.spam;
+    }
     return map;
-  }, [spamEmails]);
+  }, [feedItems]);
 
-  // Normalize ActivityLog + CallLog into a single unified list.
-  const merged = useMemo(() => {
-    const aiActivity = activityLogs
-      .filter(isAILog)
-      .map(l => ({ ...l, _source: 'activity' }));
+  const counts = stats?.counts || { total: 0 };
+  const dailyEmailData = stats?.daily || [];
+  const totalLlmThisMonth = stats?.totals?.emails || 0;
+  const totalTokensThisMonth = stats?.totals?.tokens || 0;
+  const totalInputTokensThisMonth = stats?.totals?.inputTokens || 0;
+  const totalOutputTokensThisMonth = stats?.totals?.outputTokens || 0;
 
-    const callsAsLogs = callLogs.map(c => ({
-      id: `call-${c.id}`,
-      _source: 'call',
-      entity_type: 'Lead',
-      entity_id: c.lead_id,
-      action: 'Call Analyzed',
-      user_name: 'AI Call Analyzer',
-      timestamp: c.ended_at || c.started_at,
-      details: {
-        call_log_id: c.id,
-        summary: c.summary,
-        extracted_next_stage: c.extracted_next_stage,
-        extracted_budget: c.extracted_budget,
-        extracted_headcount: c.extracted_headcount,
-        extracted_timing: c.extracted_timing,
-        recording_url: c.recording_url,
-        lead_name: c.lead_name
-      }
-    }));
-
-    return [...aiActivity, ...callsAsLogs].sort(
-      (a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)
-    );
-  }, [activityLogs, callLogs]);
-
-  const filtered = useMemo(() => {
-    return merged.filter(log => {
-      if (category !== 'all' && actionToCategory(log.action) !== category) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        const lead = leadById[log.entity_id];
-        const haystack = [
-          log.action,
-          log.user_name,
-          lead?.name,
-          lead?.email,
-          lead?.company,
-          log.details?.summary,
-          log.details?.subject,
-          log.details?.recipient,
-          log.details?.ai_reason,
-          log.details?.from
-        ].filter(Boolean).join(' ').toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [merged, category, search, leadById]);
-
-  const isLoading = loadingLogs || loadingCalls;
-
-  // Daily LLM email processing + token usage chart — last 30 days.
-  // Only count rows that store token usage (written after a real LLM call).
-  const isLlmEmailLog = (log) =>
-    log.details?.input_tokens != null || log.details?.output_tokens != null;
-
-  const dailyEmailData = useMemo(() => {
-    const llmLogs = activityLogs.filter(isLlmEmailLog);
-    const byDay = {};
-    const now = new Date();
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      byDay[key] = {
-        date: key,
-        total: 0,
-        leads: 0,
-        spam: 0,
-        followups: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        tokens: 0,
-      };
-    }
-    for (const log of llmLogs) {
-      const key = (log.timestamp || '').slice(0, 10);
-      if (!byDay[key]) continue;
-      byDay[key].total++;
-      if (log.action === 'Created from Contact Form' || log.action === 'Created from Direct Email') {
-        byDay[key].leads++;
-      } else if (log.action === 'Inbound Email Received (Follow-up)') {
-        byDay[key].followups++;
-      } else {
-        byDay[key].spam++;
-      }
-      const inT = Number(log.details?.input_tokens) || 0;
-      const outT = Number(log.details?.output_tokens) || 0;
-      const totalT =
-        Number(log.details?.total_tokens) ||
-        inT + outT;
-      byDay[key].inputTokens += inT;
-      byDay[key].outputTokens += outT;
-      byDay[key].tokens += totalT;
-    }
-    return Object.values(byDay).map(d => ({
-      ...d,
-      label: new Date(d.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    }));
-  }, [activityLogs]);
-
-  const totalLlmThisMonth = useMemo(() => dailyEmailData.reduce((s, d) => s + d.total, 0), [dailyEmailData]);
-  const totalTokensThisMonth = useMemo(
-    () => dailyEmailData.reduce((s, d) => s + d.tokens, 0),
-    [dailyEmailData]
-  );
-  const totalInputTokensThisMonth = useMemo(
-    () => dailyEmailData.reduce((s, d) => s + d.inputTokens, 0),
-    [dailyEmailData]
-  );
-  const totalOutputTokensThisMonth = useMemo(
-    () => dailyEmailData.reduce((s, d) => s + d.outputTokens, 0),
-    [dailyEmailData]
-  );
-
-  // Counts per category, for the summary chips
-  const counts = useMemo(() => {
-    const c = { total: merged.length };
-    for (const log of merged) {
-      const k = actionToCategory(log.action);
-      c[k] = (c[k] || 0) + 1;
-    }
-    return c;
-  }, [merged]);
+  const isLoading = loadingFeed || loadingStats;
 
   return (
     <div className="space-y-6">
@@ -254,7 +104,6 @@ export default function AILogs() {
         </div>
       </div>
 
-      {/* Summary chips */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         {[
           { key: 'total', label: 'Total', cls: 'bg-gradient-to-br from-[#C84B31] to-[#E8B55F] text-white' },
@@ -272,7 +121,6 @@ export default function AILogs() {
         ))}
       </div>
 
-      {/* Daily LLM Email Volume + Tokens Chart */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base flex-wrap">
@@ -347,15 +195,14 @@ export default function AILogs() {
         </CardContent>
       </Card>
 
-      {/* Filters */}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
                 placeholder="Search by lead, subject, summary, action..."
                 className="pl-9"
               />
@@ -374,28 +221,27 @@ export default function AILogs() {
         </CardContent>
       </Card>
 
-      {/* Feed */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Sparkles className="w-4 h-4 text-[#C84B31]" />
-            Activity ({filtered.length})
+            Activity ({totalMatching})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && feedItems.length === 0 ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-[#C84B31]" />
             </div>
-          ) : filtered.length === 0 ? (
+          ) : feedItems.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Bot className="w-10 h-10 mx-auto mb-3 text-gray-300" />
               <p>No AI activity matches your filters yet.</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {filtered.map(log => {
-                const lead = leadById[log.entity_id];
+              {feedItems.map(log => {
+                const lead = log.lead || null;
                 const leadName = lead?.name || log.details?.lead_name || null;
                 return (
                   <AILogRow
@@ -408,6 +254,26 @@ export default function AILogs() {
                   />
                 );
               })}
+              {hasNextPage ? (
+                <div className="flex justify-center pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="border-orange-200 hover:bg-orange-50 hover:text-[#C84B31]"
+                  >
+                    {isFetchingNextPage ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Loading…
+                      </>
+                    ) : (
+                      'Load more'
+                    )}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           )}
         </CardContent>

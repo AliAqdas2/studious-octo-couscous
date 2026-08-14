@@ -41,6 +41,7 @@ const inviteSchema = z.object({
     "Event Host",
     "Finance",
     "Instructor",
+    "Onboarding",
   ]),
 });
 

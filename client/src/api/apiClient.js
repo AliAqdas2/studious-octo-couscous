@@ -192,6 +192,10 @@ const ENTITY_MAP = {
   ProcessedGmailMessage: "processed-gmail-messages",
   FareharborEvent: "fareharbor-events",
   TwilioWebhookLog: "twilio-webhook-logs",
+  Candidate: "candidates",
+  OnboardingWorkflowTemplate: "onboarding-workflow-templates",
+  OnboardingWorkflowStep: "onboarding-workflow-steps",
+  CandidateStep: "candidate-steps",
 };
 
 const entities = Object.fromEntries(
@@ -317,6 +321,19 @@ export const base44 = {
       // Analytics not migrated yet — no-op
     },
   },
+  aiLogs: {
+    async list({ limit = 50, offset = 0, category = "all", q = "" } = {}) {
+      const params = new URLSearchParams();
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
+      if (category) params.set("category", category);
+      if (q) params.set("q", q);
+      return request(`/api/ai-logs?${params.toString()}`);
+    },
+    async stats() {
+      return request("/api/ai-logs/stats");
+    },
+  },
   functions: {
     async invoke(name, payload = {}) {
       if (name === "getLeadsPaginated") {
@@ -324,6 +341,54 @@ export const base44 = {
           method: "POST",
           body: JSON.stringify(payload ?? {}),
         });
+        return { data: body };
+      }
+
+      if (name === "createOnboardingCandidate") {
+        const body = await request("/api/onboarding/candidates", {
+          method: "POST",
+          body: JSON.stringify(payload ?? {}),
+        });
+        return { data: body };
+      }
+
+      if (name === "getOnboardingCandidate") {
+        const id = payload.id || payload.candidateId;
+        if (!id) throw new ApiError("id is required", 400);
+        const body = await request(
+          `/api/onboarding/candidates/${encodeURIComponent(id)}`
+        );
+        return { data: body };
+      }
+
+      if (name === "beginOnboardingCandidate") {
+        const id = payload.id || payload.candidateId;
+        if (!id) throw new ApiError("id is required", 400);
+        const body = await request(
+          `/api/onboarding/candidates/${encodeURIComponent(id)}/begin-onboarding`,
+          { method: "POST" }
+        );
+        return { data: body };
+      }
+
+      if (name === "getMyOnboarding") {
+        const body = await request("/api/onboarding/me");
+        return { data: body };
+      }
+
+      if (name === "updateMyVideoProgress") {
+        const stepId = payload.stepId || payload.step_id;
+        if (!stepId) throw new ApiError("stepId is required", 400);
+        const body = await request(
+          `/api/onboarding/me/steps/${encodeURIComponent(stepId)}/video-progress`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              slug: payload.slug,
+              watched: payload.watched,
+            }),
+          }
+        );
         return { data: body };
       }
 

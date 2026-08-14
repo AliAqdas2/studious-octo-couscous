@@ -238,6 +238,142 @@ async function main(): Promise<void> {
     } else {
       console.log("gmail_poll_state dead-letter alert columns already present");
     }
+
+    const tablesOnboarding = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+    `;
+    const namesOnboarding = new Set(
+      tablesOnboarding.map((row) => String(row.table_name))
+    );
+    const needsOnboarding =
+      !namesOnboarding.has("candidates") ||
+      !namesOnboarding.has("onboarding_workflow_templates") ||
+      !namesOnboarding.has("candidate_steps");
+
+    if (needsOnboarding) {
+      console.log("Applying onboarding candidates migration (0006)...");
+      const migSql = readFileSync(
+        join(__dirname, "../drizzle/0006_onboarding_candidates.sql"),
+        "utf8"
+      );
+      for (const statement of migSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("onboarding candidates migration applied");
+    } else {
+      console.log("onboarding candidate tables already present");
+    }
+
+    const indexRows = await sql`
+      select indexname
+      from pg_indexes
+      where schemaname = 'public'
+        and indexname in ('activity_logs_timestamp_idx', 'call_logs_status_ended_at_idx')
+    `;
+    const indexNames = new Set(indexRows.map((row) => String(row.indexname)));
+    const needsAiLogsIndexes =
+      !indexNames.has("activity_logs_timestamp_idx") ||
+      !indexNames.has("call_logs_status_ended_at_idx");
+
+    if (needsAiLogsIndexes) {
+      console.log("Applying AI logs indexes migration (0007)...");
+      const migSql = readFileSync(
+        join(__dirname, "../drizzle/0007_ai_logs_indexes.sql"),
+        "utf8"
+      );
+      for (const statement of migSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("AI logs indexes migration applied");
+    } else {
+      console.log("AI logs indexes already present");
+    }
+
+    const candidateUserCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'candidates'
+        and column_name = 'user_id'
+    `;
+    const needsOnboardingUserLink = candidateUserCol.length === 0;
+
+    if (needsOnboardingUserLink) {
+      console.log("Applying onboarding user link migration (0008)...");
+      const migSql = readFileSync(
+        join(__dirname, "../drizzle/0008_onboarding_user_link.sql"),
+        "utf8"
+      );
+      for (const statement of migSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("onboarding user link migration applied");
+    } else {
+      console.log("candidates.user_id already present");
+    }
+
+    const statusEnumRows = await sql`
+      select e.enumlabel
+      from pg_type t
+      join pg_enum e on t.oid = e.enumtypid
+      where t.typname = 'gmail_message_status'
+    `;
+    const statusLabels = new Set(
+      statusEnumRows.map((row) => String(row.enumlabel))
+    );
+    if (!statusLabels.has("processing")) {
+      console.log("Applying gmail intake processing status (0009)...");
+      await sql.unsafe(
+        `ALTER TYPE "gmail_message_status" ADD VALUE IF NOT EXISTS 'processing'`
+      );
+      console.log("gmail intake processing status applied");
+    } else {
+      console.log("gmail_message_status processing already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

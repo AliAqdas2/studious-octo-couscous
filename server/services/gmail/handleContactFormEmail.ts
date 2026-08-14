@@ -50,7 +50,9 @@ import { maybeAlertLlmDailyQuotaExceeded } from "../ai/llmDailyQuota.js";
 import {
   clearRetry,
   isPermanentIntakeError,
-  isTerminalProcessedStatus,
+  isIntakeMessageBusy,
+  isUniqueConstraintError,
+  STALE_PROCESSING_MS,
   scheduleIntakeRetry,
   MAX_INTAKE_RETRIES,
 } from "./intakeRetry.js";
@@ -62,7 +64,6 @@ function requireDb() {
 }
 
 const CLOSED_LEAD_STAGES = new Set(["Completed", "Lost/Canceled"]);
-const KNOWN_SENDER_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** Auto-block only after this many content-spam hits (not 1-strike). */
 const KNOWN_SPAM_AUTO_BLOCK_MIN = 3;
@@ -73,10 +74,16 @@ const KNOWN_SPAM_ECHO_REASON =
 const KNOWN_SPAM_CC_ONLY_REASON =
   "Mangia DC was only CCed, not in To field — not a direct customer inquiry";
 
+/** Categories that still go to spam even when an open lead shares this email. */
+const HARD_REJECT_CATEGORIES = new Set([
+  "Possible Spam",
+  "Job Application",
+  "Hiring-Related",
+]);
+
+/** Exact-email lead that is still in the pipeline (not Completed / Lost). */
 function isActiveRecentLead(lead: typeof leads.$inferSelect): boolean {
-  if (CLOSED_LEAD_STAGES.has(String(lead.stage || ""))) return false;
-  const ts = lead.lastContactDate || lead.createdDate;
-  return !!ts && Date.now() - new Date(ts).getTime() <= KNOWN_SENDER_WINDOW_MS;
+  return !CLOSED_LEAD_STAGES.has(String(lead.stage || ""));
 }
 
 /**
@@ -185,6 +192,114 @@ function logMessageOutcome(r: MessageResult): void {
 export type ProcessedSource = "webhook" | "poller";
 export type ProcessedStatus = "lead" | "spam" | "ignored" | "failed";
 
+async function claimMessageForProcessing(
+  gmailMessageId: string,
+  source: ProcessedSource
+): Promise<{ claimed: boolean; reason?: string }> {
+  const db = requireDb();
+  const now = new Date();
+
+  const [existing] = await db
+    .select()
+    .from(processedGmailMessages)
+    .where(eq(processedGmailMessages.gmailMessageId, gmailMessageId))
+    .limit(1);
+
+  if (existing && isTerminalProcessedStatus(existing.status)) {
+    return {
+      claimed: false,
+      reason: `Previously processed as "${existing.status}"`,
+    };
+  }
+
+  if (existing && String(existing.status) === "processing") {
+    const ts = existing.processedAt || existing.createdDate;
+    const age = ts ? Date.now() - new Date(ts).getTime() : 0;
+    if (age < STALE_PROCESSING_MS) {
+      return {
+        claimed: false,
+        reason: "Already claimed by another intake worker",
+      };
+    }
+    const stolen = await db
+      .update(processedGmailMessages)
+      .set({
+        status: "processing",
+        processedAt: now,
+        source,
+      })
+      .where(
+        and(
+          eq(processedGmailMessages.gmailMessageId, gmailMessageId),
+          eq(processedGmailMessages.status, "processing")
+        )
+      )
+      .returning({ id: processedGmailMessages.id });
+    if (stolen[0]) {
+      intakeLog(`stole stale processing claim messageId=${gmailMessageId}`);
+      return { claimed: true };
+    }
+    return {
+      claimed: false,
+      reason: "Lost race stealing stale processing claim",
+    };
+  }
+
+  try {
+    const inserted = await db
+      .insert(processedGmailMessages)
+      .values({
+        gmailMessageId,
+        processedAt: now,
+        source,
+        status: "processing",
+      })
+      .onConflictDoNothing({
+        target: processedGmailMessages.gmailMessageId,
+      })
+      .returning({ id: processedGmailMessages.id });
+    if (inserted[0]) {
+      return { claimed: true };
+    }
+  } catch (e) {
+    if (isUniqueConstraintError(e)) {
+      return {
+        claimed: false,
+        reason: "Already claimed by another intake worker",
+      };
+    }
+    console.error(
+      `[email-intake] claim insert failed for ${gmailMessageId}:`,
+      e instanceof Error ? e.message : e
+    );
+    throw e;
+  }
+
+  return {
+    claimed: false,
+    reason: "Already claimed by another intake worker",
+  };
+}
+
+async function releaseProcessingClaim(gmailMessageId: string): Promise<void> {
+  try {
+    const db = requireDb();
+    await db
+      .delete(processedGmailMessages)
+      .where(
+        and(
+          eq(processedGmailMessages.gmailMessageId, gmailMessageId),
+          eq(processedGmailMessages.status, "processing")
+        )
+      );
+  } catch (e) {
+    console.error(
+      `[email-intake] releaseProcessingClaim(${gmailMessageId}) failed:`,
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
 export interface MessageResult {
   messageId: string;
   from?: string;
@@ -242,12 +357,24 @@ async function recordProcessed(
 ): Promise<void> {
   try {
     const db = requireDb();
-    await db.insert(processedGmailMessages).values({
-      gmailMessageId,
-      processedAt: new Date(),
-      source,
-      status,
-    });
+    const now = new Date();
+    const updated = await db
+      .update(processedGmailMessages)
+      .set({
+        status,
+        processedAt: now,
+        source,
+      })
+      .where(eq(processedGmailMessages.gmailMessageId, gmailMessageId))
+      .returning({ id: processedGmailMessages.id });
+    if (!updated[0]) {
+      await db.insert(processedGmailMessages).values({
+        gmailMessageId,
+        processedAt: now,
+        source,
+        status,
+      });
+    }
     if (status !== "failed") {
       await clearRetry(gmailMessageId);
     }
@@ -270,7 +397,13 @@ async function recordProcessed(
       }
     }
   } catch (e) {
-    console.warn(
+    if (isUniqueConstraintError(e)) {
+      console.error(
+        `[email-intake] recordProcessed(${gmailMessageId}, ${status}) unique conflict — another worker already claimed this id`
+      );
+      return;
+    }
+    console.error(
       `[email-intake] recordProcessed(${gmailMessageId}, ${status}) failed:`,
       e instanceof Error ? e.message : e
     );
@@ -452,22 +585,15 @@ export async function handleContactFormEmail(input: {
 
   for (const messageId of messageIds) {
     try {
-      const already = await db
-        .select()
-        .from(processedGmailMessages)
-        .where(eq(processedGmailMessages.gmailMessageId, messageId))
-        .limit(1);
-      if (already[0]) {
-        if (isTerminalProcessedStatus(already[0].status)) {
-          intakeDump("already processed row", already[0]);
-          skippedCount++;
-          results.push({
-            messageId,
-            outcome: "already-processed",
-            reason: `Previously processed as "${already[0].status}"`,
-          });
-          continue;
-        }
+      const claim = await claimMessageForProcessing(messageId, source);
+      if (!claim.claimed) {
+        skippedCount++;
+        results.push({
+          messageId,
+          outcome: "already-processed",
+          reason: claim.reason || "Already claimed",
+        });
+        continue;
       }
 
       let message;
@@ -507,6 +633,9 @@ export async function handleContactFormEmail(input: {
           immediateDeadLetter:
             statusCode === 404 || isPermanentIntakeError(fetchErr),
         });
+        if (!retryResult.deadLetter) {
+          await releaseProcessingClaim(messageId);
+        }
         skippedCount++;
         results.push({
           messageId,
@@ -797,6 +926,8 @@ export async function handleContactFormEmail(input: {
       }
 
       let openLeadForSender: typeof leads.$inferSelect | null = null;
+      /** Exact email match only — used for No→append (not name/company fuzzy). */
+      let exactEmailLead: typeof leads.$inferSelect | null = null;
       let nameMatchedLeads: (typeof leads.$inferSelect)[] = [];
       let companyMatchedLeads: (typeof leads.$inferSelect)[] = [];
       let allCandidateLeads: (typeof leads.$inferSelect)[] = [];
@@ -825,6 +956,7 @@ export async function handleContactFormEmail(input: {
             .limit(1);
           openLeadForSender = byRaw[0] || null;
         }
+        exactEmailLead = openLeadForSender;
 
         const recentLeads = await db
           .select()
@@ -1083,11 +1215,41 @@ export async function handleContactFormEmail(input: {
       }
 
       if (!hasBusinessPotential) {
-        const pageUrlMatch = emailBody.match(/Page URL:\s*(\S+)/i);
         const effectiveCategory =
           senderRole === "operational_or_staff"
             ? "Unrelated Inquiry"
             : rawLlmResult.category;
+
+        // Follow-up on an existing open lead (exact email) — append, don't spam.
+        // Covers logistics / already-booked replies where business_potential is No.
+        if (
+          exactEmailLead &&
+          isActiveRecentLead(exactEmailLead) &&
+          !HARD_REJECT_CATEGORIES.has(String(effectiveCategory || ""))
+        ) {
+          await appendToExistingLead(exactEmailLead, {
+            from,
+            subject,
+            emailBody,
+            messageId,
+            threadId,
+            reasonTag: "llm_followup_existing_lead",
+            llmUsage,
+          });
+          await recordProcessed(messageId, "ignored", source);
+          skippedCount++;
+          results.push({
+            messageId,
+            from,
+            subject,
+            outcome: "appended-to-lead",
+            reason: `Follow-up on existing lead ${exactEmailLead.id} (business_potential=No): ${aiReason}`,
+            lead_id: exactEmailLead.id,
+          });
+          continue;
+        }
+
+        const pageUrlMatch = emailBody.match(/Page URL:\s*(\S+)/i);
         const spamCategoryMap: Record<
           string,
           "Promotion" | "Other"
@@ -1344,6 +1506,9 @@ export async function handleContactFormEmail(input: {
         error: perMsgErr,
         immediateDeadLetter: isPermanentIntakeError(perMsgErr),
       });
+      if (!retryResult.deadLetter) {
+        await releaseProcessingClaim(messageId);
+      }
       skippedCount++;
       results.push({
         messageId,
@@ -1478,7 +1643,7 @@ export async function listUnprocessedInboxMessageIds(
       .from(processedGmailMessages)
       .where(eq(processedGmailMessages.gmailMessageId, id))
       .limit(1);
-    if (!seen[0] || !isTerminalProcessedStatus(seen[0].status)) {
+    if (!seen[0] || !isIntakeMessageBusy(seen[0])) {
       unprocessed.push(id);
     }
   }

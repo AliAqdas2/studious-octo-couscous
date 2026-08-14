@@ -22,7 +22,10 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   if (err instanceof AppError) {
-    res.status(err.status).json({ error: err.message });
+    res.status(err.status).json({
+      error: err.message,
+      ...(err.extras ?? {}),
+    });
     return;
   }
 

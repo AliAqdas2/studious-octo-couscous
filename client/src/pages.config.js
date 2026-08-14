@@ -65,12 +65,16 @@ import Events from './pages/Events';
 import Home from './pages/Home';
 import LeadDetail from './pages/LeadDetail';
 import Leads from './pages/Leads';
+import MyOnboarding from './pages/MyOnboarding';
 import PipelineEmailAutomations from './pages/PipelineEmailAutomations';
 import RoleAssignment from './pages/RoleAssignment';
 import Settings from './pages/Settings';
 import SpamEmails from './pages/SpamEmails';
 import TaskSyncAdmin from './pages/TaskSyncAdmin';
 import Tasks from './pages/Tasks';
+import Users from './pages/Users';
+import Recruitment from './pages/Recruitment';
+import CandidateDetail from './pages/CandidateDetail';
 import __Layout from './Layout.jsx';
 
 
@@ -82,6 +86,7 @@ export const PAGES = {
     "AutomatedCallsDashboard": AutomatedCallsDashboard,
     "AutomatedCallDetail": AutomatedCallDetail,
     "CalendarView": CalendarView,
+    "CandidateDetail": CandidateDetail,
     "ClientDatabase": ClientDatabase,
     "ClientProfile": ClientProfile,
     "ConfirmedEvents": ConfirmedEvents,
@@ -93,12 +98,15 @@ export const PAGES = {
     "Home": Home,
     "LeadDetail": LeadDetail,
     "Leads": Leads,
+    "MyOnboarding": MyOnboarding,
     "PipelineEmailAutomations": PipelineEmailAutomations,
+    "Recruitment": Recruitment,
     "RoleAssignment": RoleAssignment,
     "Settings": Settings,
     "SpamEmails": SpamEmails,
     "TaskSyncAdmin": TaskSyncAdmin,
     "Tasks": Tasks,
+    "Users": Users,
 }
 
 export const pagesConfig = {

@@ -35,6 +35,41 @@ export const TERMINAL_PROCESSED_STATUSES = new Set([
   "failed",
 ]);
 
+/** In-flight claim older than this may be stolen (crash recovery). */
+export const STALE_PROCESSING_MS = 15 * 60 * 1000;
+
+export function isUniqueConstraintError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("duplicate") ||
+    lower.includes("unique") ||
+    lower.includes("23505")
+  );
+}
+
+/**
+ * Skip this Gmail id in webhook/poller lists: already finished, or another
+ * worker holds a fresh processing claim.
+ */
+export function isIntakeMessageBusy(
+  row:
+    | {
+        status?: string | null;
+        processedAt?: Date | string | null;
+        createdDate?: Date | string | null;
+      }
+    | null
+    | undefined
+): boolean {
+  if (!row) return false;
+  if (isTerminalProcessedStatus(row.status)) return true;
+  if (String(row.status || "") !== "processing") return false;
+  const ts = row.processedAt || row.createdDate;
+  if (!ts) return true;
+  return Date.now() - new Date(ts).getTime() < STALE_PROCESSING_MS;
+}
+
 /** Errors that will never succeed on retry (config / missing resources). */
 export function isPermanentIntakeError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -152,16 +187,33 @@ async function recordFailedProcessed(
 ): Promise<void> {
   const db = requireDb();
   try {
-    await db.insert(processedGmailMessages).values({
-      gmailMessageId: messageId,
-      processedAt: new Date(),
-      source,
-      status: "failed",
-    });
+    await db
+      .update(processedGmailMessages)
+      .set({
+        status: "failed",
+        processedAt: new Date(),
+        source,
+      })
+      .where(eq(processedGmailMessages.gmailMessageId, messageId));
+    const existing = await db
+      .select({ id: processedGmailMessages.id })
+      .from(processedGmailMessages)
+      .where(eq(processedGmailMessages.gmailMessageId, messageId))
+      .limit(1);
+    if (!existing[0]) {
+      await db.insert(processedGmailMessages).values({
+        gmailMessageId: messageId,
+        processedAt: new Date(),
+        source,
+        status: "failed",
+      });
+    }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!msg.includes("duplicate") && !msg.includes("unique")) {
-      console.warn(`${LOG} recordFailedProcessed(${messageId}) failed:`, msg);
+    if (!isUniqueConstraintError(e)) {
+      console.error(
+        `${LOG} recordFailedProcessed(${messageId}) failed:`,
+        e instanceof Error ? e.message : e
+      );
     }
   }
 }

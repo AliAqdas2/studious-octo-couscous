@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -11,6 +11,7 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import PostLoginRedirect from "@/components/auth/PostLoginRedirect";
 
 export default function ForgotPassword() {
   const { isAuthenticated, isLoadingAuth } = useAuth();
@@ -40,7 +41,7 @@ export default function ForgotPassword() {
   }, []);
 
   if (!isLoadingAuth && isAuthenticated) {
-    return <Navigate to="/Dashboard" replace />;
+    return <PostLoginRedirect />;
   }
 
   if (available === false) {

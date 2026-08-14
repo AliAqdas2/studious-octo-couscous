@@ -3,6 +3,8 @@ import {
   activityLogs,
   automationConfig,
   callLogs,
+  candidates,
+  candidateSteps,
   clients,
   emailTemplates,
   eventTemplates,
@@ -11,6 +13,8 @@ import {
   gmailPollState,
   leads,
   mentionReads,
+  onboardingWorkflowSteps,
+  onboardingWorkflowTemplates,
   processedGmailMessages,
   roleAssignments,
   spamEmails,
@@ -152,6 +156,30 @@ export const entityRegistry: Record<string, EntityDefinition> = {
     searchable: ["event_type", "status"],
     defaultSort: "-created_date",
     requiredOnCreate: ["event_type", "received_at"],
+  },
+  candidates: {
+    table: candidates,
+    searchable: ["name", "email", "phone"],
+    defaultSort: "-created_date",
+    requiredOnCreate: ["name", "email", "job_role", "hire_type", "source"],
+  },
+  "onboarding-workflow-templates": {
+    table: onboardingWorkflowTemplates,
+    searchable: ["name", "job_role"],
+    defaultSort: "-created_date",
+    requiredOnCreate: ["name", "job_role", "status"],
+  },
+  "onboarding-workflow-steps": {
+    table: onboardingWorkflowSteps,
+    searchable: ["title", "phase"],
+    defaultSort: "-created_date",
+    requiredOnCreate: ["template_id", "phase", "title"],
+  },
+  "candidate-steps": {
+    table: candidateSteps,
+    searchable: ["title", "phase"],
+    defaultSort: "-created_date",
+    requiredOnCreate: ["candidate_id", "phase", "title"],
   },
 };
 

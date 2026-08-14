@@ -17,6 +17,7 @@ import Users from "@/pages/Users";
 import Login from "@/pages/Login";
 import ForgotPassword from "@/pages/ForgotPassword";
 import AcceptInvite from "@/pages/AcceptInvite";
+import PostLoginRedirect from "@/components/auth/PostLoginRedirect";
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -50,7 +51,7 @@ const AuthenticatedApp = () => {
   }
 
   if (isAuthenticated && isPublicPage) {
-    return <Navigate to="/Dashboard" replace />;
+    return <PostLoginRedirect />;
   }
 
   return (

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import PostLoginRedirect from "@/components/auth/PostLoginRedirect";
 
 export default function AcceptInvite() {
   const { isAuthenticated, isLoadingAuth } = useAuth();
@@ -52,7 +53,7 @@ export default function AcceptInvite() {
   }, [token]);
 
   if (!isLoadingAuth && isAuthenticated) {
-    return <Navigate to="/Dashboard" replace />;
+    return <PostLoginRedirect />;
   }
 
   const handleSubmit = async (event) => {

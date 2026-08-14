@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import PostLoginRedirect from "@/components/auth/PostLoginRedirect";
 
 export default function Login() {
   const { login, isAuthenticated, isLoadingAuth } = useAuth();
@@ -30,7 +31,7 @@ export default function Login() {
   }, []);
 
   if (!isLoadingAuth && isAuthenticated) {
-    return <Navigate to="/Dashboard" replace />;
+    return <PostLoginRedirect />;
   }
 
   const handleSubmit = async (event) => {

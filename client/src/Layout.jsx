@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from './utils';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -19,12 +19,17 @@ import {
   ChefHat,
   Phone,
   Bot,
-  SlidersHorizontal } from
+  SlidersHorizontal,
+  UserPlus } from
 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import GmailConnectionBanner from '@/components/gmail/GmailConnectionBanner';
 import { isGmailAdminEmail } from '@/lib/gmailAdminEmails';
+import {
+  DEFAULT_APP_PATH,
+  MY_ONBOARDING_PATH,
+} from '@/lib/postLoginPath';
 
 function SpamLeadsCounter() {
   const { data: count = 0 } = useQuery({
@@ -77,6 +82,10 @@ export default function Layout({ children, currentPageName }) {
   const [isPendingActivation, setIsPendingActivation] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const onMyOnboarding =
+    location.pathname === MY_ONBOARDING_PATH ||
+    location.pathname === '/MyOnboarding';
 
   React.useEffect(() => {
     setUser(authUser);
@@ -88,7 +97,7 @@ export default function Layout({ children, currentPageName }) {
     }
   }, [authUser]);
 
-  const { data: userAssignment } = useQuery({
+  const { data: userAssignment, isLoading: assignmentLoading } = useQuery({
     queryKey: ['user-assignment', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -126,6 +135,15 @@ export default function Layout({ children, currentPageName }) {
     navigate('/login', { replace: true });
   };
 
+  // Wait for role before rendering CRM shell (prevents Dashboard flash)
+  if (user && user.role !== 'admin' && assignmentLoading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
+        <div className="w-8 h-8 border-4 border-orange-200 border-t-[#C84B31] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   if (isPendingActivation) {
     // Import and render the activation pending page
     const ActivationPending = React.lazy(() => import('@/pages/ActivationPending'));
@@ -134,6 +152,20 @@ export default function Layout({ children, currentPageName }) {
         <ActivationPending />
       </React.Suspense>);
 
+  }
+
+  const isOnboardingUser =
+    userAssignment?.role === 'Onboarding' && userAssignment?.is_active !== false;
+
+  if (isOnboardingUser) {
+    if (!onMyOnboarding) {
+      return <Navigate to={MY_ONBOARDING_PATH} replace />;
+    }
+    return <>{children}</>;
+  }
+
+  if (onMyOnboarding) {
+    return <Navigate to={DEFAULT_APP_PATH} replace />;
   }
 
   if (isDeactivated) {
@@ -161,6 +193,7 @@ export default function Layout({ children, currentPageName }) {
   const navItems = isAdmin ? [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
   { name: 'Leads', icon: Users, page: 'Leads' },
+  { name: 'Recruitment', icon: UserPlus, page: 'Recruitment' },
   { name: 'Events', icon: Calendar, page: 'Events' },
   { name: 'Tasks', icon: CheckSquare, page: 'Tasks' },
   { name: 'Calendar', icon: Calendar, page: 'CalendarView' },

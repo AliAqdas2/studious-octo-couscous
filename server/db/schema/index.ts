@@ -23,4 +23,8 @@ export * from "./gmail-intake-retries.js";
 export * from "./gmail-intake-dead-letters.js";
 export * from "./fareharbor-events.js";
 export * from "./twilio-webhook-logs.js";
+export * from "./candidates.js";
+export * from "./onboarding-workflow-templates.js";
+export * from "./onboarding-workflow-steps.js";
+export * from "./candidate-steps.js";
 export * from "./relations.js";

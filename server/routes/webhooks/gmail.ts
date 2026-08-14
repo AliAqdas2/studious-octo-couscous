@@ -5,7 +5,8 @@ import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
 import { processedGmailMessages } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
-import { isTerminalProcessedStatus } from "../../services/gmail/intakeRetry.js";
+import { isIntakeMessageBusy } from "../../services/gmail/intakeRetry.js";
+import { withGmailIntakeLock } from "../../services/gmail/gmailIntakeLock.js";
 import {
   getCurrentHistoryId,
   getPollState,
@@ -280,50 +281,52 @@ router.post("/", checkWebhookSecret, async (req, res, next) => {
   dump("raw request body (full)", req.body);
 
   try {
-    const resolved = await resolveMessageIds(req.body);
-    const { messageIds, source, detail } = resolved;
-    dump("resolveMessageIds detail", detail);
+    const result = await withGmailIntakeLock(async () => {
+      const resolved = await resolveMessageIds(req.body);
+      const { messageIds, source, detail } = resolved;
+      dump("resolveMessageIds detail", detail);
 
-    let toProcess = messageIds;
-    const dedupeSkipped: { id: string; status: string }[] = [];
-    if (messageIds.length > 0) {
-      const db = getDb();
-      if (db) {
-        const filtered: string[] = [];
-        for (const id of messageIds) {
-          const seen = await db
-            .select()
-            .from(processedGmailMessages)
-            .where(eq(processedGmailMessages.gmailMessageId, id))
-            .limit(1);
-          if (!seen[0] || !isTerminalProcessedStatus(seen[0].status)) {
-            filtered.push(id);
-          } else {
-            dedupeSkipped.push({
-              id,
-              status: String(seen[0].status ?? "unknown"),
-            });
+      let toProcess = messageIds;
+      const dedupeSkipped: { id: string; status: string }[] = [];
+      if (messageIds.length > 0) {
+        const db = getDb();
+        if (db) {
+          const filtered: string[] = [];
+          for (const id of messageIds) {
+            const seen = await db
+              .select()
+              .from(processedGmailMessages)
+              .where(eq(processedGmailMessages.gmailMessageId, id))
+              .limit(1);
+            if (!seen[0] || !isIntakeMessageBusy(seen[0])) {
+              filtered.push(id);
+            } else {
+              dedupeSkipped.push({
+                id,
+                status: String(seen[0].status ?? "unknown"),
+              });
+            }
           }
+          toProcess = filtered;
+        } else {
+          log("WARNING: DB not configured — skipping processed-message dedupe");
         }
-        toProcess = filtered;
-      } else {
-        log("WARNING: DB not configured — skipping processed-message dedupe");
       }
-    }
 
-    dump("dedupe: already processed (skipped)", dedupeSkipped);
-    dump("dedupe: toProcess", toProcess);
+      dump("dedupe: already processed (skipped)", dedupeSkipped);
+      dump("dedupe: toProcess", toProcess);
 
-    if (messageIds.length > 0 || toProcess.length > 0) {
-      log(
-        `process source=${source} raw=${messageIds.length} dedupeSkip=${dedupeSkipped.length} toProcess=${toProcess.length}`
-      );
-    }
+      if (messageIds.length > 0 || toProcess.length > 0) {
+        log(
+          `process source=${source} raw=${messageIds.length} dedupeSkip=${dedupeSkipped.length} toProcess=${toProcess.length}`
+        );
+      }
 
-    const result = await handleContactFormEmail({
-      messageIds: toProcess,
-      source,
-      markWebhook: source === "webhook",
+      return handleContactFormEmail({
+        messageIds: toProcess,
+        source,
+        markWebhook: source === "webhook",
+      });
     });
 
     const elapsedMs = Date.now() - started;

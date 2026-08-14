@@ -139,6 +139,7 @@ export const operationalRoleEnum = pgEnum("operational_role", [
   "Event Host",
   "Finance",
   "Instructor",
+  "Onboarding",
 ]);
 
 export const activityEntityTypeEnum = pgEnum("activity_entity_type", [
@@ -147,6 +148,43 @@ export const activityEntityTypeEnum = pgEnum("activity_entity_type", [
   "Task",
   "Email",
   "Drive",
+  "Candidate",
+]);
+
+export const candidateJobRoleEnum = pgEnum("candidate_job_role", [
+  "Event Support Associate",
+  "Event Team Lead",
+  "Culinary Instructor",
+  "Food Tour Guide",
+]);
+
+export const candidateHireTypeEnum = pgEnum("candidate_hire_type", [
+  "Practicum",
+  "Internship",
+  "Part-time",
+  "Contractor",
+]);
+
+export const candidateHireSourceEnum = pgEnum("candidate_hire_source", [
+  "Indeed",
+  "Employee referral",
+  "University / career fair",
+  "University email blast",
+  "Company website",
+  "Other",
+]);
+
+export const onboardingTemplateStatusEnum = pgEnum("onboarding_template_status", [
+  "ready",
+  "coming_soon",
+]);
+
+export const candidateStepStatusEnum = pgEnum("candidate_step_status", [
+  "pending",
+  "in_progress",
+  "done",
+  "blocked",
+  "skipped",
 ]);
 
 export const callLogStatusEnum = pgEnum("call_log_status", [
@@ -207,6 +245,7 @@ export const gmailMessageStatusEnum = pgEnum("gmail_message_status", [
   "spam",
   "ignored",
   "failed",
+  "processing",
 ]);
 
 export const stageEmailChannelEnum = pgEnum("stage_email_channel", ["B2B", "B2C", "Both"]);

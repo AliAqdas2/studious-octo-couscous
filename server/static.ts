@@ -34,7 +34,7 @@ export function serveStatic(app: Express): void {
   app.use("*", (req, res, next) => {
     const url = req.originalUrl;
 
-    if (url.startsWith("/.well-known/") || url.startsWith("/api/")) {
+    if (url.startsWith("/.well-known/") || url.startsWith("/api/") || url.startsWith("/videos/")) {
       return next();
     }
 

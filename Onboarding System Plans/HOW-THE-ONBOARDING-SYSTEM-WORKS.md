@@ -222,7 +222,7 @@ Reuse as-is: `users`, `role_assignments` (operational roles), `activity_logs`, `
 
 | Screen | Who | What it does |
 |--------|-----|-------------|
-| **Recruitment Pipeline** | Managers | Kanban of candidates by stage, filterable by role. Mirrors `Leads.jsx`. |
+| **Recruitment Pipeline** | Managers | Kanban of candidates by stage, filterable by role / source / hire type. Includes a **Hire sources** tab: advertising playbook (links, contacts, fair dates, sample copy, timeline) for every hire channel. Mirrors `Leads.jsx` for the pipeline half. |
 | **Candidate Detail** | Managers | **The centerpiece.** The workflow chart rendered as a live checklist for this person: current step highlighted, every step expandable with its instructions and its clickable resources, complete/approve actions inline. This is literally what Dave asked for. |
 | **Onboarding Board** | Managers, Trainers | Everyone currently in paperwork / shift 1 / 2 / 3, with what's blocking each one. |
 | **Workflow Library** | Admin | Build and edit templates per role. Where you'll add the three new roles without writing code. |
@@ -238,7 +238,7 @@ Plumbing reminder from the existing codebase: a new page needs a file in `client
 
 **Phase 0 — this week (Raisa leaves Friday).** Don't build the engine yet. Build a **clickable prototype of the Event Support Associate flow** — the chart as a real screen, steps expandable, real links to the real videos and the real GMU pages. Even hardcoded. The point is to get Raisa's sign-off while she's still reachable. Dave explicitly offered this: *"If you wanted to flush out just one of these roles… get buy-in from her."*
 
-**Phase 1 — the spine.** `candidates` + recruitment pipeline (steps 1–8). Source tracking, 48-hour SLA on Belle's contact step, decline reasons and resume retention, the Zach → Dave two-stage approval.
+**Phase 1 — the spine.** `candidates` + recruitment pipeline (steps 1–8). Source tracking, 48-hour SLA on Belle's contact step, decline reasons and resume retention, the Zach → Dave two-stage approval. **Status (Aug 2026): delivered** — see [`plans/12-onboarding-phase1.md`](../plans/12-onboarding-phase1.md). All four roles selectable; ESA has full checklist; other roles show Coming soon for role-specific onboarding.
 
 **Phase 2 — onboarding runtime.** Step 9A–9E as gated checklists. Paperwork gate, video + quiz gate, shift 2 → 3 progression with the repeat-shift loop, trainer evaluation, management review.
 
