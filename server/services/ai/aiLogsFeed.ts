@@ -3,6 +3,7 @@ import {
   count,
   desc,
   eq,
+  gte,
   inArray,
   like,
   or,
@@ -480,8 +481,8 @@ export async function getAiLogsStats() {
     .where(
       and(
         aiActivityPredicate(),
-        sql`${activityLogs.timestamp} >= ${since}`,
-        sql`((${activityLogs.details}->>'input_tokens') IS NOT NULL OR (${activityLogs.details}->>'output_tokens') IS NOT NULL)`
+        gte(activityLogs.timestamp, since),
+        sql`((${activityLogs.details}::jsonb->>'input_tokens') IS NOT NULL OR (${activityLogs.details}::jsonb->>'output_tokens') IS NOT NULL)`
       )
     );
 
