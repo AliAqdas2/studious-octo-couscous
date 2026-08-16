@@ -511,7 +511,7 @@ export async function sendDailyDigest(): Promise<Record<string, unknown>> {
       </div>
     `;
 
-  const subject = `Daily Digest — ${totalItems} item${totalItems === 1 ? "" : "s"} for ${todayDisplay}`;
+  const subject = `Daily Digest - ${totalItems} item${totalItems === 1 ? "" : "s"} for ${todayDisplay}`;
 
   const sent: { to: string; ok: boolean; error?: string }[] = [];
 
