@@ -193,7 +193,7 @@ export default function Layout({ children, currentPageName }) {
   const navItems = isAdmin ? [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
   { name: 'Leads', icon: Users, page: 'Leads' },
-  { name: 'Recruitment', icon: UserPlus, page: 'Recruitment' },
+  //{ name: 'Recruitment', icon: UserPlus, page: 'Recruitment' },
   { name: 'Events', icon: Calendar, page: 'Events' },
   { name: 'Tasks', icon: CheckSquare, page: 'Tasks' },
   { name: 'Calendar', icon: Calendar, page: 'CalendarView' },
