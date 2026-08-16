@@ -22,7 +22,9 @@
     "db:reset-data": "tsx scripts/erase-data.ts && tsx scripts/load-data.ts",
     "db:erase:prod": "node dist/erase-data.js",
     "db:load-data:prod": "node dist/load-data.js",
-    "db:reset-data:prod": "node dist/erase-data.js && node dist/load-data.js"
+    "db:reset-data:prod": "node dist/erase-data.js && node dist/load-data.js",
+    "jobs:send-digest": "tsx scripts/send-daily-digest.ts",
+    "jobs:send-digest:prod": "node dist/send-daily-digest.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

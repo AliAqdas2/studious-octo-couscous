@@ -47,6 +47,12 @@ RUN npm run build \
     --platform=node \
     --packages=external \
     --outfile=dist/seed-onboarding.js \
+    --format=esm \
+  && npx esbuild scripts/send-daily-digest.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/send-daily-digest.js \
     --format=esm
 
 FROM node:22-bookworm-slim AS runner

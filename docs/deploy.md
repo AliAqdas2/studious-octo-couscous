@@ -105,6 +105,8 @@ docker compose down
 docker compose build --no-cache && docker compose up -d
 # Import pipeline email templates (one-shot upsert)
 docker compose exec app node dist/seed-email-templates.js
+# Send daily digest now (same as 7 AM ET cron; does not disable the schedule)
+docker exec -it mangia_app node dist/send-daily-digest.js
 ```
 
 ---
@@ -114,6 +116,7 @@ docker compose exec app node dist/seed-email-templates.js
 - Migrations run on container start (`RUN_MIGRATIONS=true`). Set `false` to skip.
 - Default admin is seeded on start if missing (`RUN_SEED=true`, uses `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, defaults `admin@mangia.com` / `changeme`).
 - Jobs (Gmail poll, call retries, daily digest) default to **on** in Compose via `ENABLE_JOBS`; override in `.env`.
+- Manual digest anytime: `docker exec -it mangia_app node dist/send-daily-digest.js` (or locally `npm run jobs:send-digest`).
 - Health: `GET /api/health` (checks DB).
 - Image does not embed `.env`; keep secrets only on the server.
 
