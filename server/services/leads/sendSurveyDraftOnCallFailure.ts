@@ -37,27 +37,48 @@ function requireDb() {
   return db;
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function boldHtml(value: string): string {
+  if (!value) return "";
+  return `<b>${escapeHtml(value)}</b>`;
+}
+
 function replaceVariables(
   text: string,
   lead: typeof leads.$inferSelect,
-  availabilityText: string
+  availabilityText: string,
+  options?: { boldHtml?: boolean }
 ): string {
   if (!text) return "";
+  const wrap = (value: string) =>
+    options?.boldHtml ? boldHtml(value) : value;
   const preferred = lead.preferredDate
     ? new Date(lead.preferredDate).toLocaleDateString()
     : "";
   const withLeadVars = text
-    .replace(/\{\{name\}\}/gi, lead.name || "")
-    .replace(/\{\{company\}\}/gi, lead.company || "")
-    .replace(/\{\{email\}\}/gi, lead.email || "")
-    .replace(/\{\{event_type\}\}/gi, lead.eventTypeInterest || "")
-    .replace(/\{\{preferred_date\}\}/gi, preferred)
+    .replace(/\{\{name\}\}/gi, wrap(lead.name || ""))
+    .replace(/\{\{company\}\}/gi, wrap(lead.company || ""))
+    .replace(/\{\{email\}\}/gi, wrap(lead.email || ""))
+    .replace(/\{\{event_type\}\}/gi, wrap(lead.eventTypeInterest || ""))
+    .replace(/\{\{preferred_date\}\}/gi, wrap(preferred))
     .replace(
       /\{\{headcount\}\}/gi,
-      lead.headcountEstimate != null ? String(lead.headcountEstimate) : ""
+      wrap(
+        lead.headcountEstimate != null ? String(lead.headcountEstimate) : ""
+      )
     )
-    .replace(/\{\{phone\}\}/gi, lead.phone || "");
-  return replaceSalesManagerAvailability(withLeadVars, availabilityText);
+    .replace(/\{\{phone\}\}/gi, wrap(lead.phone || ""));
+  return replaceSalesManagerAvailability(
+    withLeadVars,
+    wrap(availabilityText)
+  );
 }
 
 async function pickSurveyTemplate(
@@ -163,12 +184,15 @@ export async function sendSurveyDraftOnCallFailure(
   const slot = await findNextFreeSlot();
   const availabilityText = slot.formatted;
   const subject = replaceVariables(template.subject, lead, availabilityText);
-  const body = replaceVariables(template.body, lead, availabilityText);
+  const bodyHtml = replaceVariables(template.body, lead, availabilityText, {
+    boldHtml: true,
+  }).replace(/\n/g, "<br>\n");
 
   const draft = await createGmailDraft({
     to: lead.email,
     subject,
-    body,
+    body: bodyHtml,
+    html: true,
     leadId: lead.id,
     userName: "System (Call Fallback)",
   });

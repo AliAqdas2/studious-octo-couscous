@@ -73,6 +73,8 @@ export interface CreateDraftInput {
   to: string;
   subject: string;
   body: string;
+  /** When true, stores body as text/html (survey drafts with bold answers). */
+  html?: boolean;
   leadId?: string;
   userId?: string | null;
   userName?: string | null;
@@ -80,12 +82,17 @@ export interface CreateDraftInput {
 
 export async function createGmailDraft(input: CreateDraftInput) {
   const gmail = await getGmailApi();
+  const contentType = input.html
+    ? 'text/html; charset="UTF-8"'
+    : 'text/plain; charset="UTF-8"';
   const message = [
     `To: ${input.to}`,
     `Subject: ${asciiEmailSubject(input.subject)}`,
+    "MIME-Version: 1.0",
+    `Content-Type: ${contentType}`,
     "",
     input.body,
-  ].join("\n");
+  ].join("\r\n");
   const encodedMessage = encodeRawMessage(message);
 
   const response = await gmail.users.drafts.create({
