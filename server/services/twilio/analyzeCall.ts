@@ -301,6 +301,188 @@ function correctPreferredDate(iso: string): Date | null {
   return fixed;
 }
 
+const MONTH_NAME_TO_NUM: Record<string, number> = {
+  january: 1,
+  jan: 1,
+  february: 2,
+  feb: 2,
+  march: 3,
+  mar: 3,
+  april: 4,
+  apr: 4,
+  may: 5,
+  june: 6,
+  jun: 6,
+  july: 7,
+  jul: 7,
+  august: 8,
+  aug: 8,
+  september: 9,
+  sep: 9,
+  sept: 9,
+  october: 10,
+  oct: 10,
+  november: 11,
+  nov: 11,
+  december: 12,
+  dec: 12,
+};
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function parseIsoDateParts(iso: string): {
+  year: number;
+  month: number;
+  day: number;
+  timeSuffix: string;
+} | null {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})(T.*)?$/);
+  if (!m) return null;
+  return {
+    year: Number(m[1]),
+    month: Number(m[2]),
+    day: Number(m[3]),
+    timeSuffix: m[4] || "T00:00:00",
+  };
+}
+
+function monthFromText(text: string): number | null {
+  const lower = text.toLowerCase();
+  for (const [name, num] of Object.entries(MONTH_NAME_TO_NUM)) {
+    const re = new RegExp(`\\b${name}\\.?\\b`, "i");
+    if (re.test(lower)) return num;
+  }
+  return null;
+}
+
+/** Parse "September 21st", "Sep 21", "21 September" from timing/summary. */
+function parseMonthDayFromText(text: string): { month: number; day: number } | null {
+  if (!text.trim()) return null;
+
+  const monthFirst =
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i;
+  const m1 = text.match(monthFirst);
+  if (m1) {
+    const month = MONTH_NAME_TO_NUM[m1[1]!.toLowerCase()];
+    if (month) return { month, day: Number(m1[2]) };
+  }
+
+  const dayFirst =
+    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\b/i;
+  const m2 = text.match(dayFirst);
+  if (m2) {
+    const month = MONTH_NAME_TO_NUM[m2[2]!.toLowerCase()];
+    if (month) return { month, day: Number(m2[1]) };
+  }
+
+  const monthOnly = monthFromText(text);
+  if (monthOnly) {
+    const dayMatch = text.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);
+    if (dayMatch) return { month: monthOnly, day: Number(dayMatch[1]) };
+  }
+
+  return null;
+}
+
+function buildEventDateIso(
+  year: number,
+  month: number,
+  day: number,
+  timeSuffix = "T00:00:00"
+): string {
+  return `${year}-${pad2(month)}-${pad2(day)}${timeSuffix}`;
+}
+
+/**
+ * Fix event_date_iso when LLM picks the call month for day-only phrases
+ * (e.g. Aug 21 instead of Sep 21 when timing says "September 21st").
+ */
+function reconcileEventDate(
+  extracted: ExtractedCall,
+  existingLeadPreferredDate?: Date | null
+): string | undefined {
+  const timing = extracted.timing || "";
+  const summary = extracted.summary || "";
+  const combined = `${timing} ${summary}`.trim();
+  const fromText = parseMonthDayFromText(combined);
+  const year = new Date().getFullYear();
+
+  let eventIso = hasValue(extracted.event_date_iso)
+    ? extracted.event_date_iso!.trim()
+    : undefined;
+
+  if (fromText) {
+    const isoParts = eventIso ? parseIsoDateParts(eventIso) : null;
+    const targetYear = isoParts?.year ?? year;
+    const targetDay = isoParts?.day ?? fromText.day;
+    const timeSuffix = isoParts?.timeSuffix ?? "T00:00:00";
+
+    if (!eventIso || (isoParts && isoParts.month !== fromText.month)) {
+      eventIso = buildEventDateIso(
+        targetYear,
+        fromText.month,
+        targetDay,
+        timeSuffix
+      );
+    }
+  }
+
+  if (
+    eventIso &&
+    existingLeadPreferredDate &&
+    !Number.isNaN(existingLeadPreferredDate.getTime())
+  ) {
+    const leadMonth = existingLeadPreferredDate.getUTCMonth() + 1;
+    const leadDay = existingLeadPreferredDate.getUTCDate();
+    const leadYear = existingLeadPreferredDate.getUTCFullYear();
+    const isoParts = parseIsoDateParts(eventIso);
+    const textMonth = fromText?.month ?? monthFromText(combined);
+
+    if (
+      isoParts &&
+      isoParts.day === leadDay &&
+      isoParts.month !== leadMonth &&
+      (textMonth === leadMonth || !fromText)
+    ) {
+      eventIso = buildEventDateIso(
+        leadYear,
+        leadMonth,
+        leadDay,
+        isoParts.timeSuffix
+      );
+    }
+  }
+
+  return eventIso;
+}
+
+function formatLeadDateForPrompt(d: Date | null | undefined): string {
+  if (!d || Number.isNaN(d.getTime())) return "(none on file)";
+  return d.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+function buildLeadContextBlock(lead: typeof leads.$inferSelect): string {
+  return [
+    "",
+    "LEAD RECORD (already in CRM — use for event date disambiguation):",
+    `- Date of Interest (preferred event date): ${formatLeadDateForPrompt(lead.preferredDate)}`,
+    `- Meeting date on file: ${formatLeadDateForPrompt(lead.meetingDate)}`,
+    "If a preferred event date is already on file, use that month/day for event_date_iso unless the caller explicitly changes it on this call.",
+    "Do NOT replace September with August just because today's date is in August.",
+  ].join("\n");
+}
+
 const extractionSchema: JsonSchemaObject = {
   type: "object",
   properties: {
@@ -474,12 +656,27 @@ export async function analyzeCall(
     .set({ transcript, updatedDate: new Date() })
     .where(eq(callLogs.id, callLogId));
 
+  const existingLead = leadId
+    ? (
+        await db
+          .select()
+          .from(leads)
+          .where(eq(leads.id, leadId))
+          .limit(1)
+      )[0] ?? null
+    : null;
+
+  const leadContextBlock = existingLead
+    ? buildLeadContextBlock(existingLead)
+    : "";
+
   const year = new Date().getFullYear();
   const today = new Date().toISOString().slice(0, 10);
 
   const prompt = `You are an assistant analyzing a sales call transcript for Mangia DC, a company that hosts food, wine, cooking, mixology, paint & sip, yoga, food tours, monuments tours, and team-building experiences in Washington DC.
 
 Today's date is ${today}. When resolving dates (e.g. "June 15", "next Friday"), use the CURRENT year (${year}), not a past year. The transcript was recorded very recently — any date mentioned is in the present or near future.
+${leadContextBlock}
 
 Mangia DC offers EXACTLY these event types (this is the master list — the values are CASE-SENSITIVE):
 ${AVAILABLE_EVENT_TYPES.map((t) => `- ${t}`).join("\n")}
@@ -511,6 +708,11 @@ ${AVAILABLE_STAGES.map((s) => `    * ${s}`).join("\n")}
     * Planning call: "regroup Wednesday at 10", "planning discussion tomorrow at 3" → meeting_date_iso only
     * Event date: "experience on the twenty-first", "retreat September 21" → event_date_iso + timing
     * Example: lead wants event Sep 21 and agrees to planning call Wed Aug 20 at 10am ET → event_date_iso: 2026-09-21T00:00:00, timing: "September 21st", meeting_date_iso: 2026-08-20T10:00:00, nextStage: "Program Planning Discussion"
+  DAY-ONLY EVENT DATES (no month stated — common):
+    * "the twenty-first", "the 21st" for the EXPERIENCE → do NOT default to today's month or the planning-call month
+    * Look for month cues in timing, summary, LEAD RECORD above, or nearby words ("September", budget deadline context)
+    * If timing or summary names a month (e.g. "September 21st"), that month MUST be used in event_date_iso — never August when timing says September
+    * Planning-call weekdays/times (Wednesday, tomorrow, 10am) belong ONLY in meeting_date_iso, never event_date_iso
 - event_types_interested: array of event types from the master list above that the caller mentioned interest in. **You MUST return values EXACTLY as they appear in the master list — same spelling, same casing, same punctuation.**
 - event_type_other: if they mentioned an event type that genuinely does NOT match anything in the master list, put it here as free text.
 - event_format: ONE of "In-Person", "Virtual", "Hybrid" — only if explicitly mentioned.
@@ -575,6 +777,17 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
     return { ok: true, voicemail: true, extracted };
   }
 
+  const reconciledEventIso = reconcileEventDate(
+    extracted,
+    existingLead?.preferredDate ?? null
+  );
+  if (reconciledEventIso !== extracted.event_date_iso) {
+    console.log(
+      `${LOG} Reconciled event_date_iso: ${extracted.event_date_iso ?? "(none)"} → ${reconciledEventIso}`
+    );
+    extracted.event_date_iso = reconciledEventIso;
+  }
+
   const matchedCanonical = Array.isArray(extracted.event_types_interested)
     ? extracted.event_types_interested
         .map(normalizeEventType)
@@ -630,6 +843,10 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
     correctedEventDate = correctPreferredDate(extracted.event_date_iso!);
   }
 
+  console.log(
+    `${LOG} dates event_date_iso=${extracted.event_date_iso ?? "(none)"} meeting_date_iso=${extracted.meeting_date_iso ?? "(none)"} timing=${extracted.timing ?? "(none)"} → preferredDate=${correctedEventDate?.toISOString() ?? "(none)"} meetingDate=${correctedMeetingDate?.toISOString() ?? "(none)"}`
+  );
+
   let resolvedStage = hasValue(extracted.nextStage)
     ? extracted.nextStage!
     : null;
@@ -645,12 +862,6 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
   }
 
   if (leadId) {
-    const [existingLead] = await db
-      .select()
-      .from(leads)
-      .where(eq(leads.id, leadId))
-      .limit(1);
-
     const leadUpdate: Partial<typeof leads.$inferInsert> = {
       lastContactDate: new Date(),
       updatedDate: new Date(),
