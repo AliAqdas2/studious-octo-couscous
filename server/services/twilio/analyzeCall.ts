@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
 import {
+  activityLogs,
   automationConfig,
   callLogs,
   leads,
@@ -15,10 +16,24 @@ import {
   readFileBuffer,
   saveBuffer,
 } from "../files/storage.js";
+import { createGmailDraft } from "../gmail/drafts.js";
 import { sendGmailEmail } from "../gmail/send.js";
+import {
+  anchorMeetingIsoToCallWeekday,
+  correctEasternPreferredDate,
+  easternWeekday,
+  etDateParts,
+  parseIsoDateParts,
+  parseWeekdayFromText,
+  shiftIsoToWeekday,
+  WEEKDAY_NAMES,
+  type WeekdayName,
+} from "../dates/easternTime.js";
 import { sendSurveyDraftOnCallFailure } from "../leads/sendSurveyDraftOnCallFailure.js";
 
 const LOG = "[analyzeCall]";
+const CALL_FOLLOWUP_DRAFT_ACTION = "Call Follow-Up Draft Created";
+const CALL_FOLLOWUP_ACTION_ACTION = "Call Follow-Up Action Required";
 
 const AVAILABLE_STAGES = [
   "New Inquiry",
@@ -83,8 +98,12 @@ interface ExtractedCall {
   timing?: string;
   /** Agreed planning-call datetime (regroup / questionnaire review). */
   meeting_date_iso?: string;
+  /** Weekday name for the planning call (must match meeting_date_iso). */
+  meeting_weekday?: WeekdayName;
   /** When the client wants the experience/event itself. */
   event_date_iso?: string;
+  /** Weekday name for the event/experience if known. */
+  event_weekday?: WeekdayName;
   event_types_interested?: string[];
   event_type_other?: string;
   event_format?: "In-Person" | "Virtual" | "Hybrid";
@@ -120,6 +139,202 @@ function requireDb() {
   const db = getDb();
   if (!db) throw new AppError("Database is not configured", 503);
   return db;
+}
+
+type AnalyzeDb = ReturnType<typeof requireDb>;
+
+async function callFollowUpAlreadyLogged(
+  db: AnalyzeDb,
+  leadId: string,
+  callLogId: string,
+  action: string
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: activityLogs.id })
+    .from(activityLogs)
+    .where(
+      and(
+        eq(activityLogs.entityId, leadId),
+        eq(activityLogs.entityType, "Lead"),
+        eq(activityLogs.action, action),
+        sql`${activityLogs.details}->>'call_log_id' = ${callLogId}`
+      )
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+async function notifyDigestFollowUp(params: {
+  leadId: string;
+  leadName: string;
+  leadEmail: string;
+  leadCompany?: string | null;
+  leadPhone?: string | null;
+  stage: string;
+  subject: string;
+  draftCreated: boolean;
+  extraLines?: string[];
+}): Promise<void> {
+  const digestTo = env.digestRecipients()[0];
+  if (!digestTo) {
+    console.warn(`${LOG} No DIGEST_RECIPIENTS configured — skip notify`);
+    return;
+  }
+
+  const lines = [
+    params.draftCreated
+      ? "A call follow-up email has been added to Drafts in Gmail and is awaiting review."
+      : "A call follow-up action is needed (no client draft created).",
+    "",
+    `Stage: ${params.stage}`,
+    `Draft subject: ${params.subject}`,
+    "",
+    `Lead: ${params.leadName || "(no name)"}${params.leadCompany ? ` (${params.leadCompany})` : ""}`,
+    `Email: ${params.leadEmail}`,
+    `Phone: ${params.leadPhone || "(none)"}`,
+    ...(params.extraLines || []),
+    "",
+    params.draftCreated ? "Open Gmail → Drafts to review and send." : "",
+  ].filter(Boolean);
+
+  await sendGmailEmail({
+    to: digestTo,
+    subject: params.draftCreated
+      ? `Draft ready for review - follow-up to ${params.leadName || params.leadEmail}`
+      : params.subject,
+    body: lines.join("\n"),
+    leadId: params.leadId,
+    userName: "System (Call Analysis)",
+    systemAlert: true,
+  });
+}
+
+async function createCallFollowUpDraftAndNotify(params: {
+  db: AnalyzeDb;
+  leadId: string;
+  callLogId: string;
+  stage: string;
+  to: string;
+  subject: string;
+  body: string;
+  leadName: string;
+  leadCompany?: string | null;
+  leadPhone?: string | null;
+}): Promise<void> {
+  if (
+    await callFollowUpAlreadyLogged(
+      params.db,
+      params.leadId,
+      params.callLogId,
+      CALL_FOLLOWUP_DRAFT_ACTION
+    )
+  ) {
+    console.log(
+      `${LOG} Follow-up draft already logged for call ${params.callLogId} — skip`
+    );
+    return;
+  }
+
+  const draft = await createGmailDraft({
+    to: params.to,
+    subject: params.subject,
+    body: params.body,
+    leadId: params.leadId,
+    userName: "System (Call Analysis)",
+  });
+
+  const draftId =
+    draft && typeof draft === "object" && "draftId" in draft
+      ? String((draft as { draftId?: string }).draftId || "")
+      : "";
+
+  const now = new Date();
+  await params.db.insert(activityLogs).values({
+    entityType: "Lead",
+    entityId: params.leadId,
+    action: CALL_FOLLOWUP_DRAFT_ACTION,
+    details: {
+      draft_id: draftId,
+      call_log_id: params.callLogId,
+      stage: params.stage,
+      to: params.to,
+      subject: params.subject,
+    },
+    userName: "System (Call Analysis)",
+    timestamp: now,
+  });
+
+  await notifyDigestFollowUp({
+    leadId: params.leadId,
+    leadName: params.leadName,
+    leadEmail: params.to,
+    leadCompany: params.leadCompany,
+    leadPhone: params.leadPhone,
+    stage: params.stage,
+    subject: params.subject,
+    draftCreated: true,
+  });
+
+  console.log(
+    `${LOG} Follow-up draft created callLogId=${params.callLogId} draftId=${draftId} stage=${params.stage}`
+  );
+}
+
+async function notifyCallFollowUpActionRequired(params: {
+  db: AnalyzeDb;
+  leadId: string;
+  callLogId: string;
+  stage: string;
+  subject: string;
+  body: string;
+  leadName: string;
+  leadEmail: string;
+  leadCompany?: string | null;
+  leadPhone?: string | null;
+}): Promise<void> {
+  if (
+    await callFollowUpAlreadyLogged(
+      params.db,
+      params.leadId,
+      params.callLogId,
+      CALL_FOLLOWUP_ACTION_ACTION
+    )
+  ) {
+    console.log(
+      `${LOG} Follow-up action already logged for call ${params.callLogId} — skip`
+    );
+    return;
+  }
+
+  const now = new Date();
+  await params.db.insert(activityLogs).values({
+    entityType: "Lead",
+    entityId: params.leadId,
+    action: CALL_FOLLOWUP_ACTION_ACTION,
+    details: {
+      call_log_id: params.callLogId,
+      stage: params.stage,
+      subject: params.subject,
+    },
+    userName: "System (Call Analysis)",
+    timestamp: now,
+  });
+
+  await notifyDigestFollowUp({
+    leadId: params.leadId,
+    leadName: params.leadName,
+    leadEmail: params.leadEmail,
+    leadCompany: params.leadCompany,
+    leadPhone: params.leadPhone,
+    stage: params.stage,
+    subject: params.subject,
+    draftCreated: false,
+    extraLines: ["", params.body],
+  });
+
+  console.log(
+    `${LOG} Follow-up action notify callLogId=${params.callLogId} stage=${params.stage}`
+  );
 }
 
 function twilioBasicAuth(): string {
@@ -231,74 +446,8 @@ function normalizeEventType(val: string): string | null {
 }
 
 /** Interpret naive ISO as America/New_York wall time → UTC Date. */
-function easternWallTimeToUtc(isoLike: string): Date | null {
-  const m = isoLike.match(
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/
-  );
-  if (!m) {
-    const d = new Date(isoLike);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(isoLike.trim())) {
-    const d = new Date(isoLike);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  const y = Number(m[1]);
-  const mo = Number(m[2]) - 1;
-  const day = Number(m[3]);
-  const h = Number(m[4]);
-  const mi = Number(m[5]);
-  const s = Number(m[6] || 0);
-  const targetAsUtc = Date.UTC(y, mo, day, h, mi, s);
-
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  let utcMs = targetAsUtc;
-  for (let i = 0; i < 3; i++) {
-    const parts = formatter.formatToParts(new Date(utcMs));
-    const get = (type: string) =>
-      parts.find((p) => p.type === type)?.value || "0";
-    const hourRaw = Number(get("hour"));
-    const asUtc = Date.UTC(
-      Number(get("year")),
-      Number(get("month")) - 1,
-      Number(get("day")),
-      hourRaw === 24 ? 0 : hourRaw,
-      Number(get("minute")),
-      Number(get("second"))
-    );
-    utcMs += targetAsUtc - asUtc;
-  }
-  return new Date(utcMs);
-}
-
 function correctPreferredDate(iso: string): Date | null {
-  const now = new Date();
-  let fixed = easternWallTimeToUtc(iso);
-  if (!fixed) return null;
-
-  const oneYearAgo = new Date(now);
-  oneYearAgo.setFullYear(now.getFullYear() - 1);
-  if (fixed < oneYearAgo) {
-    const adjusted = new Date(fixed);
-    adjusted.setFullYear(now.getFullYear());
-    if (adjusted < now) adjusted.setFullYear(now.getFullYear() + 1);
-    // Re-interpret wall components after year fix
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const wall = `${adjusted.getUTCFullYear()}-${pad(adjusted.getUTCMonth() + 1)}-${pad(adjusted.getUTCDate())}T${pad(adjusted.getUTCHours())}:${pad(adjusted.getUTCMinutes())}:${pad(adjusted.getUTCSeconds())}`;
-    fixed = easternWallTimeToUtc(wall) || adjusted;
-  }
-  return fixed;
+  return correctEasternPreferredDate(iso);
 }
 
 const MONTH_NAME_TO_NUM: Record<string, number> = {
@@ -330,22 +479,6 @@ const MONTH_NAME_TO_NUM: Record<string, number> = {
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
-}
-
-function parseIsoDateParts(iso: string): {
-  year: number;
-  month: number;
-  day: number;
-  timeSuffix: string;
-} | null {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})(T.*)?$/);
-  if (!m) return null;
-  return {
-    year: Number(m[1]),
-    month: Number(m[2]),
-    day: Number(m[3]),
-    timeSuffix: m[4] || "T00:00:00",
-  };
 }
 
 function monthFromText(text: string): number | null {
@@ -401,11 +534,13 @@ function buildEventDateIso(
  */
 function reconcileEventDate(
   extracted: ExtractedCall,
-  existingLeadPreferredDate?: Date | null
+  existingLeadPreferredDate?: Date | null,
+  leadNotes?: string | null
 ): string | undefined {
   const timing = extracted.timing || "";
   const summary = extracted.summary || "";
-  const combined = `${timing} ${summary}`.trim();
+  const notesContext = (leadNotes || "").slice(0, 1500);
+  const combined = `${timing} ${summary} ${notesContext}`.trim();
   const fromText = parseMonthDayFromText(combined);
   const year = new Date().getFullYear();
 
@@ -434,9 +569,10 @@ function reconcileEventDate(
     existingLeadPreferredDate &&
     !Number.isNaN(existingLeadPreferredDate.getTime())
   ) {
-    const leadMonth = existingLeadPreferredDate.getUTCMonth() + 1;
-    const leadDay = existingLeadPreferredDate.getUTCDate();
-    const leadYear = existingLeadPreferredDate.getUTCFullYear();
+    const leadParts = etDateParts(existingLeadPreferredDate);
+    const leadMonth = leadParts.month;
+    const leadDay = leadParts.day;
+    const leadYear = leadParts.year;
     const isoParts = parseIsoDateParts(eventIso);
     const textMonth = fromText?.month ?? monthFromText(combined);
 
@@ -455,7 +591,89 @@ function reconcileEventDate(
     }
   }
 
+  if (
+    eventIso &&
+    hasValue(extracted.event_weekday) &&
+    extracted.event_weekday
+  ) {
+    const expected = WEEKDAY_NAMES.indexOf(extracted.event_weekday);
+    if (expected >= 0) {
+      const parts = parseIsoDateParts(eventIso);
+      if (parts) {
+        const noonIso = `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T12:00:00`;
+        const atNoon = correctPreferredDate(noonIso);
+        if (atNoon && easternWeekday(atNoon) !== expected) {
+          eventIso = shiftIsoToWeekday(eventIso, expected);
+        }
+      }
+    }
+  }
+
   return eventIso;
+}
+
+function resolveExpectedMeetingWeekday(extracted: ExtractedCall): number | null {
+  if (hasValue(extracted.meeting_weekday)) {
+    const idx = WEEKDAY_NAMES.indexOf(extracted.meeting_weekday!);
+    if (idx >= 0) return idx;
+  }
+  const fromText = parseWeekdayFromText(
+    `${extracted.summary || ""} ${extracted.notes || ""}`
+  );
+  return fromText;
+}
+
+function reconcileMeetingWeekday(extracted: ExtractedCall): void {
+  if (!hasValue(extracted.meeting_date_iso)) return;
+
+  const expected = resolveExpectedMeetingWeekday(extracted);
+  if (expected === null) return;
+
+  const iso = extracted.meeting_date_iso!.trim();
+  const parts = parseIsoDateParts(iso);
+  if (!parts) return;
+
+  const noonIso = `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T12:00:00`;
+  const atNoon = correctPreferredDate(noonIso);
+  if (!atNoon) return;
+
+  const actual = easternWeekday(atNoon);
+  if (actual === expected) return;
+
+  const shifted = shiftIsoToWeekday(iso, expected);
+  console.log(
+    `${LOG} Reconciled meeting weekday: ${iso} → ${shifted} (expected ${WEEKDAY_NAMES[expected]})`
+  );
+  extracted.meeting_date_iso = shifted;
+}
+
+function anchorMeetingDateToCallWeekday(
+  extracted: ExtractedCall,
+  callAnchorDate: Date | null | undefined
+): void {
+  if (!hasValue(extracted.meeting_date_iso) || !callAnchorDate) return;
+
+  const expected = resolveExpectedMeetingWeekday(extracted);
+  if (expected === null) return;
+
+  const iso = extracted.meeting_date_iso!.trim();
+  const parts = parseIsoDateParts(iso);
+  if (!parts) return;
+
+  const noonIso = `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T12:00:00`;
+  const atNoon = correctPreferredDate(noonIso);
+  if (!atNoon) return;
+
+  const actual = easternWeekday(atNoon);
+  if (actual === expected) return;
+
+  const anchored = anchorMeetingIsoToCallWeekday(iso, callAnchorDate, expected);
+  if (anchored === iso) return;
+
+  console.log(
+    `${LOG} Anchored meeting to ${WEEKDAY_NAMES[expected]} ${anchored} from call date ${callAnchorDate.toISOString()} (was ${iso})`
+  );
+  extracted.meeting_date_iso = anchored;
 }
 
 function formatLeadDateForPrompt(d: Date | null | undefined): string {
@@ -473,15 +691,25 @@ function formatLeadDateForPrompt(d: Date | null | undefined): string {
 }
 
 function buildLeadContextBlock(lead: typeof leads.$inferSelect): string {
+  const notesSnippet = (lead.notes || "").trim().slice(0, 1500);
   return [
     "",
-    "LEAD RECORD (already in CRM — use for event date disambiguation):",
+    "LEAD RECORD (already in CRM — authoritative for event date when transcript is ambiguous):",
+    `- Company: ${lead.company || "(none on file)"}`,
+    `- Headcount on file: ${lead.headcountEstimate != null ? lead.headcountEstimate : "(none on file)"}`,
+    `- Event interest on file: ${lead.eventTypeInterest || "(none on file)"}`,
     `- Date of Interest (preferred event date): ${formatLeadDateForPrompt(lead.preferredDate)}`,
     `- Meeting date on file: ${formatLeadDateForPrompt(lead.meetingDate)}`,
+    notesSnippet
+      ? `- Original inquiry notes:\n"""${notesSnippet}"""`
+      : "- Original inquiry notes: (none on file)",
+    "Use inquiry notes and preferred event date when transcript only says a day number (e.g. 'the twenty-first') without a month.",
     "If a preferred event date is already on file, use that month/day for event_date_iso unless the caller explicitly changes it on this call.",
     "Do NOT replace September with August just because today's date is in August.",
   ].join("\n");
 }
+
+const WEEKDAY_ENUM = [...WEEKDAY_NAMES];
 
 const extractionSchema: JsonSchemaObject = {
   type: "object",
@@ -494,7 +722,9 @@ const extractionSchema: JsonSchemaObject = {
     headcount: { type: "string" },
     timing: { type: "string" },
     meeting_date_iso: { type: "string" },
+    meeting_weekday: { type: "string", enum: WEEKDAY_ENUM },
     event_date_iso: { type: "string" },
+    event_weekday: { type: "string", enum: WEEKDAY_ENUM },
     event_types_interested: {
       type: "array",
       items: { type: "string", enum: [...AVAILABLE_EVENT_TYPES] },
@@ -534,6 +764,7 @@ export interface AnalyzeCallResult {
   ok: boolean;
   note?: string;
   voicemail?: boolean;
+  reanalyze?: boolean;
   extracted?: ExtractedCall;
 }
 
@@ -703,14 +934,20 @@ ${AVAILABLE_STAGES.map((s) => `    * ${s}`).join("\n")}
 - headcount: number of guests / attendees mentioned (just the number as a string)
 - timing: when they want to do the EVENT/EXPERIENCE (free text, e.g. "September 21st", "May 10 at 2pm"). This is NOT the planning-call time.
 - meeting_date_iso: the agreed PLANNING CALL / regroup datetime only (ISO 8601 YYYY-MM-DDTHH:mm:ss, Eastern wall time). Use when rep and lead schedule a call to discuss logistics, questionnaire, pricing, etc. If only a date (no time), use YYYY-MM-DDT00:00:00. NEVER put the event/experience date here.
+- meeting_weekday: weekday name for the planning call (Monday–Sunday). REQUIRED whenever meeting_date_iso is set. meeting_date_iso MUST fall on this weekday — e.g. never return Wednesday with 2026-08-20 (that date is a Thursday).
 - event_date_iso: when they want the actual EVENT/EXPERIENCE (ISO 8601 YYYY-MM-DDTHH:mm:ss). Phrases like "interest on the twenty-first", "retreat in September", "event on Sep 21". If only a date (no time), use YYYY-MM-DDT00:00:00. NEVER put the planning-call datetime here.
+- event_weekday: weekday name for the event if known or inferable from LEAD RECORD (e.g. September 21 → Monday). OMIT if unknown.
+  TIMEZONE: If the lead mentions Central Time (Chicago, CT), convert to Eastern for meeting_date_iso (9:00 CT → 10:00 ET). meeting_date_iso is always Eastern wall time.
+  WEEKDAY-ONLY PLANNING CALLS (critical):
+    * If the transcript only names a weekday + time (e.g. "Wednesday at 10", "Wednesday morning") with NO explicit calendar date spoken, set meeting_weekday and put the TIME in meeting_date_iso using a placeholder date — do NOT invent "August 20th" or any calendar day. The system anchors the date from the call date.
+    * Never hallucinate a month/day in the summary that was not spoken on the call.
   DATE DISAMBIGUATION (critical — calls often mention BOTH):
-    * Planning call: "regroup Wednesday at 10", "planning discussion tomorrow at 3" → meeting_date_iso only
-    * Event date: "experience on the twenty-first", "retreat September 21" → event_date_iso + timing
-    * Example: lead wants event Sep 21 and agrees to planning call Wed Aug 20 at 10am ET → event_date_iso: 2026-09-21T00:00:00, timing: "September 21st", meeting_date_iso: 2026-08-20T10:00:00, nextStage: "Program Planning Discussion"
+    * Planning call: "regroup Wednesday at 10", "planning discussion tomorrow at 3" → meeting_date_iso + meeting_weekday only
+    * Event date: "experience on the twenty-first", "retreat September 21" → event_date_iso + event_weekday + timing
+    * Example: lead wants event Sep 21 (Monday) and agrees to planning call Wed Aug 19 at 10am ET (9am CT) → event_date_iso: 2026-09-21T00:00:00, event_weekday: "Monday", timing: "September 21st", meeting_date_iso: 2026-08-19T10:00:00, meeting_weekday: "Wednesday", nextStage: "Program Planning Discussion"
   DAY-ONLY EVENT DATES (no month stated — common):
     * "the twenty-first", "the 21st" for the EXPERIENCE → do NOT default to today's month or the planning-call month
-    * Look for month cues in timing, summary, LEAD RECORD above, or nearby words ("September", budget deadline context)
+    * Look for month cues in timing, summary, LEAD RECORD inquiry notes above, or nearby words ("September", budget deadline context)
     * If timing or summary names a month (e.g. "September 21st"), that month MUST be used in event_date_iso — never August when timing says September
     * Planning-call weekdays/times (Wednesday, tomorrow, 10am) belong ONLY in meeting_date_iso, never event_date_iso
 - event_types_interested: array of event types from the master list above that the caller mentioned interest in. **You MUST return values EXACTLY as they appear in the master list — same spelling, same casing, same punctuation.**
@@ -749,14 +986,15 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
         summary:
           extracted.summary ||
           "Rep left a voicemail — no two-way conversation.",
-        extractedNotes:
-          "Voicemail / no-answer — survey draft created for lead. CRM fields not updated.",
+        extractedNotes: reanalyze
+          ? "Voicemail / no-answer — reanalyze only (no draft or lead stage change)."
+          : "Voicemail / no-answer — survey draft created for lead. CRM fields not updated.",
         status: "Analyzed",
         updatedDate: new Date(),
       })
       .where(eq(callLogs.id, callLogId));
 
-    if (leadId) {
+    if (leadId && !reanalyze) {
       await db
         .update(leads)
         .set({
@@ -772,6 +1010,10 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
           e instanceof Error ? e.message : e
         )
       );
+    } else if (leadId && reanalyze) {
+      console.log(
+        `${LOG} reanalyze=true — skipping voicemail survey draft and lead stage change`
+      );
     }
 
     return { ok: true, voicemail: true, extracted };
@@ -779,7 +1021,8 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
 
   const reconciledEventIso = reconcileEventDate(
     extracted,
-    existingLead?.preferredDate ?? null
+    existingLead?.preferredDate ?? null,
+    existingLead?.notes ?? null
   );
   if (reconciledEventIso !== extracted.event_date_iso) {
     console.log(
@@ -787,6 +1030,11 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
     );
     extracted.event_date_iso = reconciledEventIso;
   }
+
+  const callAnchor =
+    callLog.createdDate || callLog.updatedDate || new Date();
+  anchorMeetingDateToCallWeekday(extracted, callAnchor);
+  reconcileMeetingWeekday(extracted);
 
   const matchedCanonical = Array.isArray(extracted.event_types_interested)
     ? extracted.event_types_interested
@@ -931,12 +1179,21 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
       .filter(Boolean)
       .join("\n");
 
-    const existingNotes = existingLead?.notes || "";
-    leadUpdate.notes = existingNotes
-      ? `${existingNotes}\n\n${noteLines}`
-      : noteLines;
+    if (!reanalyze) {
+      const existingNotes = existingLead?.notes || "";
+      leadUpdate.notes = existingNotes
+        ? `${existingNotes}\n\n${noteLines}`
+        : noteLines;
+    }
 
     await db.update(leads).set(leadUpdate).where(eq(leads.id, leadId));
+
+    if (reanalyze) {
+      console.log(
+        `${LOG} reanalyze=true — updated lead fields only; skipped emails, drafts, note append`
+      );
+      return { ok: true, extracted, reanalyze: true };
+    }
 
     const lead = existingLead
       ? { ...existingLead, ...leadUpdate }
@@ -948,7 +1205,6 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
       .limit(1);
 
     const calendarLink = cfg?.calendarLink || "";
-    const repEmail = cfg?.repEmail || "";
     const leadName = lead?.name || "there";
     const leadEmail = lead?.email;
     const stage = resolvedStage;
@@ -967,53 +1223,90 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
 
     try {
       if (stage === "Program Planning Discussion" && leadEmail) {
-        await sendGmailEmail({
+        await createCallFollowUpDraftAndNotify({
+          db,
+          leadId,
+          callLogId,
+          stage,
           to: leadEmail,
           subject: "Your meeting with Mangia DC is confirmed",
-          body: `Hi ${leadName},\n\nThanks for the call! Your planning meeting with Mangia DC is confirmed for:\n\n${meetingTimeStr || "the time we discussed"}\n\nWe'll send a calendar invite shortly. If you need to reschedule, just reply to this email or use the link below:\n${calendarLink}\n\nLooking forward to it!\n\n— The Mangia DC Team`,
-          leadId,
-          userName: "System (Call Analysis)",
+          body: `Hi ${leadName},\n\nThanks for the call! Your planning meeting with Mangia DC is confirmed for:\n\n${meetingTimeStr || "the time we discussed"}\n\nWe'll send a calendar invite shortly. If you need to reschedule, just reply to this email. Keep in mind that the meeting is subject to availability and scheduling.\n\nLooking forward to it!\n\n— The Mangia DC Team`,
+          leadName,
+          leadCompany: lead?.company,
+          leadPhone: lead?.phone,
         });
       } else if (
         stage === "Initial Outreach – Call to Schedule" &&
         leadEmail
       ) {
-        await sendGmailEmail({
+        await createCallFollowUpDraftAndNotify({
+          db,
+          leadId,
+          callLogId,
+          stage,
           to: leadEmail,
-          subject: "Let’s find a time to chat",
+          subject: "Let's find a time to chat",
           body: `Hi ${leadName},\n\nThanks so much for chatting with us today — really glad to hear you're interested in working with Mangia DC!\n\nTo dig into the details, let's get a planning call on the calendar. You can grab a time that works for you here:\n${calendarLink}\n\nOr just reply to this email with a few times that work and we'll lock one in.\n\n— The Mangia DC Team`,
-          leadId,
-          userName: "System (Call Analysis)",
+          leadName,
+          leadCompany: lead?.company,
+          leadPhone: lead?.phone,
         });
-      } else if (stage === "Deposit Requested" && repEmail) {
-        await sendGmailEmail({
-          to: repEmail,
-          subject: `[Action] Proposal needed for ${lead?.name || "lead"} (${lead?.company || "unknown"})`,
-          body: `A call with ${lead?.name || "a lead"} just wrapped up and a proposal is needed.\n\nSummary: ${extracted.summary || ""}\nBudget: ${extracted.budget || "n/a"}\nHeadcount: ${extracted.headcount || "n/a"}\nTiming: ${extracted.timing || "n/a"}\nNotes: ${extracted.notes || "n/a"}\n\nLead phone: ${lead?.phone || ""}\nLead email: ${lead?.email || ""}`,
+      } else if (stage === "Deposit Requested") {
+        const depositSubject = `[Action] Proposal needed for ${lead?.name || "lead"} (${lead?.company || "unknown"})`;
+        const depositBody = [
+          "A call just wrapped up and a proposal is needed.",
+          "",
+          `Summary: ${extracted.summary || ""}`,
+          `Budget: ${extracted.budget || "n/a"}`,
+          `Headcount: ${extracted.headcount || "n/a"}`,
+          `Timing: ${extracted.timing || "n/a"}`,
+          `Notes: ${extracted.notes || "n/a"}`,
+          "",
+          `Lead phone: ${lead?.phone || ""}`,
+          `Lead email: ${lead?.email || ""}`,
+        ].join("\n");
+        await notifyCallFollowUpActionRequired({
+          db,
           leadId,
-          userName: "System (Call Analysis)",
-          systemAlert: true,
+          callLogId,
+          stage,
+          subject: depositSubject,
+          body: depositBody,
+          leadName,
+          leadEmail: leadEmail || "",
+          leadCompany: lead?.company,
+          leadPhone: lead?.phone,
         });
       } else if (stage === "Lost/Canceled" && leadEmail) {
-        await sendGmailEmail({
+        await createCallFollowUpDraftAndNotify({
+          db,
+          leadId,
+          callLogId,
+          stage,
           to: leadEmail,
           subject: "Thanks for chatting with us",
           body: `Hi ${leadName},\n\nThanks so much for taking the time to talk with us today. We totally understand it's not the right fit right now — we'll keep you in the loop on future offerings in case anything sparks your interest down the road.\n\n— The Mangia DC Team`,
-          leadId,
-          userName: "System (Call Analysis)",
+          leadName,
+          leadCompany: lead?.company,
+          leadPhone: lead?.phone,
         });
       } else if (stage === "After Meeting Follow-Up" && leadEmail) {
-        await sendGmailEmail({
+        await createCallFollowUpDraftAndNotify({
+          db,
+          leadId,
+          callLogId,
+          stage,
           to: leadEmail,
           subject: "Following up on our call",
           body: `Hi ${leadName},\n\nThanks for the chat! Just following up — when works for you to take the next step?\n\n${calendarLink ? `Grab a time directly: ${calendarLink}\n\n` : ""}— The Mangia DC Team`,
-          leadId,
-          userName: "System (Call Analysis)",
+          leadName,
+          leadCompany: lead?.company,
+          leadPhone: lead?.phone,
         });
       }
     } catch (emailErr) {
       console.error(
-        `${LOG} Follow-up email failed:`,
+        `${LOG} Follow-up draft/notify failed:`,
         emailErr instanceof Error ? emailErr.message : emailErr
       );
     }

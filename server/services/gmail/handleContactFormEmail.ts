@@ -23,6 +23,7 @@ import {
   type CandidateLeadForPrompt,
   type ClassifyInboundEmailLlmResult,
 } from "../ai/prompts/classifyInboundEmail.js";
+import { parsePreferredDateFromLlm } from "../dates/easternTime.js";
 import { getGmailApi } from "./gmailClient.js";
 import { tryHandleMeetingConfirmationReply } from "./handleMeetingConfirmationReply.js";
 import {
@@ -1376,8 +1377,7 @@ export async function handleContactFormEmail(input: {
 
       let preferredDate: Date | null = null;
       if (rawLlmResult.preferred_date) {
-        const parsed = new Date(rawLlmResult.preferred_date);
-        if (!isNaN(parsed.getTime())) preferredDate = parsed;
+        preferredDate = parsePreferredDateFromLlm(rawLlmResult.preferred_date);
       }
 
       const aiFlagCategory =

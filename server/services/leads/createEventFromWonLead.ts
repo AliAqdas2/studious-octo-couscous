@@ -7,8 +7,6 @@ import {
   tasks,
 } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
-import { getGmailConnection } from "../gmail/gmailClient.js";
-import { sendGmailEmail } from "../gmail/send.js";
 import { linkEventToClient } from "../events/linkEventToClient.js";
 import { assignEventStaff } from "../events/assignEventStaff.js";
 
@@ -285,34 +283,9 @@ export async function createEventFromWonLead(
     );
   }
 
-  let emailWarning: string | undefined;
-  try {
-    const connected = await getGmailConnection();
-    if (connected) {
-      await sendGmailEmail({
-        to: lead.email,
-        subject: "Event Confirmed - Mangia DC",
-        body: `Hi ${lead.name},\n\nGreat news! Your event "${eventName}" has been confirmed for ${eventDate.toLocaleDateString()}.\n\nWe'll be in touch soon with next steps.\n\nBest regards,\nMangia DC Team`,
-        leadId,
-      });
-    } else {
-      emailWarning = "Confirmation email skipped — Gmail not connected";
-    }
-  } catch (emailError) {
-    emailWarning =
-      emailError instanceof Error
-        ? emailError.message
-        : "Failed to send confirmation email";
-    console.warn(
-      "[createEventFromWonLead] Confirmation email failed:",
-      emailWarning
-    );
-  }
-
   return {
     success: true,
     eventId: newEvent.id,
     eventName,
-    ...(emailWarning ? { emailWarning } : {}),
   };
 }

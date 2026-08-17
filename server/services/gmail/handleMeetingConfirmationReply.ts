@@ -1,21 +1,20 @@
-import { randomUUID } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
 import { activityLogs, leads } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 import { getAiProvider, isAiConfigured } from "../ai/client.js";
+import { parseEasternIsoDate } from "../dates/easternTime.js";
+import { createGmailDraft } from "./drafts.js";
 import {
-  asciiEmailSubject,
   decodeBase64Url,
-  encodeRawMessage,
   getGmailApi,
-  getGmailConnection,
 } from "./gmailClient.js";
 import { parseSenderEmail } from "./inboundFilters.js";
+import { sendGmailEmail } from "./send.js";
 
 const LOG = "[meeting-confirmation]";
-const MEETING_DURATION_MS = 30 * 60 * 1000;
+const MEETING_CONFIRM_DRAFT_ACTION = "Meeting Confirmation Draft Created";
 
 interface MeetingClassification {
   proposed_meeting_iso?: string;
@@ -32,87 +31,6 @@ function requireDb() {
   const db = getDb();
   if (!db) throw new AppError("Database is not configured", 503);
   return db;
-}
-
-function buildIcsInvite(params: {
-  start: Date;
-  summary: string;
-  description: string;
-  attendeeEmail: string;
-  attendeeName: string;
-  organizerEmail: string;
-}): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const fmt = (d: Date) =>
-    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
-  const end = new Date(params.start.getTime() + MEETING_DURATION_MS);
-  const dtstamp = fmt(new Date());
-  const uid = `${randomUUID()}@mangiadc.com`;
-  const escape = (s: string) =>
-    String(s || "")
-      .replace(/[\\,;]/g, (m) => "\\" + m)
-      .replace(/\n/g, "\\n");
-
-  return [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Mangia DC//CRM//EN",
-    "METHOD:REQUEST",
-    "CALSCALE:GREGORIAN",
-    "BEGIN:VEVENT",
-    `UID:${uid}`,
-    `DTSTAMP:${dtstamp}`,
-    `DTSTART:${fmt(params.start)}`,
-    `DTEND:${fmt(end)}`,
-    `SUMMARY:${escape(params.summary)}`,
-    `DESCRIPTION:${escape(params.description)}`,
-    `ORGANIZER;CN=Mangia DC:mailto:${params.organizerEmail}`,
-    `ATTENDEE;CN=${escape(params.attendeeName || params.attendeeEmail)};RSVP=TRUE:mailto:${params.attendeeEmail}`,
-    "STATUS:CONFIRMED",
-    "SEQUENCE:0",
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ].join("\r\n");
-}
-
-async function sendIcsInvite(params: {
-  to: string;
-  fromEmail: string;
-  subject: string;
-  bodyText: string;
-  icsContent: string;
-}): Promise<void> {
-  const gmail = await getGmailApi();
-  const boundary = `mangia_boundary_${Date.now()}`;
-  const icsB64 = Buffer.from(params.icsContent, "utf8").toString("base64");
-
-  const raw = [
-    `From: ${params.fromEmail}`,
-    `To: ${params.to}`,
-    `Subject: ${asciiEmailSubject(params.subject)}`,
-    "MIME-Version: 1.0",
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    "Auto-Submitted: auto-generated",
-    "X-Auto-Response-Suppress: All",
-    "",
-    `--${boundary}`,
-    "Content-Type: text/plain; charset=UTF-8",
-    "",
-    params.bodyText,
-    "",
-    `--${boundary}`,
-    'Content-Type: text/calendar; method=REQUEST; name="invite.ics"',
-    "Content-Transfer-Encoding: base64",
-    'Content-Disposition: attachment; filename="invite.ics"',
-    "",
-    icsB64,
-    `--${boundary}--`,
-  ].join("\r\n");
-
-  await gmail.users.messages.send({
-    userId: "me",
-    requestBody: { raw: encodeRawMessage(raw) },
-  });
 }
 
 function getPlainBodyFromMessage(message: {
@@ -156,10 +74,42 @@ function getPlainBodyFromMessage(message: {
   return body || message.snippet || "";
 }
 
+function formatMeetingForPrompt(d: Date | null | undefined): string {
+  if (!d || Number.isNaN(d.getTime())) return "(none on file)";
+  return d.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 function parseIsoDate(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return parseEasternIsoDate(value);
+}
+
+async function draftAlreadyLoggedForMessage(
+  db: ReturnType<typeof requireDb>,
+  leadId: string,
+  messageId: string
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: activityLogs.id })
+    .from(activityLogs)
+    .where(
+      and(
+        eq(activityLogs.entityId, leadId),
+        eq(activityLogs.entityType, "Lead"),
+        eq(activityLogs.action, MEETING_CONFIRM_DRAFT_ACTION),
+        sql`${activityLogs.details}->>'message_id' = ${messageId}`
+      )
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 export interface MeetingConfirmationResult {
@@ -170,7 +120,7 @@ export interface MeetingConfirmationResult {
 
 /**
  * If the sender matches a lead awaiting meeting confirmation, classify the
- * reply, update the lead, and optionally send an ICS invite.
+ * reply, update the lead, and create a Gmail draft + digest notify (never auto-send).
  */
 export async function tryHandleMeetingConfirmationReply(input: {
   messageId: string;
@@ -257,11 +207,23 @@ export async function tryHandleMeetingConfirmationReply(input: {
   }
 
   const ai = getAiProvider();
+  const crmMeetingContext = [
+    lead.proposedMeetingDate
+      ? `Proposed meeting on file (CRM): ${formatMeetingForPrompt(lead.proposedMeetingDate)}`
+      : null,
+    lead.meetingDate
+      ? `Confirmed meeting on file (CRM): ${formatMeetingForPrompt(lead.meetingDate)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const completion = await ai.structuredComplete<MeetingClassification>({
     system:
       "You analyze email exchanges about scheduling meetings. Return structured JSON only via the tool.",
     user: `Today's date is: ${new Date().toISOString().slice(0, 10)}
 
+${crmMeetingContext ? `${crmMeetingContext}\n` : ""}
 The REP sent this email proposing a meeting time:
 """
 ${repProposalText || "(previous email not available)"}
@@ -272,7 +234,7 @@ The LEAD replied with:
 ${replyText}
 """
 
-Step 1 — Extract the meeting date/time the REP proposed in their email (look for a specific date and time). Format as ISO 8601 (YYYY-MM-DDTHH:mm:ss). If the rep didn't propose a specific time, leave proposed_meeting_iso empty.
+Step 1 — Extract the meeting date/time the REP proposed in their email (look for a specific date and time). Format as ISO 8601 (YYYY-MM-DDTHH:mm:ss) in Eastern wall time unless the email explicitly states Central Time (then convert CT → ET). If the rep didn't propose a specific time, leave proposed_meeting_iso empty. The ISO date MUST fall on the weekday named in the rep's email (e.g. Wednesday must not map to a Thursday calendar date).
 
 Step 2 — Classify the LEAD's reply as ONE of:
 - "confirmed" — they accepted the proposed time (e.g. "yes", "sure", "yeah", "sounds good", "that works", "confirmed")
@@ -280,8 +242,8 @@ Step 2 — Classify the LEAD's reply as ONE of:
 - "declined" — they're no longer interested or can't meet (e.g. "no thanks", "not interested", "we went with someone else")
 - "unclear" — can't tell, or off-topic, or needs more info
 
-Step 3 — Determine the final meeting datetime in ISO 8601:
-- If lead "confirmed" → use the rep's proposed time (proposed_meeting_iso)
+Step 3 — Determine the final meeting datetime in ISO 8601 (Eastern wall time):
+- If lead "confirmed" → use the rep's proposed time (proposed_meeting_iso), or CRM proposed meeting on file if rep email is ambiguous
 - If lead "proposed_alternative" → use the lead's new time
 - Otherwise → leave new_meeting_iso empty`,
     jsonSchema: {
@@ -333,7 +295,11 @@ Step 3 — Determine the final meeting datetime in ISO 8601:
       parseIsoDate(newMeetingIso) ||
       parseIsoDate(proposedMeetingIso) ||
       (lead.proposedMeetingDate
-        ? new Date(lead.proposedMeetingDate)
+        ? parseEasternIsoDate(
+            lead.proposedMeetingDate instanceof Date
+              ? lead.proposedMeetingDate.toISOString()
+              : String(lead.proposedMeetingDate)
+          )
         : null);
     if (meeting) update.meetingDate = meeting;
     update.awaitingMeetingConfirmation = false;
@@ -357,49 +323,100 @@ Step 3 — Determine the final meeting datetime in ISO 8601:
 
   await db.update(leads).set(update).where(eq(leads.id, lead.id));
 
-  const meetingIso =
-    update.meetingDate?.toISOString() ||
-    newMeetingIso ||
-    proposedMeetingIso ||
+  const meetingDateResolved =
+    update.meetingDate ||
+    parseIsoDate(newMeetingIso) ||
+    parseIsoDate(proposedMeetingIso) ||
     (lead.proposedMeetingDate
-      ? new Date(lead.proposedMeetingDate).toISOString()
+      ? parseEasternIsoDate(
+          lead.proposedMeetingDate instanceof Date
+            ? lead.proposedMeetingDate.toISOString()
+            : String(lead.proposedMeetingDate)
+        )
       : null);
 
   if (
-    meetingIso &&
+    meetingDateResolved &&
     (classification === "confirmed" ||
       classification === "proposed_alternative")
   ) {
-    try {
-      const meetingDate = new Date(meetingIso);
-      if (!Number.isNaN(meetingDate.getTime())) {
-        const connection = await getGmailConnection();
-        const organizerEmail =
-          connection?.email ||
-          env.gmailSenderEmail() ||
-          "info@mangiadc.com";
-        const ics = buildIcsInvite({
-          start: meetingDate,
-          summary: "Mangia DC — Planning Call",
-          description:
-            "Quick planning call with the Mangia DC team to walk through your event.",
-          attendeeEmail: lead.email || input.senderEmail,
-          attendeeName: lead.name || lead.email || input.senderEmail,
-          organizerEmail,
+    const leadEmail = lead.email || input.senderEmail;
+    const meetingTimeStr = formatMeetingForPrompt(meetingDateResolved);
+
+    if (
+      !(await draftAlreadyLoggedForMessage(db, lead.id, input.messageId))
+    ) {
+      try {
+        const firstName = (lead.name || "there").split(" ")[0]!;
+        const draftSubject = "Calendar invite - Mangia DC planning call";
+        const draftBody = `Hi ${firstName},\n\nThanks for confirming! Our planning call is scheduled for:\n\n${meetingTimeStr}\n\nWe will send a calendar invite shortly. If you need to reschedule, just reply to this email.\n\nLooking forward to chatting.\n\n— The Mangia DC Team`;
+
+        const draft = await createGmailDraft({
+          to: leadEmail,
+          subject: draftSubject,
+          body: draftBody,
+          leadId: lead.id,
+          userName: "System (Meeting Confirmation)",
         });
-        await sendIcsInvite({
-          to: lead.email || input.senderEmail,
-          fromEmail: organizerEmail,
-          subject: "Calendar invite - Mangia DC planning call",
-          bodyText: `Hi ${(lead.name || "there").split(" ")[0]},\n\nThanks for confirming! Attaching a calendar invite for our call. Looking forward to chatting.\n\n— The Mangia DC Team`,
-          icsContent: ics,
+
+        const draftId =
+          draft && typeof draft === "object" && "draftId" in draft
+            ? String((draft as { draftId?: string }).draftId || "")
+            : "";
+
+        await db.insert(activityLogs).values({
+          entityType: "Lead",
+          entityId: lead.id,
+          action: MEETING_CONFIRM_DRAFT_ACTION,
+          details: {
+            draft_id: draftId,
+            message_id: input.messageId,
+            classification,
+            meeting_iso: meetingDateResolved.toISOString(),
+            meeting_time_et: meetingTimeStr,
+            to: leadEmail,
+            subject: draftSubject,
+          },
+          userName: "System (Meeting Confirmation)",
+          timestamp: now,
         });
-        console.log(`${LOG} ICS invite sent to ${lead.email}`);
+
+        const digestTo = env.digestRecipients()[0];
+        if (digestTo) {
+          await sendGmailEmail({
+            to: digestTo,
+            subject: `Draft ready for review - calendar invite for ${lead.name || leadEmail}`,
+            body: [
+              "A meeting confirmation email has been added to Drafts in Gmail and is awaiting review.",
+              "",
+              `Classification: ${classification}`,
+              `Meeting: ${meetingTimeStr}`,
+              "",
+              `Lead: ${lead.name || "(no name)"}${lead.company ? ` (${lead.company})` : ""}`,
+              `Email: ${leadEmail}`,
+              "",
+              "Open Gmail → Drafts to review, attach a Google Calendar invite if needed, and send.",
+            ].join("\n"),
+            leadId: lead.id,
+            userName: "System (Meeting Confirmation)",
+            systemAlert: true,
+          });
+        } else {
+          console.warn(`${LOG} No DIGEST_RECIPIENTS configured — skip notify`);
+        }
+
+        console.log(
+          `${LOG} Confirmation draft created lead=${lead.id} draftId=${draftId}`
+        );
+      } catch (err) {
+        console.error(
+          `${LOG} Confirmation draft/notify failed:`,
+          err instanceof Error ? err.message : err
+        );
       }
-    } catch (err) {
-      console.error(
-        `${LOG} ICS invite failed:`,
-        err instanceof Error ? err.message : err
+    } else {
+      console.log(
+        `${LOG} Draft already logged for message ${input.messageId} — skip`
       );
     }
   }
