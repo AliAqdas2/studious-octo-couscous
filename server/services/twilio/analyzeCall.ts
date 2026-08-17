@@ -81,7 +81,10 @@ interface ExtractedCall {
   budget?: string;
   headcount?: string;
   timing?: string;
-  preferred_date_iso?: string;
+  /** Agreed planning-call datetime (regroup / questionnaire review). */
+  meeting_date_iso?: string;
+  /** When the client wants the experience/event itself. */
+  event_date_iso?: string;
   event_types_interested?: string[];
   event_type_other?: string;
   event_format?: "In-Person" | "Virtual" | "Hybrid";
@@ -308,7 +311,8 @@ const extractionSchema: JsonSchemaObject = {
     budget: { type: "string" },
     headcount: { type: "string" },
     timing: { type: "string" },
-    preferred_date_iso: { type: "string" },
+    meeting_date_iso: { type: "string" },
+    event_date_iso: { type: "string" },
     event_types_interested: {
       type: "array",
       items: { type: "string", enum: [...AVAILABLE_EVENT_TYPES] },
@@ -490,7 +494,7 @@ Extract the following:
 - nextStage: based on the call outcome, pick ONE pipeline stage from this list (CASE-SENSITIVE — return the value verbatim):
 ${AVAILABLE_STAGES.map((s) => `    * ${s}`).join("\n")}
   Guidance:
-    * If a SPECIFIC meeting date AND time was clearly agreed on during the call (e.g. "let's meet Thursday at 2pm") → "Program Planning Discussion" (and you MUST also fill preferred_date_iso with that exact date+time).
+    * If a SPECIFIC planning-call date AND time was clearly agreed on (e.g. "let's regroup Wednesday at 10am") → "Program Planning Discussion" (and you MUST also fill meeting_date_iso with that exact date+time).
     * If the lead is interested but NO specific meeting date/time was confirmed yet → "Initial Outreach – Call to Schedule"
     * If a proposal / deposit was requested → "Deposit Requested"
     * If they confirmed and want to move forward / pay → "Confirmed Sales"
@@ -500,8 +504,13 @@ ${AVAILABLE_STAGES.map((s) => `    * ${s}`).join("\n")}
 - notes: any other useful info / action items for the rep
 - budget: any mentioned budget (e.g. "$5000", "around $3-5k")
 - headcount: number of guests / attendees mentioned (just the number as a string)
-- timing: when they want to do the event (free text, e.g. "May 10 at 2pm", "next Friday")
-- preferred_date_iso: if a specific date AND time were clearly stated together (e.g. "May 10 at 2pm", "next Friday at 3 in the afternoon"), output ISO 8601 format (YYYY-MM-DDTHH:mm:ss). If only a date is given (no time), still output it as YYYY-MM-DDT00:00:00. Omit ONLY if no clear date is stated. Use the current year if year is not stated.
+- timing: when they want to do the EVENT/EXPERIENCE (free text, e.g. "September 21st", "May 10 at 2pm"). This is NOT the planning-call time.
+- meeting_date_iso: the agreed PLANNING CALL / regroup datetime only (ISO 8601 YYYY-MM-DDTHH:mm:ss, Eastern wall time). Use when rep and lead schedule a call to discuss logistics, questionnaire, pricing, etc. If only a date (no time), use YYYY-MM-DDT00:00:00. NEVER put the event/experience date here.
+- event_date_iso: when they want the actual EVENT/EXPERIENCE (ISO 8601 YYYY-MM-DDTHH:mm:ss). Phrases like "interest on the twenty-first", "retreat in September", "event on Sep 21". If only a date (no time), use YYYY-MM-DDT00:00:00. NEVER put the planning-call datetime here.
+  DATE DISAMBIGUATION (critical — calls often mention BOTH):
+    * Planning call: "regroup Wednesday at 10", "planning discussion tomorrow at 3" → meeting_date_iso only
+    * Event date: "experience on the twenty-first", "retreat September 21" → event_date_iso + timing
+    * Example: lead wants event Sep 21 and agrees to planning call Wed Aug 20 at 10am ET → event_date_iso: 2026-09-21T00:00:00, timing: "September 21st", meeting_date_iso: 2026-08-20T10:00:00, nextStage: "Program Planning Discussion"
 - event_types_interested: array of event types from the master list above that the caller mentioned interest in. **You MUST return values EXACTLY as they appear in the master list — same spelling, same casing, same punctuation.**
 - event_type_other: if they mentioned an event type that genuinely does NOT match anything in the master list, put it here as free text.
 - event_format: ONE of "In-Person", "Virtual", "Hybrid" — only if explicitly mentioned.
@@ -611,17 +620,20 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
     })
     .where(eq(callLogs.id, callLogId));
 
-  let correctedPreferredDate: Date | null = null;
-  if (hasValue(extracted.preferred_date_iso)) {
-    correctedPreferredDate = correctPreferredDate(
-      extracted.preferred_date_iso!
-    );
+  let correctedMeetingDate: Date | null = null;
+  if (hasValue(extracted.meeting_date_iso)) {
+    correctedMeetingDate = correctPreferredDate(extracted.meeting_date_iso!);
+  }
+
+  let correctedEventDate: Date | null = null;
+  if (hasValue(extracted.event_date_iso)) {
+    correctedEventDate = correctPreferredDate(extracted.event_date_iso!);
   }
 
   let resolvedStage = hasValue(extracted.nextStage)
     ? extracted.nextStage!
     : null;
-  const hasMeetingTime = Boolean(correctedPreferredDate);
+  const hasMeetingTime = Boolean(correctedMeetingDate);
   const meetingStages = ["Program Planning Discussion", "Calendar Accepted"];
 
   if (resolvedStage && meetingStages.includes(resolvedStage)) {
@@ -645,8 +657,8 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
     };
 
     if (resolvedStage) leadUpdate.stage = resolvedStage;
-    if (resolvedStage === "Program Planning Discussion" && correctedPreferredDate) {
-      leadUpdate.meetingDate = correctedPreferredDate;
+    if (correctedMeetingDate) {
+      leadUpdate.meetingDate = correctedMeetingDate;
     }
 
     if (hasValue(extracted.headcount)) {
@@ -673,8 +685,8 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
     if (hasValue(extracted.contact_phone)) {
       leadUpdate.phone = extracted.contact_phone;
     }
-    if (correctedPreferredDate) {
-      leadUpdate.preferredDate = correctedPreferredDate;
+    if (correctedEventDate) {
+      leadUpdate.preferredDate = correctedEventDate;
     }
 
     const noteLines = [
@@ -730,8 +742,8 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
     const leadEmail = lead?.email;
     const stage = resolvedStage;
 
-    const meetingTimeStr = hasMeetingTime && correctedPreferredDate
-      ? correctedPreferredDate.toLocaleString("en-US", {
+    const meetingTimeStr = hasMeetingTime && correctedMeetingDate
+      ? correctedMeetingDate.toLocaleString("en-US", {
           weekday: "long",
           month: "long",
           day: "numeric",
@@ -747,7 +759,7 @@ CRITICAL: OMIT any field that was not explicitly mentioned in the transcript. Do
         await sendGmailEmail({
           to: leadEmail,
           subject: "Your meeting with Mangia DC is confirmed",
-          body: `Hi ${leadName},\n\nThanks for the call! Your planning meeting with Mangia DC is confirmed for:\n\n${meetingTimeStr || extracted.timing || "the time we discussed"}\n\nWe'll send a calendar invite shortly. If you need to reschedule, just reply to this email or use the link below:\n${calendarLink}\n\nLooking forward to it!\n\n— The Mangia DC Team`,
+          body: `Hi ${leadName},\n\nThanks for the call! Your planning meeting with Mangia DC is confirmed for:\n\n${meetingTimeStr || "the time we discussed"}\n\nWe'll send a calendar invite shortly. If you need to reschedule, just reply to this email or use the link below:\n${calendarLink}\n\nLooking forward to it!\n\n— The Mangia DC Team`,
           leadId,
           userName: "System (Call Analysis)",
         });
