@@ -29,7 +29,7 @@ export function buildNeedMoreInfoRequest(candidate, selectedIds) {
       ? selected.map((item) => `• ${onboardingStrings[item.labelKey]}`).join('\n')
       : '• Any remaining application materials we may be missing';
 
-  const subject = `Mangia DC — additional information needed (${role})`;
+  const subject = `Mangia DC - additional information needed (${role})`;
   const body = [
     `Hi ${name},`,
     '',

@@ -17,7 +17,7 @@ import { onboardingStrings } from './strings';
 export function buildPaperworkKickoffEmail(candidate) {
   const name = candidate?.name || 'there';
   const role = candidate?.job_role || 'your new role';
-  const subject = `Mangia DC — onboarding paperwork (${role})`;
+  const subject = `Mangia DC - onboarding paperwork (${role})`;
   const body = [
     `Hi ${name},`,
     '',

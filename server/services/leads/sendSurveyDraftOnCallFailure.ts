@@ -219,7 +219,7 @@ export async function sendSurveyDraftOnCallFailure(
     try {
       await sendGmailEmail({
         to: digestTo,
-        subject: `Draft ready for review — follow-up to ${lead.name || lead.email}`,
+        subject: `Draft ready for review - follow-up to ${lead.name || lead.email}`,
         body: [
           "A survey follow-up email has been added to Drafts in Gmail and is awaiting review.",
           "",

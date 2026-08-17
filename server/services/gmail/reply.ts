@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { activityLogs, leads } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
-import { encodeRawMessage, getGmailApi } from "./gmailClient.js";
+import { asciiEmailSubject, encodeRawMessage, getGmailApi } from "./gmailClient.js";
 
 function requireDb() {
   const db = getDb();
@@ -27,7 +27,7 @@ export async function replyToEmail(input: ReplyEmailInput) {
   const gmail = await getGmailApi();
   const messageParts = [
     `To: ${input.to}`,
-    `Subject: ${input.subject}`,
+    `Subject: ${asciiEmailSubject(input.subject)}`,
     `In-Reply-To: ${input.messageId || ""}`,
     `References: ${input.messageId || ""}`,
     'Content-Type: text/plain; charset="UTF-8"',

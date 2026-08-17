@@ -6,6 +6,7 @@ import { activityLogs, leads } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 import { getAiProvider, isAiConfigured } from "../ai/client.js";
 import {
+  asciiEmailSubject,
   decodeBase64Url,
   encodeRawMessage,
   getGmailApi,
@@ -88,7 +89,7 @@ async function sendIcsInvite(params: {
   const raw = [
     `From: ${params.fromEmail}`,
     `To: ${params.to}`,
-    `Subject: ${params.subject}`,
+    `Subject: ${asciiEmailSubject(params.subject)}`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "Auto-Submitted: auto-generated",
@@ -389,7 +390,7 @@ Step 3 — Determine the final meeting datetime in ISO 8601:
         await sendIcsInvite({
           to: lead.email || input.senderEmail,
           fromEmail: organizerEmail,
-          subject: "Calendar invite — Mangia DC planning call",
+          subject: "Calendar invite - Mangia DC planning call",
           bodyText: `Hi ${(lead.name || "there").split(" ")[0]},\n\nThanks for confirming! Attaching a calendar invite for our call. Looking forward to chatting.\n\n— The Mangia DC Team`,
           icsContent: ics,
         });

@@ -142,7 +142,7 @@ export async function postEventAutomation(
           try {
             await sendGmailEmail({
               to: digestTo,
-              subject: `Draft ready for review — thank-you for ${event.eventName}`,
+              subject: `Draft ready for review - thank-you for ${event.eventName}`,
               body: [
                 "A post-event thank-you email has been added to Drafts in Gmail and is awaiting review.",
                 "",

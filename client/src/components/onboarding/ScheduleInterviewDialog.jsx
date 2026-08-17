@@ -21,7 +21,7 @@ import { onboardingStrings } from './strings';
 export function buildInterviewInvite(candidate) {
   const name = candidate?.name || 'there';
   const role = candidate?.job_role || 'the open role';
-  const subject = `Mangia DC interview — ${role}`;
+  const subject = `Mangia DC interview - ${role}`;
   const body = [
     `Hi ${name},`,
     '',

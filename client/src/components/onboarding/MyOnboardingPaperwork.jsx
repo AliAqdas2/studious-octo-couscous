@@ -12,7 +12,7 @@ function mailtoHref(email, subject, body) {
 function buildDocEmail(doc, candidate) {
   const name = candidate?.name || 'New hire';
   const role = candidate?.job_role || 'Event Support Associate';
-  const subject = `Mangia DC onboarding — ${doc.label}`;
+  const subject = `Mangia DC onboarding - ${doc.label}`;
   const body = [
     `Hi Mangia DC team,`,
     '',
@@ -35,7 +35,7 @@ function buildDocEmail(doc, candidate) {
 function buildNotifyHrEmail(candidate, documents) {
   const name = candidate?.name || 'New hire';
   const role = candidate?.job_role || 'Event Support Associate';
-  const subject = `Mangia DC onboarding — paperwork complete (${name})`;
+  const subject = `Mangia DC onboarding - paperwork complete (${name})`;
   const docList = documents.map((d) => `- ${d.label}`).join('\n');
   const body = [
     `Hi Mangia DC team,`,

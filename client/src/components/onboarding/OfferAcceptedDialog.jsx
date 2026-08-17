@@ -14,7 +14,7 @@ import { onboardingStrings } from './strings';
 export function buildOfferAcceptedEmail(candidate) {
   const name = candidate?.name || 'there';
   const role = candidate?.job_role || 'the open role';
-  const subject = `Mangia DC — welcome aboard (${role})`;
+  const subject = `Mangia DC - welcome aboard (${role})`;
   const body = [
     `Hi ${name},`,
     '',

@@ -22,7 +22,7 @@ export function buildDaveHandoff(candidate, availabilityNotes) {
   const source = candidate?.source || '—';
   const notes = (availabilityNotes || '').trim() || '(none provided)';
 
-  const subject = `Mangia DC — secondary approval: ${name} (${role})`;
+  const subject = `Mangia DC - secondary approval: ${name} (${role})`;
   const body = [
     'Hi Dave,',
     '',

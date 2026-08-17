@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { activityLogs, leads } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
-import { encodeRawMessage, getGmailApi } from "./gmailClient.js";
+import { asciiEmailSubject, encodeRawMessage, getGmailApi } from "./gmailClient.js";
 import { getBody, headerValue } from "./messages.js";
 
 function requireDb() {
@@ -80,9 +80,12 @@ export interface CreateDraftInput {
 
 export async function createGmailDraft(input: CreateDraftInput) {
   const gmail = await getGmailApi();
-  const message = [`To: ${input.to}`, `Subject: ${input.subject}`, "", input.body].join(
-    "\n"
-  );
+  const message = [
+    `To: ${input.to}`,
+    `Subject: ${asciiEmailSubject(input.subject)}`,
+    "",
+    input.body,
+  ].join("\n");
   const encodedMessage = encodeRawMessage(message);
 
   const response = await gmail.users.drafts.create({

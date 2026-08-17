@@ -302,6 +302,11 @@ export async function getCalendarApi() {
   return google.calendar({ version: "v3", auth });
 }
 
+/** Subject headers cannot carry em/en dashes without mojibake in many clients. */
+export function asciiEmailSubject(subject: string): string {
+  return subject.replace(/[\u2014\u2013]/g, "-");
+}
+
 export function encodeRawMessage(rfc2822: string): string {
   return Buffer.from(rfc2822, "utf8")
     .toString("base64")
