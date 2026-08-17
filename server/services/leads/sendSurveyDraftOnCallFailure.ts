@@ -1,21 +1,21 @@
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import { getDb } from "../../db/index.js";
-import {
-  activityLogs,
-  emailTemplates,
-  leads,
-} from "../../db/schema/index.js";
+import { activityLogs, leads } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
-import {
-  findNextFreeSlot,
-  replaceSalesManagerAvailability,
-} from "../calendar/findNextFreeSlot.js";
+import { findFreeMeetingWindows } from "../calendar/findNextFreeSlot.js";
 import { createGmailDraft } from "../gmail/drafts.js";
 import { sendGmailEmail } from "../gmail/send.js";
+import { buildSurveyDraftContext } from "./buildSurveyDraftContext.js";
+import {
+  buildSurveyDraftHtml,
+  buildSurveyDraftSubject,
+} from "./surveyDraftTemplate.js";
 
 const LOG = "[survey-draft-fallback]";
 const FALLBACK_ACTION = "Meeting Proposal Draft Created (No-Answer Fallback)";
+const CALENDAR_BLOCKED_ACTION =
+  "Survey Draft Skipped (Calendar Unavailable)";
 const SURVEY_STAGE = "Survey Sent";
 
 const REASON_TEXT: Record<string, string> = {
@@ -37,104 +37,43 @@ function requireDb() {
   return db;
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function boldHtml(value: string): string {
-  if (!value) return "";
-  return `<b>${escapeHtml(value)}</b>`;
-}
-
-function replaceVariables(
-  text: string,
-  lead: typeof leads.$inferSelect,
-  availabilityText: string,
-  options?: { boldHtml?: boolean }
-): string {
-  if (!text) return "";
-  const wrap = (value: string) =>
-    options?.boldHtml ? boldHtml(value) : value;
-  const preferred = lead.preferredDate
-    ? new Date(lead.preferredDate).toLocaleDateString()
-    : "";
-  const withLeadVars = text
-    .replace(/\{\{name\}\}/gi, wrap(lead.name || ""))
-    .replace(/\{\{company\}\}/gi, wrap(lead.company || ""))
-    .replace(/\{\{email\}\}/gi, wrap(lead.email || ""))
-    .replace(/\{\{event_type\}\}/gi, wrap(lead.eventTypeInterest || ""))
-    .replace(/\{\{preferred_date\}\}/gi, wrap(preferred))
-    .replace(
-      /\{\{headcount\}\}/gi,
-      wrap(
-        lead.headcountEstimate != null ? String(lead.headcountEstimate) : ""
-      )
-    )
-    .replace(/\{\{phone\}\}/gi, wrap(lead.phone || ""));
-  return replaceSalesManagerAvailability(
-    withLeadVars,
-    wrap(availabilityText)
-  );
-}
-
-async function pickSurveyTemplate(
-  db: ReturnType<typeof requireDb>,
-  channel: string | null | undefined
-) {
-  const channelNorm = channel === "B2C" || channel === "B2B" ? channel : null;
-
-  const channelFilter = channelNorm
-    ? or(
-        eq(emailTemplates.channel, "Both"),
-        eq(emailTemplates.channel, channelNorm)
-      )
-    : or(
-        eq(emailTemplates.channel, "Both"),
-        eq(emailTemplates.channel, "B2B"),
-        eq(emailTemplates.channel, "B2C")
-      );
-
-  const candidates = await db
-    .select()
-    .from(emailTemplates)
-    .where(
-      and(
-        eq(emailTemplates.isActive, true),
-        eq(emailTemplates.pipelineStage, SURVEY_STAGE),
-        channelFilter
-      )
-    )
-    .orderBy(desc(emailTemplates.sendAutomatically));
-
-  if (candidates.length > 0) return candidates[0]!;
-
-  const [any] = await db
-    .select()
-    .from(emailTemplates)
-    .where(
-      and(
-        eq(emailTemplates.isActive, true),
-        eq(emailTemplates.pipelineStage, SURVEY_STAGE)
-      )
-    )
-    .orderBy(desc(emailTemplates.sendAutomatically))
-    .limit(1);
-  return any ?? null;
-}
-
 export interface SendSurveyDraftResult {
   ok: boolean;
   skipped?: string;
   draftId?: string;
 }
 
+async function sendDigestAlert(
+  lead: typeof leads.$inferSelect,
+  reasonText: string,
+  bodyLines: string[]
+): Promise<void> {
+  const digestTo = env.digestRecipients()[0];
+  if (!digestTo) {
+    console.warn(`${LOG} No DIGEST_RECIPIENTS configured — skip notify`);
+    return;
+  }
+  try {
+    await sendGmailEmail({
+      to: digestTo,
+      subject: `Survey follow-up — ${lead.name || lead.email}`,
+      body: bodyLines.join("\n"),
+      leadId: lead.id,
+      userName: "System (Call Fallback)",
+      systemAlert: true,
+    });
+  } catch (notifyErr) {
+    console.error(
+      `${LOG} Digest notify failed:`,
+      notifyErr instanceof Error ? notifyErr.message : notifyErr
+    );
+  }
+}
+
 /**
- * When auto-call cannot run, create a Gmail draft from the Survey Sent template,
- * notify the first digest recipient, and move the lead to Survey Sent.
+ * When auto-call cannot run, build a programmatic survey draft with pre-filled
+ * answers and Google Calendar availability windows. Skips client draft if
+ * calendar is unavailable or has no free business-hour slots.
  */
 export async function sendSurveyDraftOnCallFailure(
   leadId: string,
@@ -173,20 +112,51 @@ export async function sendSurveyDraftOnCallFailure(
     return { ok: true, skipped: "already_drafted" };
   }
 
-  const template = await pickSurveyTemplate(db, lead.channel);
-  if (!template) {
-    console.error(
-      `${LOG} No active EmailTemplate for pipeline_stage="${SURVEY_STAGE}"`
-    );
-    return { ok: false, skipped: "no_template" };
+  const reasonText = humanizeCallFailureReason(reason);
+  const { prefill } = await buildSurveyDraftContext(lead);
+  const availability = await findFreeMeetingWindows();
+
+  if (!availability.calendarOk || !availability.prose) {
+    const calendarReason = !availability.calendarOk
+      ? "Google Calendar could not be queried."
+      : "No free meeting slots were found during business hours (Mon–Fri 9 AM–5 PM ET) in the next 3 business days.";
+
+    console.warn(`${LOG} ${calendarReason} — skip client draft for lead ${leadId}`);
+
+    await db.insert(activityLogs).values({
+      entityType: "Lead",
+      entityId: lead.id,
+      action: CALENDAR_BLOCKED_ACTION,
+      details: {
+        reason,
+        reason_text: reasonText,
+        calendar_ok: availability.calendarOk,
+        calendar_reason: calendarReason,
+        to: lead.email,
+        prefill,
+      },
+      userName: "System (Call Fallback)",
+      timestamp: new Date(),
+    });
+
+    await sendDigestAlert(lead, reasonText, [
+      "Survey follow-up draft was NOT created for the lead below.",
+      "",
+      `Reason: ${reasonText}`,
+      "",
+      calendarReason,
+      "Please create the survey email manually in Gmail and add meeting times from the calendar.",
+      "",
+      `Lead: ${lead.name || "(no name)"}${lead.company ? ` (${lead.company})` : ""}`,
+      `Email: ${lead.email}`,
+      `Phone: ${lead.phone || "(none)"}`,
+    ]);
+
+    return { ok: true, skipped: "calendar_unavailable" };
   }
 
-  const slot = await findNextFreeSlot();
-  const availabilityText = slot.formatted;
-  const subject = replaceVariables(template.subject, lead, availabilityText);
-  const bodyHtml = replaceVariables(template.body, lead, availabilityText, {
-    boldHtml: true,
-  }).replace(/\n/g, "<br>\n");
+  const subject = buildSurveyDraftSubject(lead);
+  const bodyHtml = buildSurveyDraftHtml(lead, prefill, availability.prose);
 
   const draft = await createGmailDraft({
     to: lead.email,
@@ -203,7 +173,6 @@ export async function sendSurveyDraftOnCallFailure(
       : "";
 
   const now = new Date();
-  const reasonText = humanizeCallFailureReason(reason);
   await db
     .update(leads)
     .set({
@@ -212,7 +181,9 @@ export async function sendSurveyDraftOnCallFailure(
       surveySentDate: now,
       lastContactDate: now,
       awaitingMeetingConfirmation: true,
-      ...(slot.slotUtc ? { proposedMeetingDate: slot.slotUtc } : {}),
+      ...(availability.firstSlotUtc
+        ? { proposedMeetingDate: availability.firstSlotUtc }
+        : {}),
       updatedDate: now,
     })
     .where(eq(leads.id, lead.id));
@@ -225,53 +196,40 @@ export async function sendSurveyDraftOnCallFailure(
       draft_id: draftId,
       reason,
       reason_text: reasonText,
-      template_name: template.templateName,
-      template_id: template.id,
+      template_name: "B2B Survey (programmatic)",
       to: lead.email,
       subject,
-      proposed_meeting_time_et: slot.slotUtc ? availabilityText : null,
-      proposed_meeting_time_utc: slot.slotUtc
-        ? slot.slotUtc.toISOString()
+      availability_prose: availability.prose,
+      meeting_windows: availability.windows.map((w) => ({
+        day: w.dayLabel,
+        start_utc: w.startUtc.toISOString(),
+        end_utc: w.endUtc.toISOString(),
+      })),
+      proposed_meeting_time_utc: availability.firstSlotUtc
+        ? availability.firstSlotUtc.toISOString()
         : null,
+      prefill,
     },
     userName: "System (Call Fallback)",
     timestamp: now,
   });
 
-  const digestTo = env.digestRecipients()[0];
-  if (digestTo) {
-    try {
-      await sendGmailEmail({
-        to: digestTo,
-        subject: `Draft ready for review - follow-up to ${lead.name || lead.email}`,
-        body: [
-          "A survey follow-up email has been added to Drafts in Gmail and is awaiting review.",
-          "",
-          `Reason: ${reasonText}`,
-          "",
-          `Lead: ${lead.name || "(no name)"}${lead.company ? ` (${lead.company})` : ""}`,
-          `Email: ${lead.email}`,
-          `Phone: ${lead.phone || "(none)"}`,
-          `Template: ${template.templateName}`,
-          "",
-          "Open Gmail → Drafts to review and send.",
-        ].join("\n"),
-        leadId: lead.id,
-        userName: "System (Call Fallback)",
-        systemAlert: true,
-      });
-    } catch (notifyErr) {
-      console.error(
-        `${LOG} Digest notify failed:`,
-        notifyErr instanceof Error ? notifyErr.message : notifyErr
-      );
-    }
-  } else {
-    console.warn(`${LOG} No DIGEST_RECIPIENTS configured — skip notify`);
-  }
+  await sendDigestAlert(lead, reasonText, [
+    "A survey follow-up email has been added to Drafts in Gmail and is awaiting review.",
+    "",
+    `Reason: ${reasonText}`,
+    "",
+    `Lead: ${lead.name || "(no name)"}${lead.company ? ` (${lead.company})` : ""}`,
+    `Email: ${lead.email}`,
+    `Phone: ${lead.phone || "(none)"}`,
+    "",
+    `Proposed meeting windows (from Google Calendar): ${availability.prose}`,
+    "",
+    "Open Gmail → Drafts to review and send.",
+  ]);
 
   console.log(
-    `${LOG} Draft created for lead ${lead.id} template="${template.templateName}" draftId=${draftId}`
+    `${LOG} Draft created for lead ${lead.id} draftId=${draftId} availability="${availability.prose}"`
   );
   return { ok: true, draftId };
 }

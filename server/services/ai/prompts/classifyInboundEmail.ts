@@ -62,6 +62,8 @@ export interface ClassifyInboundEmailLlmResult {
   event_format?: string;
   preferred_date?: string;
   headcount_estimate?: number | null;
+  occasion?: string;
+  preferred_time?: string;
   channel?: string;
   inquiry_type?: string;
   client_type?: string;
@@ -132,6 +134,16 @@ export const classifyInboundEmailSchema: JsonSchemaObject = {
     },
     preferred_date: { type: "string" },
     headcount_estimate: { type: ["number", "null"] },
+    occasion: {
+      type: "string",
+      description:
+        "Occasion or purpose for the event (e.g. company meeting, team-building). Empty if not stated.",
+    },
+    preferred_time: {
+      type: "string",
+      description:
+        "Preferred time of day for the event (e.g. 2 PM, early evening). Empty if not stated.",
+    },
     channel: { type: "string", enum: [...CHANNEL_ENUM] },
     inquiry_type: { type: "string", enum: [...INQUIRY_TYPE_ENUM] },
     client_type: { type: "string", enum: [...CLIENT_TYPE_ENUM] },
@@ -271,6 +283,8 @@ PART 2 — FIELD EXTRACTION (only if business_potential = "Yes")
 - event_format: ${JSON.stringify(EVENT_FORMAT_ENUM)}
 - preferred_date: ISO date-time if explicit; if no year, next future occurrence vs today's date in the user message
 - headcount_estimate: numeric if mentioned
+- occasion: event purpose (e.g. company meeting, birthday) — NOT the experience type
+- preferred_time: time of day preferred for the event if mentioned
 - channel: ${JSON.stringify(CHANNEL_ENUM)}
 - inquiry_type: ${JSON.stringify(INQUIRY_TYPE_ENUM)}
 - client_type: ${JSON.stringify(CLIENT_TYPE_ENUM)} — default "New"

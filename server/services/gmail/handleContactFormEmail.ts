@@ -24,6 +24,7 @@ import {
   type ClassifyInboundEmailLlmResult,
 } from "../ai/prompts/classifyInboundEmail.js";
 import { parsePreferredDateFromLlm } from "../dates/easternTime.js";
+import { buildInitialSurveyDataFromIntake } from "../leads/buildSurveyDraftContext.js";
 import { getGmailApi } from "./gmailClient.js";
 import { tryHandleMeetingConfirmationReply } from "./handleMeetingConfirmationReply.js";
 import {
@@ -1390,6 +1391,17 @@ export async function handleContactFormEmail(input: {
           : "";
 
       const notes = notesParts.filter(Boolean).join("\n");
+      const initialSurveyData = buildInitialSurveyDataFromIntake({
+        occasion: rawLlmResult.occasion,
+        preferred_time: rawLlmResult.preferred_time,
+        event_format: eventFormat,
+        preferred_date: preferredDate,
+        headcount_estimate:
+          typeof rawLlmResult.headcount_estimate === "number"
+            ? rawLlmResult.headcount_estimate
+            : null,
+        phone: rawLlmResult.phone || "",
+      });
       // Domain/company rules are server source of truth (override LLM channel)
       const enrich = await enrichLeadOnCreate({
         email: extractedEmail,
@@ -1428,6 +1440,7 @@ export async function handleContactFormEmail(input: {
           priorityTag: enrich.priorityTag,
           isPriority: enrich.isPriority,
           estimateKeywordsDetected: enrich.estimateKeywordsDetected,
+          ...(initialSurveyData ? { surveyData: initialSurveyData } : {}),
           ...(aiFlagCategory
             ? { aiFlagCategory, aiFlagReason: aiReason }
             : {}),
