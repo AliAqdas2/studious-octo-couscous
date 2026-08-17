@@ -10,12 +10,11 @@ import { buildSurveyDraftContext } from "./buildSurveyDraftContext.js";
 import {
   buildSurveyDraftHtml,
   buildSurveyDraftSubject,
+  MEETING_DATE_TIME_PLACEHOLDER,
 } from "./surveyDraftTemplate.js";
 
 const LOG = "[survey-draft-fallback]";
 const FALLBACK_ACTION = "Meeting Proposal Draft Created (No-Answer Fallback)";
-const CALENDAR_BLOCKED_ACTION =
-  "Survey Draft Skipped (Calendar Unavailable)";
 const SURVEY_STAGE = "Survey Sent";
 
 const REASON_TEXT: Record<string, string> = {
@@ -45,7 +44,6 @@ export interface SendSurveyDraftResult {
 
 async function sendDigestAlert(
   lead: typeof leads.$inferSelect,
-  reasonText: string,
   bodyLines: string[]
 ): Promise<void> {
   const digestTo = env.digestRecipients()[0];
@@ -70,9 +68,15 @@ async function sendDigestAlert(
   }
 }
 
+function calendarFailureReason(calendarOk: boolean): string {
+  return calendarOk
+    ? "No free meeting slots were found during business hours (Mon–Fri 9 AM–5 PM ET) in the next 3 business days."
+    : "Google Calendar could not be queried.";
+}
+
 /**
  * When auto-call cannot run, build a programmatic survey draft with pre-filled
- * answers and Google Calendar availability windows. Skips client draft if
+ * answers and Google Calendar availability windows. Uses a red placeholder when
  * calendar is unavailable or has no free business-hour slots.
  */
 export async function sendSurveyDraftOnCallFailure(
@@ -115,48 +119,18 @@ export async function sendSurveyDraftOnCallFailure(
   const reasonText = humanizeCallFailureReason(reason);
   const { prefill } = await buildSurveyDraftContext(lead);
   const availability = await findFreeMeetingWindows();
+  const availabilityProse = availability.prose?.trim() || null;
+  const usedPlaceholder = !availabilityProse;
 
-  if (!availability.calendarOk || !availability.prose) {
-    const calendarReason = !availability.calendarOk
-      ? "Google Calendar could not be queried."
-      : "No free meeting slots were found during business hours (Mon–Fri 9 AM–5 PM ET) in the next 3 business days.";
-
-    console.warn(`${LOG} ${calendarReason} — skip client draft for lead ${leadId}`);
-
-    await db.insert(activityLogs).values({
-      entityType: "Lead",
-      entityId: lead.id,
-      action: CALENDAR_BLOCKED_ACTION,
-      details: {
-        reason,
-        reason_text: reasonText,
-        calendar_ok: availability.calendarOk,
-        calendar_reason: calendarReason,
-        to: lead.email,
-        prefill,
-      },
-      userName: "System (Call Fallback)",
-      timestamp: new Date(),
-    });
-
-    await sendDigestAlert(lead, reasonText, [
-      "Survey follow-up draft was NOT created for the lead below.",
-      "",
-      `Reason: ${reasonText}`,
-      "",
-      calendarReason,
-      "Please create the survey email manually in Gmail and add meeting times from the calendar.",
-      "",
-      `Lead: ${lead.name || "(no name)"}${lead.company ? ` (${lead.company})` : ""}`,
-      `Email: ${lead.email}`,
-      `Phone: ${lead.phone || "(none)"}`,
-    ]);
-
-    return { ok: true, skipped: "calendar_unavailable" };
+  if (usedPlaceholder) {
+    const calendarReason = calendarFailureReason(availability.calendarOk);
+    console.warn(
+      `${LOG} ${calendarReason} — draft will use red ${MEETING_DATE_TIME_PLACEHOLDER} for lead ${leadId}`
+    );
   }
 
   const subject = buildSurveyDraftSubject(lead);
-  const bodyHtml = buildSurveyDraftHtml(lead, prefill, availability.prose);
+  const bodyHtml = buildSurveyDraftHtml(lead, prefill, availabilityProse);
 
   const draft = await createGmailDraft({
     to: lead.email,
@@ -188,6 +162,10 @@ export async function sendSurveyDraftOnCallFailure(
     })
     .where(eq(leads.id, lead.id));
 
+  const calendarReason = usedPlaceholder
+    ? calendarFailureReason(availability.calendarOk)
+    : null;
+
   await db.insert(activityLogs).values({
     entityType: "Lead",
     entityId: lead.id,
@@ -199,7 +177,10 @@ export async function sendSurveyDraftOnCallFailure(
       template_name: "B2B Survey (programmatic)",
       to: lead.email,
       subject,
-      availability_prose: availability.prose,
+      calendar_ok: availability.calendarOk,
+      availability_placeholder: usedPlaceholder,
+      ...(calendarReason ? { calendar_reason: calendarReason } : {}),
+      availability_prose: availabilityProse,
       meeting_windows: availability.windows.map((w) => ({
         day: w.dayLabel,
         start_utc: w.startUtc.toISOString(),
@@ -214,22 +195,43 @@ export async function sendSurveyDraftOnCallFailure(
     timestamp: now,
   });
 
-  await sendDigestAlert(lead, reasonText, [
-    "A survey follow-up email has been added to Drafts in Gmail and is awaiting review.",
-    "",
-    `Reason: ${reasonText}`,
-    "",
+  const leadBlock = [
     `Lead: ${lead.name || "(no name)"}${lead.company ? ` (${lead.company})` : ""}`,
     `Email: ${lead.email}`,
     `Phone: ${lead.phone || "(none)"}`,
-    "",
-    `Proposed meeting windows (from Google Calendar): ${availability.prose}`,
-    "",
-    "Open Gmail → Drafts to review and send.",
-  ]);
+  ];
+
+  if (usedPlaceholder) {
+    await sendDigestAlert(lead, [
+      "A survey follow-up draft has been added to Gmail Drafts.",
+      "",
+      "IMPORTANT: Google Calendar could not provide meeting times (or no free slots were found).",
+      `The draft contains ${MEETING_DATE_TIME_PLACEHOLDER} in RED — please replace it with real availability before sending.`,
+      "",
+      `Reason: ${reasonText}`,
+      "",
+      calendarReason!,
+      "",
+      ...leadBlock,
+      "",
+      "Open Gmail → Drafts to review, fill in meeting times, and send.",
+    ]);
+  } else {
+    await sendDigestAlert(lead, [
+      "A survey follow-up email has been added to Drafts in Gmail and is awaiting review.",
+      "",
+      `Reason: ${reasonText}`,
+      "",
+      ...leadBlock,
+      "",
+      `Proposed meeting windows (from Google Calendar): ${availabilityProse}`,
+      "",
+      "Open Gmail → Drafts to review and send.",
+    ]);
+  }
 
   console.log(
-    `${LOG} Draft created for lead ${lead.id} draftId=${draftId} availability="${availability.prose}"`
+    `${LOG} Draft created for lead ${lead.id} draftId=${draftId} availability=${usedPlaceholder ? MEETING_DATE_TIME_PLACEHOLDER : `"${availabilityProse}"`}`
   );
   return { ok: true, draftId };
 }

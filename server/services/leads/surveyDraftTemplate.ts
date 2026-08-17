@@ -1,6 +1,8 @@
 import type { leads } from "../../db/schema/index.js";
 import type { SurveyPrefill } from "./buildSurveyDraftContext.js";
 
+export const MEETING_DATE_TIME_PLACEHOLDER = "<MEETING DATE AND TIME>";
+
 /** Cloned B2B Survey copy — not loaded from CSV/DB for no-answer fallback. */
 export const SURVEY_DRAFT_INTRO = `Thank you so much for reaching out to plan a future function with us. We've worked with many groups in the past...rest assured you're in good hands and will have a blast!
 
@@ -69,6 +71,14 @@ function boldAnswer(value: string): string {
   return ` <b>${escapeHtml(trimmed)}</b>`;
 }
 
+/** Calendar prose or red placeholder when availability could not be fetched. */
+export function formatMeetingAvailabilityHtml(prose: string | null): string {
+  if (prose?.trim()) {
+    return escapeHtml(prose.trim());
+  }
+  return `<span style="color:#C62828;font-weight:bold">${escapeHtml(MEETING_DATE_TIME_PLACEHOLDER)}</span>`;
+}
+
 export function buildSurveyDraftSubject(
   lead: typeof leads.$inferSelect
 ): string {
@@ -80,7 +90,7 @@ export function buildSurveyDraftSubject(
 export function buildSurveyDraftHtml(
   lead: typeof leads.$inferSelect,
   prefill: SurveyPrefill,
-  availabilityProse: string
+  availabilityProse: string | null
 ): string {
   const greeting = escapeHtml(lead.name?.trim() || "there");
   const questionLines = SURVEY_DRAFT_QUESTIONS.map(({ question, answerKey }) => {
@@ -88,7 +98,8 @@ export function buildSurveyDraftHtml(
     return `${escapeHtml(question)}${boldAnswer(answer)}`;
   }).join("<br><br>");
 
-  const closing = `Sending you documentation and a brief program planning discussion will help customize this experience to help keep this process smooth and seamless. Does ${escapeHtml(availabilityProse)} work? Please let me know which time works best for you so we can plan accordingly.`;
+  const availabilityHtml = formatMeetingAvailabilityHtml(availabilityProse);
+  const closing = `Sending you documentation and a brief program planning discussion will help customize this experience to help keep this process smooth and seamless. Does ${availabilityHtml} work? Please let me know which time works best for you so we can plan accordingly.`;
 
   const introHtml = SURVEY_DRAFT_INTRO.split("\n\n")
     .map((p) => escapeHtml(p))
