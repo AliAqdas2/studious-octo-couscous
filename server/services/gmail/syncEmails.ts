@@ -1,5 +1,6 @@
 import { AppError } from "../../lib/errors.js";
 import { getGmailApi } from "./gmailClient.js";
+import { emailKind, type EmailKind } from "./messages.js";
 
 function headerValue(
   headers: Array<{ name?: string | null; value?: string | null }> | undefined,
@@ -19,6 +20,8 @@ export interface SyncedEmailMeta {
   to: string;
   snippet: string;
   date: string;
+  labelIds: string[];
+  kind: EmailKind;
 }
 
 /**
@@ -54,6 +57,7 @@ export async function syncGmailEmails(leadEmail: string): Promise<{
     });
     const messageData = messageRes.data;
     const headers = messageData.payload?.headers || [];
+    const labelIds = messageData.labelIds || [];
     emails.push({
       id: message.id,
       threadId: messageData.threadId || null,
@@ -62,6 +66,8 @@ export async function syncGmailEmails(leadEmail: string): Promise<{
       to: headerValue(headers, "To"),
       snippet: messageData.snippet || "",
       date: headerValue(headers, "Date"),
+      labelIds,
+      kind: emailKind(labelIds),
     });
   }
 

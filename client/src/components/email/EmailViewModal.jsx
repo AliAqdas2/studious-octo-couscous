@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Send, FileText, Reply, Clock, User, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import EmailBodyRenderer from './EmailBodyRenderer';
+import EmailKindBadge from './EmailKindBadge';
 
 export default function EmailViewModal({ email, lead, onClose }) {
   const queryClient = useQueryClient();
@@ -99,13 +100,15 @@ export default function EmailViewModal({ email, lead, onClose }) {
 
   const bodyContent = emailDetail?.body ?? email.snippet ?? '';
   const bodyMimeType = emailDetail?.bodyMimeType || (emailDetail?.body ? undefined : 'text/plain');
+  const kind = emailDetail?.kind || email.kind;
 
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-[#C84B31] pr-6">
-            {email.subject || '(No Subject)'}
+          <DialogTitle className="text-xl font-bold text-[#C84B31] pr-6 flex items-center gap-2 flex-wrap">
+            <span>{email.subject || '(No Subject)'}</span>
+            <EmailKindBadge kind={kind} />
           </DialogTitle>
         </DialogHeader>
 

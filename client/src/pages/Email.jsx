@@ -18,6 +18,7 @@ import CreateDraftDialog from '@/components/email/CreateDraftDialog';
 import EmailTemplateDialog from '@/components/email/EmailTemplateDialog';
 import ExtractLeadPreviewModal from '@/components/email/ExtractLeadPreviewModal';
 import EmailViewModal from '@/components/email/EmailViewModal';
+import EmailKindBadge from '@/components/email/EmailKindBadge';
 
 export default function Email() {
   const navigate = useNavigate();
@@ -194,7 +195,10 @@ export default function Email() {
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900">{email.subject}</h4>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-semibold text-gray-900">{email.subject}</h4>
+                              <EmailKindBadge kind={email.kind} />
+                            </div>
                             <p className="text-sm text-gray-600 mt-1">
                               From: {email.from}
                             </p>
@@ -203,7 +207,7 @@ export default function Email() {
                             </p>
                           </div>
                           <a
-                            href={`https://mail.google.com/mail/u/0/#all/${email.id}`}
+                            href={`https://mail.google.com/mail/u/0/${email.kind === 'draft' ? '#drafts' : '#all'}/${email.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-800"

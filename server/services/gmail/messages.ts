@@ -56,6 +56,15 @@ export function headerValue(
   );
 }
 
+export type EmailKind = "draft" | "sent" | "received";
+
+export function emailKind(labelIds: string[] | null | undefined): EmailKind {
+  const labels = labelIds || [];
+  if (labels.includes("DRAFT")) return "draft";
+  if (labels.includes("SENT")) return "sent";
+  return "received";
+}
+
 export async function getEmailDetail(messageId: string) {
   const gmail = await getGmailApi();
   const res = await gmail.users.messages.get({
@@ -67,6 +76,7 @@ export async function getEmailDetail(messageId: string) {
   const msgData = res.data;
   const headers = msgData.payload?.headers || [];
   const bodyResult = getBody(msgData.payload || {});
+  const labelIds = msgData.labelIds || [];
 
   return {
     success: true,
@@ -82,6 +92,8 @@ export async function getEmailDetail(messageId: string) {
       bodyMimeType: bodyResult.mimeType,
       snippet: msgData.snippet || "",
       messageIdHeader: headerValue(headers, "Message-ID"),
+      labelIds,
+      kind: emailKind(labelIds),
     },
   };
 }
