@@ -54,6 +54,7 @@ import {
   isPermanentIntakeError,
   isIntakeMessageBusy,
   isUniqueConstraintError,
+  isTerminalProcessedStatus,
   STALE_PROCESSING_MS,
   scheduleIntakeRetry,
   MAX_INTAKE_RETRIES,
