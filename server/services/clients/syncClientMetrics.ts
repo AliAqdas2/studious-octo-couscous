@@ -12,6 +12,12 @@ function requireDb() {
 const ACTIVE_STAGES = new Set([
   "Completed",
   "Deposit Received",
+  "Planning",
+  "Run Of Show Scheduled",
+  "Pre-Event Ready",
+  "In Progress",
+  "Post-Event",
+  // Legacy
   "Pre-Event Planning",
   "Inventory Ordering",
   "Staff Confirmed",

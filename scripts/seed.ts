@@ -119,6 +119,21 @@ async function seed(): Promise<void> {
       `[seed] Onboarding seed skipped (run migrations first if tables missing): ${message}`
     );
   }
+
+  try {
+    const { seedEventWorkflows } = await import(
+      "../server/services/events/seedEventWorkflows.js"
+    );
+    const result = await seedEventWorkflows();
+    console.log(
+      `[seed] Event workflows seeded tasks=${result.taskDefCount} resources=${result.resourceCount}`
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[seed] Event workflow seed skipped (run migrations first if tables missing): ${message}`
+    );
+  }
 }
 
 seed()

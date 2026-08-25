@@ -43,12 +43,14 @@ export function warnIfNoDatabase(): void {
   }
 }
 
-/** Probe the DB at startup and log connecting / connected / failed. */
-export async function logDatabaseStartup(): Promise<void> {
+/** Probe the DB at startup and log connecting / connected / failed.
+ *  Returns true if `select 1` succeeded.
+ */
+export async function logDatabaseStartup(): Promise<boolean> {
   const databaseUrl = resolveDatabaseUrl();
   if (!databaseUrl) {
     console.warn("[db] No DATABASE_URL — skipping connection check");
-    return;
+    return false;
   }
 
   const target = databaseHostLabel(databaseUrl);
@@ -58,13 +60,28 @@ export async function logDatabaseStartup(): Promise<void> {
     const db = getDb();
     if (!db || !client) {
       console.warn("[db] Client not initialized");
-      return;
+      return false;
     }
-    await client`select 1 as ok`;
+    await Promise.race([
+      client`select 1 as ok`,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Connection timed out after 15s — check VPN, DATABASE_URL, or that Postgres is reachable"
+              )
+            ),
+          15_000
+        )
+      ),
+    ]);
     console.log(`[db] Connected to ${target}`);
+    return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[db] Connection failed (${target}): ${message}`);
+    return false;
   }
 }
 

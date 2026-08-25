@@ -267,6 +267,7 @@ async function loadData(): Promise<void> {
     let ok = 0;
     let skip = 0;
     const EVENT_TYPES = [
+      "In-Person Cooking",
       "In-Person Mixology",
       "In-Person Private Monuments",
       "In-Person Paint & Sip",
@@ -453,6 +454,7 @@ async function loadData(): Promise<void> {
     let ok = 0;
     let skip = 0;
     const EVENT_TYPES = [
+      "In-Person Cooking",
       "In-Person Mixology",
       "In-Person Private Monuments",
       "In-Person Paint & Sip",
@@ -463,13 +465,20 @@ async function loadData(): Promise<void> {
     ] as const;
     const STAGES = [
       "Deposit Received",
+      "Planning",
+      "Run Of Show Scheduled",
+      "Pre-Event Ready",
+      "In Progress",
+      "Post-Event",
+      "Completed",
+      "Lost",
+      "Canceled",
       "Pre-Event Planning",
       "Inventory Ordering",
       "Staff Confirmed",
       "72hr Final Check",
       "Event Day",
       "Post-Event Processing",
-      "Completed",
       "Cancelled",
     ] as const;
     const FORMATS = ["In-Person", "Virtual"] as const;

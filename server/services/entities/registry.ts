@@ -11,6 +11,7 @@ import {
   events,
   fareharborEvents,
   gmailPollState,
+  inventoryCatalogItems,
   leads,
   mentionReads,
   onboardingWorkflowSteps,
@@ -23,6 +24,8 @@ import {
   threadMessages,
   twilioWebhookLogs,
   users,
+  vendors,
+  venues,
 } from "../../db/schema/index.js";
 
 export interface EntityDefinition {
@@ -180,6 +183,25 @@ export const entityRegistry: Record<string, EntityDefinition> = {
     searchable: ["title", "phase"],
     defaultSort: "-created_date",
     requiredOnCreate: ["candidate_id", "phase", "title"],
+  },
+  vendors: {
+    table: vendors,
+    searchable: ["name", "category", "email", "phone", "used_for"],
+    defaultSort: "name",
+    requiredOnCreate: ["name", "category"],
+  },
+  venues: {
+    table: venues,
+    searchable: ["name"],
+    defaultSort: "sort_order",
+    requiredOnCreate: ["name"],
+    adminOnlyDelete: true,
+  },
+  "inventory-catalog-items": {
+    table: inventoryCatalogItems,
+    searchable: ["name", "sku_key", "experience_keys"],
+    defaultSort: "sort_order",
+    requiredOnCreate: ["sku_key", "name"],
   },
 };
 

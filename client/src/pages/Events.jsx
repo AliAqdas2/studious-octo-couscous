@@ -63,13 +63,21 @@ export default function Events() {
 
   const stageColors = {
     'Deposit Received': 'bg-blue-100 text-blue-800 border-blue-200',
+    'Planning': 'bg-purple-100 text-purple-800 border-purple-200',
+    'Run Of Show Scheduled': 'bg-violet-100 text-violet-800 border-violet-200',
+    'Pre-Event Ready': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'In Progress': 'bg-red-100 text-red-800 border-red-200',
+    'Post-Event': 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    'Completed': 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    'Lost': 'bg-slate-100 text-slate-800 border-slate-200',
+    'Canceled': 'bg-gray-100 text-gray-800 border-gray-200',
+    // Legacy
     'Pre-Event Planning': 'bg-purple-100 text-purple-800 border-purple-200',
     'Inventory Ordering': 'bg-yellow-100 text-yellow-800 border-yellow-200',
     'Staff Confirmed': 'bg-green-100 text-green-800 border-green-200',
     '72hr Final Check': 'bg-orange-100 text-orange-800 border-orange-200',
     'Event Day': 'bg-red-100 text-red-800 border-red-200',
     'Post-Event Processing': 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    'Completed': 'bg-emerald-100 text-emerald-800 border-emerald-200',
     'Cancelled': 'bg-gray-100 text-gray-800 border-gray-200'
   };
 

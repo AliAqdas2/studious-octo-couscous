@@ -52,6 +52,7 @@ export const aiFlagCategoryEnum = pgEnum("ai_flag_category", [
 export const clientBusinessTypeEnum = pgEnum("client_business_type", ["B2B", "B2C"]);
 
 export const eventTypeEnum = pgEnum("event_type", [
+  "In-Person Cooking",
   "In-Person Mixology",
   "In-Person Private Monuments",
   "In-Person Paint & Sip",
@@ -59,6 +60,56 @@ export const eventTypeEnum = pgEnum("event_type", [
   "In-Person Yoga & UnWined",
   "Virtual Mixology",
   "Virtual Paint & Sip",
+  "In-Person Pottery",
+  "In-Person Terrarium",
+  "Flavors of DC",
+  "In-Person Chocolate Making",
+  "In-Person Chocolate & Wine",
+  "In-Person Cheeseboard",
+  "In-Person Gingerbread",
+  "In-Person Lend a Hand",
+]);
+
+/** Timeline family: A = Cooking ROS, B = 3/2/1w, C = collapsed 1w stubs. */
+export const workflowTimelineFamilyEnum = pgEnum("workflow_timeline_family", [
+  "A",
+  "B",
+  "C",
+]);
+
+/** Family A/B/C phases (plan 01 + 07). */
+export const workflowPhaseEnum = pgEnum("workflow_phase", [
+  "upon_deposit",
+  "two_point_five_weeks",
+  "ros",
+  "three_weeks",
+  "two_weeks",
+  "one_week_before",
+  "staff_checkin_72_48h",
+  "twenty_four_h",
+  "during",
+  "post",
+]);
+
+export const workflowDueAnchorEnum = pgEnum("workflow_due_anchor", [
+  "event_date",
+  "deposit_date",
+  "immediate",
+]);
+
+export const workflowRoleEnum = pgEnum("workflow_role", [
+  "Sales",
+  "Admin",
+  "Ops",
+  "Marketing",
+  "Event Host",
+]);
+
+export const venueModeEnum = pgEnum("venue_mode", ["go_to_them", "house_venue"]);
+
+export const participationListTypeEnum = pgEnum("participation_list_type", [
+  "sheets",
+  "forms",
 ]);
 
 export const eventDeliveryFormatEnum = pgEnum("event_delivery_format", ["In-Person", "Virtual"]);
@@ -85,13 +136,21 @@ export const inventoryStatusEnum = pgEnum("inventory_status", [
 
 export const eventStageEnum = pgEnum("event_stage", [
   "Deposit Received",
+  "Planning",
+  "Run Of Show Scheduled",
+  "Pre-Event Ready",
+  "In Progress",
+  "Post-Event",
+  "Completed",
+  "Lost",
+  "Canceled",
+  // Legacy values kept for existing rows
   "Pre-Event Planning",
   "Inventory Ordering",
   "Staff Confirmed",
   "72hr Final Check",
   "Event Day",
   "Post-Event Processing",
-  "Completed",
   "Cancelled",
 ]);
 
@@ -123,6 +182,7 @@ export const responsibleRoleEnum = pgEnum("responsible_role", [
   "Chef",
   "Event Host",
   "Finance",
+  "Marketing",
 ]);
 
 export const taskStatusEnum = pgEnum("task_status", [
@@ -140,6 +200,7 @@ export const operationalRoleEnum = pgEnum("operational_role", [
   "Finance",
   "Instructor",
   "Onboarding",
+  "Marketing",
 ]);
 
 export const activityEntityTypeEnum = pgEnum("activity_entity_type", [

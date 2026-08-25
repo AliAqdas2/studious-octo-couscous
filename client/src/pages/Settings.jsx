@@ -20,6 +20,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import SettingsVenuesPanel from '@/components/settings/SettingsVenuesPanel';
+import SettingsInventoryCatalogPanel from '@/components/settings/SettingsInventoryCatalogPanel';
 
 function formatTs(iso) {
   if (!iso) return null;
@@ -34,20 +36,17 @@ function formatTs(iso) {
   }
 }
 
-export default function Settings() {
-  const { user } = useAuth();
+function GmailSettingsSection({ user }) {
   const queryClient = useQueryClient();
   const [connecting, setConnecting] = React.useState(false);
   const [disconnectOpen, setDisconnectOpen] = React.useState(false);
   const [confirmPhrase, setConfirmPhrase] = React.useState('');
   const [disconnecting, setDisconnecting] = React.useState(false);
 
-  const allowed = isGmailAdminEmail(user?.email);
-
   const { data: status, isLoading, isError, refetch } = useQuery({
     queryKey: ['gmail-status'],
     queryFn: () => base44.gmail.getStatus(),
-    enabled: !!user && allowed,
+    enabled: !!user,
     staleTime: 15000,
     retry: 1,
   });
@@ -88,35 +87,12 @@ export default function Settings() {
     }
   };
 
-  if (!user || !allowed) {
-    return (
-      <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
-        <CardContent className="p-12 text-center">
-          <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-          <p className="text-gray-600">
-            You do not have access to manage the shared Gmail mailbox.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   const connected = Boolean(status?.connected);
   const watchExpiry = formatTs(status?.watchExpiration);
   const watchRegistered = formatTs(status?.watchRegisteredAt);
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-3xl md:text-4xl font-bold text-[#C84B31] mb-2">
-          Settings
-        </h1>
-        <p className="text-gray-600">
-          Manage the shared CRM Gmail mailbox used for send, sync, and inbox →
-          lead intake.
-        </p>
-      </div>
-
+    <>
       <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-[#2D3436]">
@@ -228,7 +204,10 @@ export default function Settings() {
             <DialogTitle>Disconnect Gmail?</DialogTitle>
             <DialogDescription>
               This stops send, sync, and inbox intake until you reconnect.
-              Type <span className="font-mono font-semibold">{GMAIL_DISCONNECT_PHRASE}</span>{' '}
+              Type{' '}
+              <span className="font-mono font-semibold">
+                {GMAIL_DISCONNECT_PHRASE}
+              </span>{' '}
               to confirm.
             </DialogDescription>
           </DialogHeader>
@@ -265,6 +244,48 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+export default function Settings() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const canManageGmail = isGmailAdminEmail(user?.email);
+
+  if (!user || (!isAdmin && !canManageGmail)) {
+    return (
+      <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
+        <CardContent className="p-12 text-center">
+          <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+          <p className="text-gray-600">
+            You do not have access to Settings.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div>
+        <h1 className="text-3xl md:text-4xl font-bold text-[#C84B31] mb-2">
+          Settings
+        </h1>
+        <p className="text-gray-600">
+          Manage house venues, inventory catalog, and shared Gmail (when
+          authorized).
+        </p>
+      </div>
+
+      {isAdmin && (
+        <>
+          <SettingsVenuesPanel />
+          <SettingsInventoryCatalogPanel />
+        </>
+      )}
+
+      {canManageGmail && <GmailSettingsSection user={user} />}
     </div>
   );
 }

@@ -12,6 +12,15 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ThreadView from '@/components/thread/ThreadView';
+import DepositIntakeForm from '@/components/events/DepositIntakeForm';
+import EventInventoryChecklist from '@/components/events/EventInventoryChecklist';
+import RunOfShowForm from '@/components/events/RunOfShowForm';
+import BeoDocumentPanel from '@/components/events/BeoDocumentPanel';
+import EventArtifactsPanel from '@/components/events/EventArtifactsPanel';
+import PostEventPanel from '@/components/events/PostEventPanel';
+import EventOpsFeaturesPanel from '@/components/events/EventOpsFeaturesPanel';
+import WorkflowTaskExtras from '@/components/events/WorkflowTaskExtras';
+import { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
 
 export default function EventDetail() {
   const queryClient = useQueryClient();
@@ -48,15 +57,60 @@ export default function EventDetail() {
     enabled: !!user && user?.role !== 'admin'
   });
 
+  const { data: opsFeaturesData } = useQuery({
+    queryKey: ['event-ops-features'],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventOpsFeatures', {});
+      return res?.data ?? res;
+    },
+  });
+  const opsFeatures = opsFeaturesData?.features || {};
+
+  const { data: experienceInfo } = useQuery({
+    queryKey: ['event-experience', eventId],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventExperience', { eventId });
+      return res?.data ?? res;
+    },
+    enabled: !!eventId,
+  });
+  const experience = experienceInfo?.experience;
+  const needsZach = Boolean(experienceInfo?.needsZachReview);
+  // Meeting: ROS is shared across experiences (not Cooking-only).
+  const hasRos = Boolean(event?.event_type);
+
   const generateWorkflowMutation = useMutation({
     mutationFn: () => base44.functions.invoke('generateEventWorkflow', { eventId }),
     onSuccess: () => {
       queryClient.invalidateQueries(['event-tasks', eventId]);
+      queryClient.invalidateQueries(['event-inventory', eventId]);
+      queryClient.invalidateQueries(['event-experience', eventId]);
       toast.success('Event workflow generated successfully');
     },
     onError: () => {
       toast.error('Failed to generate workflow');
     }
+  });
+
+  const regenerateWorkflowMutation = useMutation({
+    mutationFn: () =>
+      base44.functions.invoke('regenerateEventWorkflow', {
+        eventId,
+        confirm: true,
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(['event-tasks', eventId]);
+      queryClient.invalidateQueries(['event-inventory', eventId]);
+      queryClient.invalidateQueries(['event', eventId]);
+      queryClient.invalidateQueries(['event-experience', eventId]);
+      const body = res?.data ?? res;
+      toast.success(
+        `Workflow regenerated (${body?.deletedOpenTasks ?? 0} open tasks replaced)`
+      );
+    },
+    onError: (err) => {
+      toast.error(err?.message || 'Failed to regenerate workflow');
+    },
   });
 
   const acknowledgeTaskMutation = useMutation({
@@ -134,6 +188,18 @@ export default function EventDetail() {
     }
   });
 
+  const updateWorkflowMetaMutation = useMutation({
+    mutationFn: async ({ taskId, workflow_meta }) => {
+      return base44.entities.Task.update(taskId, { workflow_meta });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['event-tasks', eventId]);
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to update task');
+    }
+  });
+
   const updateDueDateMutation = useMutation({
     mutationFn: async ({ taskId, dueDate }) => {
       return base44.entities.Task.update(taskId, {
@@ -157,12 +223,28 @@ export default function EventDetail() {
 
   // Role-based task filtering for non-admin users
   const userOperationalRole = roleAssignments[0]?.role;
+
+  const featureHidden = (task) => {
+    if (
+      !opsFeatures.whatsappMedia &&
+      (task.trace_id === 'C104' || /whatsapp/i.test(task.title || ''))
+    ) {
+      return true;
+    }
+    if (
+      opsFeatures.email2FollowUps === false &&
+      ['C115', 'C116', 'C117', 'C118'].includes(task.trace_id)
+    ) {
+      return true;
+    }
+    return false;
+  };
   
-  const visibleTasks = user?.role === 'admin' ? tasks : tasks.filter(task => {
+  const visibleTasks = (user?.role === 'admin' ? tasks : tasks.filter(task => {
     const matchesRole = task.responsible_role === userOperationalRole;
     const assignedToUser = task.assigned_user === user?.id;
     return matchesRole || assignedToUser;
-  });
+  })).filter((t) => !featureHidden(t));
 
   const checklistTasks = visibleTasks.filter(t => t.category === 'Checklist').sort((a, b) => 
     (a.order || 0) - (b.order || 0)
@@ -183,6 +265,30 @@ export default function EventDetail() {
   const completedCount = checklistCompleted + preEventCompleted + eventDayCompleted + postEventCompleted;
   const totalTasks = visibleTasks.length;
   const progressPercent = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
+
+  const PHASE_ORDER = [
+    'upon_deposit',
+    'two_point_five_weeks',
+    'ros',
+    'three_weeks',
+    'two_weeks',
+    'one_week_before',
+    'staff_checkin_72_48h',
+    'twenty_four_h',
+    'during',
+    'post',
+  ];
+
+  const workflowTasks = visibleTasks.filter((t) => t.category !== 'Checklist');
+  const hasPhases = workflowTasks.some((t) => t.workflow_phase);
+  const tasksByPhase = PHASE_ORDER.map((phase) => ({
+    phase,
+    label: PHASE_LABELS[phase] || phase,
+    tasks: workflowTasks
+      .filter((t) => t.workflow_phase === phase)
+      .sort((a, b) => (a.order || 0) - (b.order || 0) || new Date(a.due_date || 0) - new Date(b.due_date || 0)),
+  })).filter((g) => g.tasks.length > 0);
+  const unphasedWorkflow = workflowTasks.filter((t) => !t.workflow_phase);
 
   const renderTaskCard = (task) => {
     const isAcknowledged = !!task.assigned_user;
@@ -264,6 +370,14 @@ export default function EventDetail() {
             </Button>
           )}
         </div>
+
+        <WorkflowTaskExtras
+          task={task}
+          canEdit={isOwner || user?.role === 'admin'}
+          onMetaChange={(workflow_meta) =>
+            updateWorkflowMetaMutation.mutate({ taskId: task.id, workflow_meta })
+          }
+        />
 
         {/* Due Date Editor for Admin */}
         {user?.role === 'admin' && editingDueDate === task.id && (
@@ -435,30 +549,135 @@ export default function EventDetail() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-4xl font-bold text-[#C84B31] mb-2">{event.event_name}</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Badge className="bg-[#7A9D54] text-white">{event.event_type}</Badge>
             <Badge variant="outline">{event.stage}</Badge>
+            {experience?.timelineFamily && (
+              <Badge variant="outline" className="text-xs">
+                Timeline {experience.timelineFamily}
+              </Badge>
+            )}
+            {needsZach && (
+              <Badge className="bg-amber-100 text-amber-900 border-amber-200">
+                Needs Zach inventory review
+              </Badge>
+            )}
+            {experience?.docQuality && experience.docQuality !== 'complete' && (
+              <Badge variant="outline" className="text-xs capitalize">
+                Doc: {String(experience.docQuality).replace('_', '-')}
+              </Badge>
+            )}
           </div>
+          {experience?.flagNote && (
+            <p className="text-xs text-amber-800 mt-2 max-w-xl">{experience.flagNote}</p>
+          )}
         </div>
-        {/* Show Generate Workflow when no event-specific tasks exist (only checklist or none) */}
-        {preEventTasks.length === 0 && eventDayTasks.length === 0 && postEventTasks.length === 0 && (
-          <Button
-            onClick={() => generateWorkflowMutation.mutate()}
-            disabled={generateWorkflowMutation.isPending}
-            className="bg-[#C84B31] hover:bg-[#A03A23]"
-          >
-            <Sparkles className="w-4 h-4 mr-2" />
-            {generateWorkflowMutation.isPending ? 'Generating...' : 'Generate Event Workflow'}
-          </Button>
-        )}
+        <div className="flex flex-col sm:flex-row gap-2">
+          {preEventTasks.length === 0 && eventDayTasks.length === 0 && postEventTasks.length === 0 && (
+            <Button
+              onClick={() => generateWorkflowMutation.mutate()}
+              disabled={generateWorkflowMutation.isPending}
+              className="bg-[#C84B31] hover:bg-[#A03A23]"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              {generateWorkflowMutation.isPending ? 'Generating...' : 'Generate Event Workflow'}
+            </Button>
+          )}
+          {(preEventTasks.length > 0 || eventDayTasks.length > 0 || postEventTasks.length > 0) &&
+            (user?.role === 'admin' ||
+              roleAssignments.some((r) => ['Ops', 'Ops Manager', 'Admin'].includes(r.role))) && (
+              <Button
+                variant="outline"
+                disabled={regenerateWorkflowMutation.isPending}
+                onClick={() => {
+                  const ok = window.confirm(
+                    'Regenerating deletes OPEN (non-Done) tasks and rebuilds from the current event type template (including shared ROS). Done tasks are kept. Continue?'
+                  );
+                  if (ok) regenerateWorkflowMutation.mutate();
+                }}
+              >
+                {regenerateWorkflowMutation.isPending
+                  ? 'Regenerating…'
+                  : 'Regenerate workflow'}
+              </Button>
+            )}
+        </div>
       </div>
+
+      {/* Deposit Intake — Sales meeting capture (plan 02) */}
+      <DepositIntakeForm event={event} user={user} />
+
+      {/* Inventory checklist — any experience with matching catalog experience_keys */}
+      {event?.event_type && (
+        <EventInventoryChecklist
+          eventId={eventId}
+          experienceKey={event.event_type}
+          canEdit={
+            user?.role === 'admin' ||
+            roleAssignments.some((r) =>
+              ['Ops', 'Ops Manager', 'Intern'].includes(r.role)
+            )
+          }
+        />
+      )}
+
+      <EventArtifactsPanel
+        event={event}
+        canEditAdmin={
+          user?.role === 'admin' ||
+          roleAssignments.some((r) => r.role === 'Admin')
+        }
+        canEditOps={
+          user?.role === 'admin' ||
+          roleAssignments.some((r) =>
+            ['Ops', 'Ops Manager', 'Admin'].includes(r.role)
+          )
+        }
+      />
+
+      {hasRos && (
+        <RunOfShowForm
+          event={event}
+          user={user}
+          canEdit={
+            user?.role === 'admin' ||
+            roleAssignments.some((r) =>
+              ['Ops', 'Ops Manager', 'Sales', 'Admin'].includes(r.role)
+            )
+          }
+        />
+      )}
+
+      <BeoDocumentPanel
+        event={event}
+        canEdit={
+          user?.role === 'admin' ||
+          roleAssignments.some((r) =>
+            ['Ops', 'Ops Manager', 'Sales', 'Admin'].includes(r.role)
+          )
+        }
+      />
+
+      <PostEventPanel
+        event={event}
+        canEdit={
+          user?.role === 'admin' ||
+          roleAssignments.some((r) =>
+            ['Ops', 'Ops Manager', 'Sales', 'Admin', 'Event Host'].includes(
+              r.role
+            )
+          )
+        }
+      />
+
+      <EventOpsFeaturesPanel canEdit={user?.role === 'admin'} />
 
       {/* Progress Bar */}
       {visibleTasks.length > 0 && (
-        <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+        <Card className="hidden bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-bold text-gray-900">Workflow Progress</h3>
@@ -477,6 +696,7 @@ export default function EventDetail() {
         </Card>
       )}
 
+      <div className="hidden">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Event Details */}
         <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
@@ -506,10 +726,26 @@ export default function EventDetail() {
               </div>
             )}
 
-            {event.headcount && (
+            {event.headcount_min != null || event.headcount_max != null ? (
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-gray-400" />
+                <span className="text-sm">
+                  {event.headcount_min ?? '?'}–{event.headcount_max ?? '?'} participants
+                </span>
+              </div>
+            ) : event.headcount ? (
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-gray-400" />
                 <span className="text-sm">{event.headcount} participants</span>
+              </div>
+            ) : null}
+
+            {event.can_view_deposit_amount && event.deposit_amount != null && (
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-gray-400" />
+                <span className="text-sm">
+                  Deposit ${Number(event.deposit_amount).toLocaleString()}
+                </span>
               </div>
             )}
 
@@ -582,55 +818,92 @@ export default function EventDetail() {
             </Card>
           )}
 
-          {/* Pre-Event Tasks */}
-          {preEventTasks.length > 0 && (
-            <Card className="bg-blue-50 border-blue-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-blue-600" />
-                  Pre-Event Tasks ({preEventCompleted}/{preEventTasks.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {preEventTasks.map(renderTaskCard)}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* Pre-Event / Phase checklist */}
+          {hasPhases ? (
+            <>
+              {tasksByPhase.map((group) => {
+                const done = group.tasks.filter((t) => t.status === 'Done').length;
+                return (
+                  <Card key={group.phase} className="bg-blue-50 border-blue-200">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Clock className="w-5 h-5 text-blue-600" />
+                        {group.label} ({done}/{group.tasks.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {group.tasks.map(renderTaskCard)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {unphasedWorkflow.length > 0 && (
+                <Card className="bg-slate-50 border-slate-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      Other workflow tasks
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {unphasedWorkflow.map(renderTaskCard)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            <>
+              {preEventTasks.length > 0 && (
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-blue-600" />
+                      Pre-Event Tasks ({preEventCompleted}/{preEventTasks.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {preEventTasks.map(renderTaskCard)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-          {/* Event Day Tasks */}
-          {eventDayTasks.length > 0 && (
-            <Card className="bg-amber-50 border-amber-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CheckSquare className="w-5 h-5 text-amber-600" />
-                  Event Day Tasks ({eventDayCompleted}/{eventDayTasks.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {eventDayTasks.map(renderTaskCard)}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+              {eventDayTasks.length > 0 && (
+                <Card className="bg-amber-50 border-amber-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CheckSquare className="w-5 h-5 text-amber-600" />
+                      Event Day Tasks ({eventDayCompleted}/{eventDayTasks.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {eventDayTasks.map(renderTaskCard)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-          {/* Post-Event Tasks */}
-          {postEventTasks.length > 0 && (
-            <Card className="bg-green-50 border-green-200">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-green-600" />
-                  Post-Event Tasks ({postEventCompleted}/{postEventTasks.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {postEventTasks.map(renderTaskCard)}
-                </div>
-              </CardContent>
-            </Card>
+              {postEventTasks.length > 0 && (
+                <Card className="bg-green-50 border-green-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-green-600" />
+                      Post-Event Tasks ({postEventCompleted}/{postEventTasks.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {postEventTasks.map(renderTaskCard)}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
 
           {preEventTasks.length === 0 && eventDayTasks.length === 0 && postEventTasks.length === 0 && (
@@ -653,6 +926,7 @@ export default function EventDetail() {
             </Card>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

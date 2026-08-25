@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, text, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, text, uuid, varchar } from "drizzle-orm/pg-core";
 import { createdBy, createdDate, updatedDate } from "./metadata.js";
 
 export const automationConfig = pgTable("automation_config", {
@@ -12,6 +12,10 @@ export const automationConfig = pgTable("automation_config", {
   calendarLink: text("calendar_link"),
   companyTriggerPrefix: varchar("company_trigger_prefix", { length: 50 }).default("ALITEST"),
   maxAttempts: integer("max_attempts").default(3),
+  /** Plan 06 — WhatsApp / EMAIL2 / thank-you toggles. */
+  eventOpsFeatures: jsonb("event_ops_features")
+    .$type<Record<string, boolean>>()
+    .default({}),
   createdDate: createdDate(),
   updatedDate: updatedDate(),
   createdBy: createdBy(),

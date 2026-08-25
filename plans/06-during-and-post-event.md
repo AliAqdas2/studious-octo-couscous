@@ -1,76 +1,88 @@
-# 06 — During event and post-event
+# 06 — During and post-event
 
-**Depends on:** [03](./03-task-timeline-and-roles.md), [05](./05-run-of-show-and-beo.md)  
-**Primary code today:** [`postEventAutomation.ts`](../server/services/events/postEventAutomation.ts)
+**Depends on:** [01](./01-event-workflow-foundation.md), [05](./05-run-of-show-and-beo.md)  
+**Traceability:** C095–C118  
+**Code today:** [`postEventAutomation.ts`](../server/services/events/postEventAutomation.ts) — extend, don’t replace.
 
 ---
 
 ## Goal
 
-Cover **day-of** responsibilities and **post-event** sales/ops loop: survey, media, thank-you emails, consumption, hours, and optional **new lead** for a future booking.
+Day-of Host/Ops tasks with handbook links; post-event media, survey, thank-you V1/V2, EMAIL 2, LinkedIn, +3-month T-shirt, invoicing policy, optional new lead.
 
 ---
 
-## During event
+## During (day-of)
 
-- Auto stage → `In Progress` on event date (job).  
-- Event Lead tasks:
-  - Stay in contact with day-of POC  
-  - Track drink consumption (if applicable)  
-  - Collect photo/video assets  
-  - WhatsApp media upload (**manual task** linking to process; Twilio WhatsApp later)  
-  - Team huddle: “What did we do well? What to improve?” → paste into Post Event Survey  
-- Link: [Post Event Survey Form](https://docs.google.com/forms/d/17shTljWmlrpEvZBhljLFsu3oUQCeR_rQEGFjRr6LUJw/edit)
-
-Remind in BEO check-in task: ETL should take ~5 minutes during cleanup to fill survey / upload — not later at home.
-
----
-
-## Post-event (Admin + Sales)
-
-### Admin (morning after)
-
-- Pull media from lead / Drive folder  
-- Prep assets for thank-you email  
-- Staff hours / receipts pointers  
-- Consumption invoice if needed  
-
-### Sales — thank-you email (draft, not auto-send)
-
-Two templates from cooking doc (adapt experience name dynamically):
-
-1. **Version 1 — General** thank-you + optional photo link + feedback ask  
-2. **Version 2 — Highly positive** + ask to be point of reference  
-
-Reuse Gmail draft + digest notify pattern (same as survey/call drafts).
-
-### Sales — Email 2 (after good feedback)
-
-Checklist / follow-up task:
-
-- When is their next event?  
-- Intro to 3 people who would benefit?  
-- Newsletter interest?  
-- **Build out another lead in CRM?** Yes/No → if Yes, create Lead prefilled from event/client (Sales responsibility)
-
-### Ops / Finance
-
-- Event report: labor hours, venue fees, supplies  
-- Invoice status fields already on `events`
+| Task | Owner | Resources / notes |
+|------|-------|-------------------|
+| Follow event-specific BEO (layout/inventory/client) | Event Host | BEO URL |
+| Host handbook reminders | Event Host | [Company Handbook](https://docs.google.com/document/d/19OsGb5N7y_GIgUsYuSsfjTxVBx65Mn_zPH5_mH3grO0/edit) |
+| Ops support handbook reminders | Ops | Same handbook |
+| Stay in contact with day-of POC | Event Lead | |
+| Ensure **guest speakers speak** | Event Lead | |
+| Gather photo assets | Event Lead | |
+| Upload assets to **digital database** + Drive photos folder | Event Lead | [Event Photos](https://drive.google.com/drive/folders/1un3gg73vMrmkbLR_8BaHqw1XLTtHrC1I) |
+| Post-event survey | Event Lead | Form URL |
+| Track drink consumption | Event Host | |
+| WhatsApp media (manual) | Event Lead | Automation deferred |
+| Team debrief → survey (“What did we do well / improve?”) | Event Lead | |
 
 ---
 
-## Acceptance checklist
+## Post-event Admin / Sales
 
-- [ ] Day-of tasks appear for Event Host  
-- [ ] Survey + Drive photo folder links on event  
-- [ ] Thank-you drafts use cooking copy variants with correct experience name  
-- [ ] “Create follow-up lead” path works  
-- [ ] No client auto-send without draft review  
+**Admin (morning after):**
+
+- Obtain media from event lead / digital database  
+- Route into post-event email  
+- Capture **staff hours of the event**  
+- Capture **additional details on the event**  
+- Consumption invoice path  
+
+**Sales — Thank-you:**
+
+- Templates V1 (general) / V2 (highly positive)  
+- **Dynamic experience name** — never leave “paint and sip” hardcoded for cooking  
+- Photo download link when applicable  
+
+**After V2 yes:**
+
+- Place feedback in **event tracker**  
+- Send **LinkedIn** connection request  
+
+**+3 months:**
+
+- Request **T-shirt size**  
+- CEO thank-you letter + offer **Mangia DC T-shirt**
+
+**EMAIL 2 (good feedback) — full cooking lines:**
+
+- WHEN IS THEIR NEXT EVENT they plan?  
+- The kindest compliment we could receive is to introduce us to three individuals you think could benefit from our services?  
+- Do you have interest in being in our newsletter?  
+- Build another lead into Sales CRM — Yes/No  
 
 ---
 
-## Non-goals
+## Invoicing / event report
 
-- Automated WhatsApp via Meta (document as future)  
-- Full payroll invoicing system
+- Event staff logs hours; **invoice at end of month**  
+- Receipts: **EOM with invoice** **or** submit **immediately after event**  
+- Event report: labor hours, venue fees, supplies purchased  
+
+---
+
+## Acceptance
+
+- [x] Guest speakers + handbook links + digital database upload
+- [x] Staff hours + additional details capture
+- [x] V2 → tracker + LinkedIn; +3mo T-shirt path
+- [x] Invoice timing policy as cooking
+- [x] EMAIL 2 lines from cooking
+- [x] Thank-you templates use dynamic experience name
+- [x] Optional new lead path
+
+**Also:** Event Ops feature toggles (WhatsApp **off by default**) on Event Detail — admin can enable when ready.
+
+**Next:** execute [`07-multi-experience-templates.md`](./07-multi-experience-templates.md).

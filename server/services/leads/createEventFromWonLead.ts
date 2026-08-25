@@ -9,6 +9,8 @@ import {
 import { AppError } from "../../lib/errors.js";
 import { linkEventToClient } from "../events/linkEventToClient.js";
 import { assignEventStaff } from "../events/assignEventStaff.js";
+import { resolveVenueModeForName } from "../events/venuesService.js";
+import { syncLeadEventVenue } from "../events/syncLeadEventVenue.js";
 
 function requireDb() {
   const db = getDb();
@@ -17,6 +19,9 @@ function requireDb() {
 }
 
 const EVENT_TYPE_MAPPING: Record<string, string> = {
+  "In-Person Cooking": "In-Person Cooking",
+  "Cooking Class": "In-Person Cooking",
+  Cooking: "In-Person Cooking",
   "In-Person Mixology": "In-Person Mixology",
   Mixology: "In-Person Mixology",
   "Private Monuments": "In-Person Private Monuments",
@@ -120,6 +125,8 @@ export async function createEventFromWonLead(
   const depositUpdates: {
     depositNumber?: string;
     depositAmount?: number | null;
+    venue?: string;
+    venueMode?: "go_to_them" | "house_venue" | null;
     updatedDate: Date;
   } = { updatedDate: new Date() };
   if (input.depositNumber != null && String(input.depositNumber).trim() !== "") {
@@ -131,9 +138,26 @@ export async function createEventFromWonLead(
       depositUpdates.depositAmount = n;
     }
   }
+  // Prefer explicit venue arg; else light scrape from notes; else existing lead.venue
+  let resolvedVenue = (venue || "").trim();
+  if (!resolvedVenue && lead.venue) {
+    resolvedVenue = String(lead.venue).trim();
+  }
+  if (!resolvedVenue && lead.notes) {
+    const m = lead.notes.match(/venue[:\s]+([^\n]+)/i);
+    if (m?.[1]) resolvedVenue = m[1].trim().slice(0, 255);
+  }
+  const venueMode = resolvedVenue
+    ? await resolveVenueModeForName(resolvedVenue)
+    : null;
+  if (resolvedVenue) {
+    depositUpdates.venue = resolvedVenue;
+    depositUpdates.venueMode = venueMode;
+  }
   if (
     depositUpdates.depositNumber !== undefined ||
-    depositUpdates.depositAmount !== undefined
+    depositUpdates.depositAmount !== undefined ||
+    depositUpdates.venue !== undefined
   ) {
     await db.update(leads).set(depositUpdates).where(eq(leads.id, leadId));
     leadRows = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
@@ -162,13 +186,10 @@ export async function createEventFromWonLead(
     };
   }
 
-  const eventName = lead.name || `Event for ${lead.email}`;
-  const eventDate = lead.preferredDate
-    ? new Date(lead.preferredDate)
-    : new Date();
   const interestKey = (lead.eventTypeInterest || "").split(", ")[0] || "";
   const eventType =
     (EVENT_TYPE_MAPPING[interestKey] as
+      | "In-Person Cooking"
       | "In-Person Mixology"
       | "In-Person Private Monuments"
       | "In-Person Paint & Sip"
@@ -178,6 +199,37 @@ export async function createEventFromWonLead(
       | "Virtual Paint & Sip"
       | undefined) || "In-Person Mixology";
 
+  const company = (lead.company || "").trim();
+  const eventName = company
+    ? `${company} — ${lead.name || lead.email}`
+    : lead.name || `Event for ${lead.email}`;
+
+  const eventDate = lead.preferredDate
+    ? new Date(lead.preferredDate)
+    : new Date();
+
+  let startTime: string | null = null;
+  if (lead.preferredDate) {
+    const d = new Date(lead.preferredDate);
+    if (!Number.isNaN(d.getTime())) {
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      if (hh !== "00" || mm !== "00") {
+        startTime = `${hh}:${mm}`;
+      }
+    }
+  }
+
+  const headcountEstimate = lead.headcountEstimate
+    ? Math.round(lead.headcountEstimate)
+    : null;
+
+  const finalVenue =
+    (lead.venue || resolvedVenue || "").trim() || null;
+  const finalVenueMode =
+    lead.venueMode ||
+    (finalVenue ? await resolveVenueModeForName(finalVenue) : null);
+
   let newEvent: typeof events.$inferSelect;
   try {
     const [created] = await db
@@ -185,21 +237,28 @@ export async function createEventFromWonLead(
       .values({
         eventName,
         eventDate,
+        startTime,
         eventType,
         leadId,
         sourceLeadId: leadId,
         pocName: lead.name,
+        pocTitle: lead.title || null,
         pocEmail: lead.email,
         pocPhone: lead.phone || "",
-        headcount: lead.headcountEstimate
-          ? Math.round(lead.headcountEstimate)
-          : null,
+        headcount: headcountEstimate,
+        headcountMin: headcountEstimate,
+        headcountMax: headcountEstimate,
         clientId: lead.clientId || null,
-        venue: venue || "",
+        venue: finalVenue,
+        venueMode: finalVenueMode,
         depositReceived: true,
         depositAmount:
           lead.depositAmount != null ? Number(lead.depositAmount) : null,
+        depositReceivedAt: new Date(),
         stage: "Deposit Received",
+        specialRequests: lead.notes
+          ? `Prefill from lead notes:\n${lead.notes}`.slice(0, 4000)
+          : null,
       })
       .returning();
     newEvent = created;
@@ -210,9 +269,27 @@ export async function createEventFromWonLead(
         eventCreated: true,
         convertedToEventId: newEvent.id,
         linkedEventId: newEvent.id,
+        venue: finalVenue,
+        venueMode: finalVenueMode,
         updatedDate: new Date(),
       })
       .where(eq(leads.id, leadId));
+
+    if (finalVenue) {
+      try {
+        await syncLeadEventVenue({
+          leadId,
+          eventId: newEvent.id,
+          venue: finalVenue,
+          venueMode: finalVenueMode,
+        });
+      } catch (syncErr) {
+        console.warn(
+          "[createEventFromWonLead] syncLeadEventVenue failed:",
+          syncErr instanceof Error ? syncErr.message : syncErr
+        );
+      }
+    }
 
     for (const item of DEFAULT_CHECKLIST) {
       await db.insert(tasks).values({
@@ -248,6 +325,9 @@ export async function createEventFromWonLead(
         staffErr instanceof Error ? staffErr.message : staffErr
       );
     }
+
+    // Cooking Family A: defer full workflow until Deposit Intake completes (plan 02).
+    // Other types still get checklist only; Generate Workflow remains manual / intake for cooking.
   } catch (err) {
     await releaseEventLock(leadId);
     throw err;

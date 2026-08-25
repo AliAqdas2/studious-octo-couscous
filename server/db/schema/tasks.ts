@@ -1,6 +1,6 @@
 import {
   boolean,
-  integer,
+  jsonb,
   pgTable,
   real,
   text,
@@ -15,7 +15,9 @@ import {
   responsibleRoleEnum,
   taskCategoryEnum,
   taskStatusEnum,
+  workflowPhaseEnum,
 } from "./enums.js";
+import type { WorkflowResourceLink } from "./event-workflow-task-defs.js";
 
 export const tasks = pgTable("tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -39,6 +41,12 @@ export const tasks = pgTable("tasks", {
   dueDate: timestamp("due_date", { withTimezone: true }),
   order: real("order"),
   progressNotes: text("progress_notes"),
+  workflowPhase: workflowPhaseEnum("workflow_phase"),
+  workflowTaskDefId: uuid("workflow_task_def_id"),
+  traceId: varchar("trace_id", { length: 20 }),
+  resourceLinks: jsonb("resource_links").$type<WorkflowResourceLink[]>().default([]),
+  /** Staff status, supply pickup method, ice, etc. (plan 03) */
+  workflowMeta: jsonb("workflow_meta").$type<Record<string, unknown>>().default({}),
   createdDate: createdDate(),
   updatedDate: updatedDate(),
   createdBy: createdBy(),

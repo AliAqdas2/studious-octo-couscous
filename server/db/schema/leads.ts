@@ -21,6 +21,7 @@ import {
   leadSourceEnum,
   priorityTagEnum,
   referralSourceEnum,
+  venueModeEnum,
 } from "./enums.js";
 
 export const leads = pgTable("leads", {
@@ -67,6 +68,8 @@ export const leads = pgTable("leads", {
   linkedEventId: uuid("linked_event_id"),
   depositNumber: varchar("deposit_number", { length: 255 }),
   depositAmount: real("deposit_amount"),
+  venue: varchar("venue", { length: 255 }),
+  venueMode: venueModeEnum("venue_mode"),
   aiFlagCategory: aiFlagCategoryEnum("ai_flag_category").default(""),
   aiFlagReason: text("ai_flag_reason"),
   skipAutoCall: boolean("skip_auto_call").default(false),

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +37,7 @@ export default function LeadDetail() {
   const [depositAmount, setDepositAmount] = useState('');
   const [selectedVenue, setSelectedVenue] = useState('');
   const [otherVenue, setOtherVenue] = useState('');
+  const [venuePrefillDone, setVenuePrefillDone] = useState(false);
   const [notesPage, setNotesPage] = useState(1);
   const [emailPage, setEmailPage] = useState(1);
   const [logPage, setLogPage] = useState(1);
@@ -73,6 +74,41 @@ export default function LeadDetail() {
     },
     enabled: !!leadId
   });
+
+  const { data: houseVenues = [] } = useQuery({
+    queryKey: ['venues-active'],
+    queryFn: async () => {
+      const rows = await base44.entities.Venue.filter({ is_active: true }, 'sort_order');
+      return Array.isArray(rows) ? rows : [];
+    },
+  });
+
+  const houseVenueNames = useMemo(
+    () => houseVenues.map((v) => v.name),
+    [houseVenues]
+  );
+
+  useEffect(() => {
+    if (!lead || venuePrefillDone) return;
+    const saved = (lead.venue || '').trim();
+    if (saved) {
+      if (houseVenueNames.includes(saved)) {
+        setSelectedVenue(saved);
+        setOtherVenue('');
+      } else {
+        setSelectedVenue('Other');
+        setOtherVenue(saved);
+      }
+    }
+    if (lead.deposit_number) setDepositNumber(String(lead.deposit_number));
+    if (lead.deposit_amount != null) setDepositAmount(String(lead.deposit_amount));
+    setVenuePrefillDone(true);
+  }, [lead, houseVenueNames, venuePrefillDone]);
+
+  const resolvedVenueName = () => {
+    if (selectedVenue === 'Other') return otherVenue.trim();
+    return selectedVenue.trim();
+  };
 
   const [user, setUser] = useState(null);
   React.useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
@@ -219,8 +255,20 @@ export default function LeadDetail() {
   });
 
   const saveDepositMutation = useMutation({
-    mutationFn: async ({ number, amount }) => {
-      return base44.entities.Lead.update(leadId, { deposit_number: number, deposit_amount: amount ? Number(amount) : null });
+    mutationFn: async ({ number, amount, venue }) => {
+      const venueName = (venue || '').trim();
+      const venueMode = houseVenueNames.includes(venueName)
+        ? 'house_venue'
+        : venueName
+          ? 'go_to_them'
+          : null;
+      return base44.entities.Lead.update(leadId, {
+        deposit_number: number,
+        deposit_amount: amount ? Number(amount) : null,
+        ...(venueName
+          ? { venue: venueName, venue_mode: venueMode }
+          : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['lead', leadId]);
@@ -247,7 +295,7 @@ export default function LeadDetail() {
 
   const createEventMutation = useMutation({
     mutationFn: async () => {
-      const venue = selectedVenue === 'Other' ? otherVenue.trim() : selectedVenue;
+      const venue = resolvedVenueName();
       const number = depositNumber.trim();
       const amount = depositAmount.trim();
       if (!number || !amount || !venue) {
@@ -438,17 +486,9 @@ export default function LeadDetail() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               >
                 <option value="">Select venue...</option>
-                <option value="Whittemore House">Whittemore House</option>
-                <option value="Mr. Smith's of Georgetown">Mr. Smith's of Georgetown</option>
-                <option value="99 M Street SE - Navy Yard PentHouse">99 M Street SE - Navy Yard PentHouse</option>
-                <option value="99 M Street SE - Navy Yard Downyard">99 M Street SE - Navy Yard Downyard</option>
-                <option value="The Foundry">The Foundry</option>
-                <option value="Launch Glover Park">Launch Glover Park</option>
-                <option value="City Tavern">City Tavern</option>
-                <option value="The Penthouse - Wharf">The Penthouse - Wharf</option>
-                <option value="Lower Level - Wharf">Lower Level - Wharf</option>
-                <option value="Georgetown">Georgetown</option>
-                <option value="McLean VA">McLean VA</option>
+                {houseVenues.map((v) => (
+                  <option key={v.id} value={v.name}>{v.name}</option>
+                ))}
                 <option value="Other">Other</option>
               </select>
               {selectedVenue === 'Other' && (
@@ -458,9 +498,18 @@ export default function LeadDetail() {
                   onChange={(e) => setOtherVenue(e.target.value)}
                 />
               )}
+              {lead.venue && (
+                <p className="text-xs text-green-600">Saved: {lead.venue}</p>
+              )}
             </div>
             <Button
-              onClick={() => saveDepositMutation.mutate({ number: depositNumber, amount: depositAmount })}
+              onClick={() =>
+                saveDepositMutation.mutate({
+                  number: depositNumber,
+                  amount: depositAmount,
+                  venue: resolvedVenueName(),
+                })
+              }
               disabled={saveDepositMutation.isPending || !depositNumber.trim() || !depositAmount.trim()}
               variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50"
             >
@@ -481,8 +530,48 @@ export default function LeadDetail() {
       {lead.converted_to_event_id && (
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardHeader><CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5 text-green-600" />Converted to Event</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-gray-700 mb-3">This lead was successfully converted to a confirmed event.</p>
+          <CardContent className="space-y-4">
+            <p className="text-gray-700">This lead was successfully converted to a confirmed event.</p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-green-600" />Venue (synced with event)
+              </label>
+              <select
+                value={selectedVenue}
+                onChange={(e) => {
+                  setSelectedVenue(e.target.value);
+                  if (e.target.value !== 'Other') setOtherVenue('');
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="">Select venue...</option>
+                {houseVenues.map((v) => (
+                  <option key={v.id} value={v.name}>{v.name}</option>
+                ))}
+                <option value="Other">Other</option>
+              </select>
+              {selectedVenue === 'Other' && (
+                <Input
+                  placeholder="Enter venue name..."
+                  value={otherVenue}
+                  onChange={(e) => setOtherVenue(e.target.value)}
+                />
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saveDepositMutation.isPending || !resolvedVenueName()}
+                onClick={() =>
+                  saveDepositMutation.mutate({
+                    number: depositNumber || lead.deposit_number || '',
+                    amount: depositAmount || (lead.deposit_amount != null ? String(lead.deposit_amount) : ''),
+                    venue: resolvedVenueName(),
+                  })
+                }
+              >
+                {saveDepositMutation.isPending ? 'Saving…' : 'Update venue'}
+              </Button>
+            </div>
             <Link to={createPageUrl('EventDetail') + '?id=' + lead.converted_to_event_id}>
               <Button className="bg-green-600 hover:bg-green-700 text-white">View Event Details</Button>
             </Link>

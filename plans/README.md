@@ -1,178 +1,177 @@
 # Event Operations Workflows — Overview
 
-*Written Aug 22, 2026. Sources: [BEO_System_docs/meeting.md](../BEO_System_docs/meeting.md), [Copy of _In-Person Cooking.md](../BEO_System_docs/Copy%20of%20_In-Person%20Cooking.md), and the other experience workflow docs in `BEO_System_docs/`.*
+*Synced Aug 22, 2026 with [meeting.md](../BEO_System_docs/meeting.md), [Copy of _In-Person Cooking.md](../BEO_System_docs/Copy%20of%20_In-Person%20Cooking.md), [Vendor Directory.md](../BEO_System_docs/Vendor%20Directory.md), and all experience docs in `BEO_System_docs/`.*  
+*Auditable cooking checklist: [COOKING-TRACEABILITY.md](./COOKING-TRACEABILITY.md).*
 
 ---
 
 ## 1. One-paragraph answer
 
-Mangia DC already has a **sales CRM** that takes a lead from inquiry → deposit. Once a deposit is paid, ops still runs the event out of **Google Docs / Slack / FareHarbor / Drive**. Dave and Zach want that post-deposit process turned into a **clickable workflow inside the CRM**: every checkbox in the cooking (and sibling) docs becomes a **task with owner, due date, and links**, prefilled from the lead/event, so Monica / Zach / Marketing / Sales stop double-entering data and nothing slips through the cracks.
-
-> **Zach (meeting):** Inventory is the main thing that differs per experience; scheduling, BEO call, staff outreach, venues, instructor flow are mostly the same across experiences.
+Mangia DC’s **sales CRM** takes a lead to deposit. After deposit, ops still runs events from Google Docs / Slack / FareHarbor / Drive. This project turns the post-deposit process into a **clickable CRM workflow**: every cooking checklist line becomes a **task or field** with owner, due date, and resource links, prefilled from the lead/event.
 
 ---
 
-## 2. What already exists in Mangia CRM (do not rebuild blindly)
+## 2. Conflict rules (locked)
 
-| Piece | Location | Status vs BEO docs |
-|-------|----------|--------------------|
-| Lead → Event on Won / Confirmed Sales | [`createEventFromWonLead.ts`](../server/services/leads/createEventFromWonLead.ts) | Creates event + short checklist; **not** the full cooking workflow |
-| Hardcoded per-type task lists | [`generateWorkflow.ts`](../server/services/events/generateWorkflow.ts) | Thin / outdated vs Aug 19 cooking doc |
-| Event schema | [`events.ts`](../server/db/schema/events.ts) | Already has venue, alcohol, transport, customAddons, beoLink, fareharborLink, inventoryStatus, POC, stages |
-| Post-event thank-you draft | [`postEventAutomation.ts`](../server/services/events/postEventAutomation.ts) | Partial; missing photo pack + sales follow-up variants |
-| Staff assignment | [`assignEventStaff.ts`](../server/services/events/assignEventStaff.ts) | Exists; needs tighter “48h respond” policy UX |
-
-**Principle:** Extend the event + tasks system. Do **not** invent a second parallel “BEO app.” Cooking doc = source of truth for v1 template completeness.
+1. **Cooking checklist detail** → Cooking.md is the exhaustive seed for In-Person Cooking (see traceability).
+2. **Meeting product decisions** override hedges in older drafts:
+   - Retire **Slack Sales Alert** as a required step → **email blast to Dave, Zach, Monica, Eileen**
+   - Slack channel URL may remain an **optional resource** only
+   - **Flavors of DC / warm meal** = **shared** food add-on (any experience); sauces / mystery ingredients stay cooking-only
+   - Deposit amount viewers: **Dave, Zach, Monica only**
+   - Full BEO PDF generator deferred; WhatsApp automation deferred; recruiting = Onboarding System
+3. **Other experience docs** are source for that experience. If a file is still a Cooking/Paint clone with wrong inventory → plans say **incomplete — flag Zach**, do not invent SKUs.
+4. **ROS timing:** cooking doc **~2.5 weeks** (email client / schedule ROS).
+5. **Vendor contacts** (phones, emails, addresses, use-notes) → local [`Vendor Directory.md`](../BEO_System_docs/Vendor%20Directory.md) wins. Keep the Google Drive Vendor Directory link as a convenience resource only. Cooking SKU purchase URLs still come from Cooking.md + Inventory Links.
 
 ---
 
-## 3. End-to-end picture
+## 3. What already exists (extend, don’t rebuild)
+
+| Piece | Location |
+|-------|----------|
+| Lead → Event | [`createEventFromWonLead.ts`](../server/services/leads/createEventFromWonLead.ts) |
+| Thin hardcoded workflows | [`generateWorkflow.ts`](../server/services/events/generateWorkflow.ts) |
+| Event schema | [`events.ts`](../server/db/schema/events.ts) |
+| Post-event draft | [`postEventAutomation.ts`](../server/services/events/postEventAutomation.ts) |
+
+---
+
+## 4. End-to-end picture
 
 ```mermaid
 flowchart TD
   lead[Sales Lead Pipeline]
-  deposit[Deposit Received / Confirmed Sales]
-  event[Event record in CRM]
+  deposit[Deposit Received]
   intake[Deposit intake form]
+  notify[Email blast four people]
   tasks[Timed tasks by role]
-  ros[Run of Show meeting]
-  beo[BEO shell + staff email]
+  ros[Run of Show ~2.5w]
+  beo[BEO Admin + Ops shell]
   dayOf[Event in progress]
   post[Post-event survey media email]
 
   lead --> deposit
-  deposit --> event
-  event --> intake
+  deposit --> intake
+  intake --> notify
   intake --> tasks
   tasks --> ros
   ros --> beo
   beo --> dayOf
   dayOf --> post
-  post -->|hot lead?| lead
+  post -->|build lead?| lead
 ```
 
-**Sales CRM** (already built) ends at deposit.  
-**Event workflow** (this project) starts at deposit and runs through post-event + optional new lead.
+---
+
+## 5. Two timeline families
+
+**Meeting-first (Aug 19):** Dave/Zach — most nitty-gritty is the same across experiences; **inventory** is the main delta; ROS “confirm menu” becomes confirm painting / cocktails / itinerary / etc. Family B docs that omit ROS are **superseded** for product: ROS is shared.
+
+### Family A — Cooking (full depth)
+
+Upon deposit → **~2.5 weeks** email client + schedule ROS → **ROS meeting** → **1 week** marketing print/QR + inventory order → **72–48h** BEO staff check-in → apron clean/pickup + remaining supplies → **24h** triple-check + ice → day-of → post.
+
+Phases enum: `upon_deposit` | `two_point_five_weeks` | `ros` | `one_week_before` | `staff_checkin_72_48h` | `twenty_four_h` | `during` | `post`
+
+### Family B / C — shared ROS + experience deltas
+
+All matrix experiences get **shared ROS** (~2.5w schedule + ROS checklist with experience `rosConfirmLabel`). Inventory order follows **after** ROS (~1w). Family B keeps 3w staff / 2w finalize extras; Family C keeps collapsed 1w inventory for stubs. Tours/Flavors still add multi-stop logistics. Stubs: flag Zach — do not invent SKUs.
 
 ---
 
-## 4. What the docs actually contain (three kinds of stuff)
+## 6. Shared vs cooking-specific
 
-Same pattern as onboarding handbook — separate them:
+**Shared across experiences**
 
-| # | Kind | Example | What we build |
-|---|------|---------|---------------|
-| 1 | **Process** | Deposit → Slack → FH → BEO → staff → ROS → inventory → day-of → post | Task templates, stages, owners, due offsets |
-| 2 | **Config / preferences** | Alcohol, competition, dish config, add-ons, venue, transport | Event fields + deposit intake UI (dropdowns, not free text where possible) |
-| 3 | **Resources** | Vendor Directory, inventory Amazon links, how-to videos, survey Form, email copy | Links / attachments on tasks; vendor + inventory tables later |
-
-Handbook-style prose (Company Handbook links, talk tracks) = reference resources, not separate apps.
-
----
-
-## 5. Roles (from cooking doc + meeting)
-
-| Role in docs | CRM mapping | Typical ownership |
-|--------------|-------------|-------------------|
-| Sales | Sales | Deposit intake fields, Slack alert, post-event thank-you / referral emails |
-| Administrative Assistant / Admin | Admin | FareHarbor item, participation list, survey link, workflow link, BEO shell stubs |
-| Operations Manager | Ops | Staff outreach, venue/loading dock, ROS, inventory, BEO email to staff, ice, staging |
-| Marketing Associate | Marketing (map to Admin or new role if needed) | Recipe cards / menus, QR codes, menu tents |
-| Event Team Lead / Host / Instructor | Event Host | Day-of execution, consumption tally, media upload, team debrief into survey |
-| Intern | Ops support | 24h inventory triple-check assist |
-
-Each task must answer Zach’s three questions: **Who? When (relative to event date)? How long / how?**
-
----
-
-## 6. Shared vs experience-specific (Zach’s rule)
-
-**Shared across (almost) all experiences**
-
-- Prefill from CRM: date, start time, company, contact, experience, headcount range, deposit amount (restricted), venue, transport
-- Slack / email blast on deposit (replace double Slack work over time)
-- Create FareHarbor item (+ how-to video link)
-- BEO shell + link to FH / CRM event
-- Reach out instructor + event team **immediately** (48h response policy)
+- Prefill: date, start time, company, contact, experience, headcount range, deposit (restricted), venue, transport
+- Deposit email blast (Dave / Zach / Monica / Eileen)
+- FareHarbor item (+ how-to video)
+- Admin BEO + Ops BEO shell + FH link
+- Instructor + event team outreach immediately (48h policy)
 - Venue / loading dock
-- Run of Show (~2.5 weeks out) + calendar invite
-- Custom add-ons block (aprons, glassware, boards, hats, berets, chocolate mold, etc.)
-- Alcohol / bar block
-- Transportation (Alberto / DC Nation)
-- Post-event: survey, media, thank-you email variants, optional new lead
+- Custom add-ons: aprons, glassware, boards (25 min), chocolate mold, chef hats, berets, amounts optional, logo ordered
+- **Flavors of DC / warm meal** as shared food add-on
+- Alcohol / bar block (where applicable)
+- Transportation (**Sammy Transport** / **DC Nation Tours**; Alberto = Sammy contact)
+- **Run of Show (~2.5 weeks)** + confirm-X label by experience
+- Post-event: survey, media, thank-you drafts, EMAIL 2, optional new lead
 
-**Cooking-specific (v1 reference)**
+**Cooking-specific (Family A)**
 
-- Competition vs cooking experience
-- Dish configuration: entree | app+entree | app+entree+dessert
-- Food additions: charcuterie, protein side, mystery ingredients, sauces, Flavors of DC / warm meal
-- Cooking inventory list (Sterno, butane, parchment, olive oil from Gtown Olive, etc.)
-- Recipe cards / menu tents / QR (marketing week-before)
-
-**Other experiences** — same skeleton; swap inventory + a few confirm steps (e.g. Paint & Sip = canvas size / painting confirm; Mixology = cocktails). Docs live in `BEO_System_docs/`.
+- Competition vs cooking; dish configuration; mystery ingredients; alternative sauces
+- Cooking inventory SKUs (see plan 04 + traceability C070–C088)
+- Recipe cards / menu tents / bar menu / QR week-before marketing checklist
+- 24h ice/triple-check depth
 
 ---
 
-## 7. Experience docs in the repo
+## 7. Roles
 
-| Doc | Use |
-|-----|-----|
-| `Copy of _In-Person Cooking.md` | **v1 reference template** (richest) |
-| Paint & Sip, Mixology, Chocolate Making, Chocolate & Wine, Cheeseboard, Gingerbread, Terrarium, Pottery, Lend a Hand, Monuments, Private Food Tour, Flavors of DC | Phase 7 — derive templates from cooking + inventory deltas |
-| `meeting.md` | Requirements / intent from Dave & Zach |
+| Role | Typical ownership |
+|------|-------------------|
+| Sales | Intake meeting, deposit fields, thank-you / EMAIL 2 / new lead |
+| Admin | FH item, participation (Sheets\|Forms), survey URL, CRM workflow link, **BEO**, ROS template |
+| Ops | Staff outreach, dock, 2.5w email, ROS, inventory, BEO shell + staff BEO email, check-in, 24h |
+| Marketing | Recipe cards, chef verify, paper, print, QR (create/website/print), tents, bar menu |
+| Event Host | Day-of BEO, handbook, POC, speakers, media, consumption, debrief |
+| Intern | Optional assignee on 24h triple-check (with Ops Manager) |
+
+Deposit amount: **Dave, Zach, Monica only**.
 
 ---
 
-## 8. Phased plans (read in order)
+## 8. Doc quality matrix (non-cooking)
+
+| Doc | Timeline | Quality | Notes |
+|-----|----------|---------|-------|
+| Paint & Sip | Family B | Complete-ish | Out-of-town canvas; scissors/easels on BEO |
+| Pottery | Family B | **Incomplete** | Paint clone + clay note — flag Zach for kiln |
+| Lend a Hand | Family B | **Incomplete** | Materials placeholder |
+| Terrarium | Family B | Complete-ish | Plant inventory; kit ship; remaining balance @2w |
+| Flavors of DC | Family B | Complete process | Early participant list; multi-stop ops; venues omit Foundry/1015 |
+| Monuments | Family B | Complete process | Tour kit; multi-stop; mailed BEO |
+| Private Food Tour | Family B | Complete process | + drinks 0–4 @2w |
+| Mixology | Collapsed 1w | **Stub** | 2001 K ST; inventory still cooking — flag Zach |
+| Chocolate Making | Collapsed 1w | **Stub** | Cooking clone |
+| Chocolate & Wine | Collapsed 1w | **Stub** | Truncated cooking inventory |
+| Cheeseboard | Collapsed 1w | **Stub** | Cooking clone |
+| Gingerbread | Collapsed 1w | **Stub** | Cooking clone |
+
+---
+
+## 9. Phased plans
 
 | # | File | Goal |
 |---|------|------|
-| 01 | [01-event-workflow-foundation.md](./01-event-workflow-foundation.md) | Data model: workflow templates, task defs, event config JSON, stages |
-| 02 | [02-deposit-intake-and-crm-sync.md](./02-deposit-intake-and-crm-sync.md) | Prefill from lead; deposit intake form; restricted deposit amount; fire workflow |
-| 03 | [03-task-timeline-and-roles.md](./03-task-timeline-and-roles.md) | Generate timed tasks; role queues; 48h staff policy; email/Slack alerts |
-| 04 | [04-inventory-and-vendors.md](./04-inventory-and-vendors.md) | Inventory checklist + vendor directory links (user-updatable URLs) |
-| 05 | [05-run-of-show-and-beo.md](./05-run-of-show-and-beo.md) | ROS meeting fields; BEO shell links; staff BEO email |
-| 06 | [06-during-and-post-event.md](./06-during-and-post-event.md) | Day-of stage; survey; media; thank-you templates; build next lead |
-| 07 | [07-multi-experience-templates.md](./07-multi-experience-templates.md) | Port other BEO docs; inventory-only deltas |
+| — | [COOKING-TRACEABILITY.md](./COOKING-TRACEABILITY.md) | Line-by-line cooking audit |
+| 01 | [01-event-workflow-foundation.md](./01-event-workflow-foundation.md) | Templates, phases, resources, Admin BEO vs Ops shell |
+| 02 | [02-deposit-intake-and-crm-sync.md](./02-deposit-intake-and-crm-sync.md) | Prefill + full deposit intake |
+| 03 | [03-task-timeline-and-roles.md](./03-task-timeline-and-roles.md) | Timed tasks, email blast, marketing/apron sub-checks |
+| 04 | [04-inventory-and-vendors.md](./04-inventory-and-vendors.md) | Exact cooking SKUs + Vendor Directory seed (transport, Basecamp, glassware, embroidery, olive oil) |
+| 05 | [05-run-of-show-and-beo.md](./05-run-of-show-and-beo.md) | ROS form + BEO split |
+| 06 | [06-during-and-post-event.md](./06-during-and-post-event.md) | Day-of + post + LinkedIn + T-shirt |
+| 07 | [07-multi-experience-templates.md](./07-multi-experience-templates.md) | Doc-accurate multi-experience matrix |
+| 08 | [08-venues-and-catalog-admin.md](./08-venues-and-catalog-admin.md) | Editable venues (lead↔event sync) + inventory catalog / checklist CRUD |
 
-**Recommended build order:** 01 → 02 → 03 → 05 (thin) → 04 → 06 → 07.
-
----
-
-## 9. Explicitly out of scope for early phases
-
-- Full automated BEO PDF generation (Zach session later; store shell URL for now)
-- FareHarbor write API if none exists (keep “create FH item” as checklist + video)
-- WhatsApp / Meta Business API for staff media (track as task + link; automate later)
-- Full recruiting lifecycle / tour-guide onboarding (separate Onboarding System)
-- Replacing FareHarbor calendar for staff who already get email video
+Build order: **01 → 02 → 03 → 05 → 04 → 06 → 07 → 08**.
 
 ---
 
-## 10. Success criteria (v1 = Cooking only)
+## 10. Explicitly out of scope (early phases)
 
-1. Deposit / Confirmed Sales creates Event and **full cooking workflow tasks** (not the short DEFAULT_CHECKLIST alone).
-2. Sales can complete deposit intake (alcohol, venue, add-ons, headcount range, etc.) without Slack as the system of record.
-3. Ops / Admin / Marketing see role-filtered task lists with due dates relative to `eventDate`.
-4. Run of Show answers are stored on the event and visible to BEO prep.
-5. Post-event thank-you draft uses sales copy variants; option to open a follow-up lead.
-6. Inventory checklist for cooking shows preferred purchase links (editable later).
+- Full automated BEO PDF generation (Zach session later)
+- FareHarbor write API (checklist + video)
+- WhatsApp / Meta Business API send (manual task now)
+- Recruiting / tour-guide / instructor hiring (Onboarding System)
 
 ---
 
-## 11. Open follow-ups with Zach / Dave (do not block 01–03)
+## 11. Success criteria (v1 = Cooking Family A)
 
-- Exact BEO shell structure (separate session)
-- Confirm Marketing role in CRM users / permissions
-- Deposit amount visibility (Monica + Zach only)
-- Which Slack channel members get the deposit blast vs email-only to Dave/Zach/Monica/Eileen
-- Example “Dave ChatGPT survey” emails for intake quality (sales survey separate workstream)
-
----
-
-## 12. How to use this folder
-
-1. Read this overview.
-2. Implement plans **in number order**; each plan ends with a checklist.
-3. Keep `BEO_System_docs/` as human source; code templates should mirror cooking first.
-4. When a doc conflicts with the meeting (e.g. ROS timing), prefer the **Aug 19 meeting + updated cooking copy**.
+1. Every row in COOKING-TRACEABILITY is implementable as field/task/resource.
+2. Deposit intake complete → cooking tasks generated; email blast to four people (no required Slack step).
+3. Marketing week-before sub-checklist is complete (chef verify, paper, print, QR trio, tents, recipe cards, bar menu).
+4. ROS answers stored; Admin BEO + Ops shell both tracked.
+5. Post-event V1/V2 drafts, EMAIL 2, LinkedIn, +3mo T-shirt, optional new lead.
+6. Inventory seed matches cooking SKUs including cocktail napkins and 3rd-party furniture.

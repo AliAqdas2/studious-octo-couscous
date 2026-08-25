@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { clients } from "./clients.js";
 import { eventTemplates } from "./event-templates.js";
+import { eventWorkflowTemplates } from "./event-workflow-templates.js";
 import { leads } from "./leads.js";
 import { users } from "./users.js";
 import { createdBy, createdDate, updatedDate } from "./metadata.js";
@@ -21,8 +22,10 @@ import {
   eventTypeEnum,
   inventoryStatusEnum,
   invoiceStatusEnum,
+  participationListTypeEnum,
   satisfactionRatingEnum,
   shippingTypeEnum,
+  venueModeEnum,
 } from "./enums.js";
 
 export const events = pgTable("events", {
@@ -34,18 +37,51 @@ export const events = pgTable("events", {
   templateId: uuid("template_id").references(() => eventTemplates.id, {
     onDelete: "set null",
   }),
+  workflowTemplateId: uuid("workflow_template_id").references(
+    () => eventWorkflowTemplates.id,
+    { onDelete: "set null" }
+  ),
   venue: varchar("venue", { length: 255 }),
+  venueMode: venueModeEnum("venue_mode"),
   virtualPlatform: varchar("virtual_platform", { length: 255 }),
   venueRestrictions: text("venue_restrictions"),
   eventDate: timestamp("event_date", { withTimezone: true }).notNull(),
+  startTime: varchar("start_time", { length: 50 }),
   depositReceived: boolean("deposit_received").default(false),
   depositAmount: real("deposit_amount"),
+  depositReceivedAt: timestamp("deposit_received_at", { withTimezone: true }),
+  depositIntakeCompletedAt: timestamp("deposit_intake_completed_at", {
+    withTimezone: true,
+  }),
   headcount: integer("headcount"),
+  headcountMin: integer("headcount_min"),
+  headcountMax: integer("headcount_max"),
   alcoholIncluded: boolean("alcohol_included").default(false),
   alcoholPreference: alcoholPreferenceEnum("alcohol_preference"),
+  isCompetition: boolean("is_competition").default(false),
+  dishConfiguration: varchar("dish_configuration", { length: 100 }),
+  foodAdditions: jsonb("food_additions"),
+  barDetails: jsonb("bar_details"),
   transportationNeeded: boolean("transportation_needed").default(false),
   transportationDetails: jsonb("transportation_details"),
   customAddons: jsonb("custom_addons"),
+  mediaPermission: varchar("media_permission", { length: 100 }),
+  seatingCurated: boolean("seating_curated"),
+  seatingStyle: varchar("seating_style", { length: 100 }),
+  runOfShow: jsonb("run_of_show"),
+  /** Plan 06 — thank-you V1/V2, EMAIL 2 answers, t-shirt, LinkedIn, etc. */
+  postEvent: jsonb("post_event"),
+  participationListUrl: text("participation_list_url"),
+  participationListType: participationListTypeEnum("participation_list_type"),
+  postEventSurveyUrl: text("post_event_survey_url"),
+  workflowCrmUrl: text("workflow_crm_url"),
+  beoUrl: text("beo_url"),
+  beoShellUrl: text("beo_shell_url"),
+  /** In-app Admin BEO HTML (WYSIWYG). Distinct from external beoUrl. */
+  beoDocumentHtml: text("beo_document_html"),
+  beoDocumentUpdatedAt: timestamp("beo_document_updated_at", {
+    withTimezone: true,
+  }),
   dietaryRestrictions: text("dietary_restrictions"),
   specialRequests: text("special_requests"),
   accessibilityNeeds: text("accessibility_needs"),
@@ -58,6 +94,9 @@ export const events = pgTable("events", {
   pocEmail: varchar("poc_email", { length: 255 }),
   pocPhone: varchar("poc_phone", { length: 50 }),
   pocVerified: boolean("poc_verified").default(false),
+  dayOfPocName: varchar("day_of_poc_name", { length: 255 }),
+  dayOfPocEmail: varchar("day_of_poc_email", { length: 255 }),
+  dayOfPocPhone: varchar("day_of_poc_phone", { length: 50 }),
   instructorAssigned: uuid("instructor_assigned").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -79,6 +118,8 @@ export const events = pgTable("events", {
   referralRequested: boolean("referral_requested").default(false),
   linkedinConnectionSent: boolean("linkedin_connection_sent").default(false),
   postEventFeedback: text("post_event_feedback"),
+  staffHoursNotes: text("staff_hours_notes"),
+  additionalEventDetails: text("additional_event_details"),
   invoiceStatus: invoiceStatusEnum("invoice_status").default("Not Sent"),
   totalCost: real("total_cost"),
   laborCost: real("labor_cost"),

@@ -20,11 +20,37 @@ export default function EventFormDialog({ event, onClose }) {
     notes: '',
     stage: 'Deposit Received'
   });
+  const [venueSelect, setVenueSelect] = useState('');
+  const [otherVenue, setOtherVenue] = useState('');
 
   const { data: templates = [] } = useQuery({
     queryKey: ['event-templates'],
     queryFn: () => base44.entities.EventTemplate.list(),
   });
+
+  const { data: houseVenues = [] } = useQuery({
+    queryKey: ['venues-active'],
+    queryFn: async () => {
+      const rows = await base44.entities.Venue.filter({ is_active: true }, 'sort_order');
+      return Array.isArray(rows) ? rows : [];
+    },
+  });
+
+  React.useEffect(() => {
+    const v = (formData.venue || '').trim();
+    if (!v) {
+      setVenueSelect('');
+      setOtherVenue('');
+      return;
+    }
+    if (v === 'Virtual' || houseVenues.some((h) => h.name === v)) {
+      setVenueSelect(v);
+      setOtherVenue('');
+    } else {
+      setVenueSelect('Other');
+      setOtherVenue(v);
+    }
+  }, [houseVenues]); // eslint-disable-line react-hooks/exhaustive-deps -- prefill once venues load
 
   const mutation = useMutation({
     mutationFn: (data) => event
@@ -38,8 +64,13 @@ export default function EventFormDialog({ event, onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const venue =
+      venueSelect === 'Other'
+        ? otherVenue.trim()
+        : venueSelect.trim();
     const submitData = {
       ...formData,
+      venue: venue || null,
       headcount: formData.headcount ? Number(formData.headcount) : null
     };
     mutation.mutate(submitData);
@@ -105,15 +136,31 @@ export default function EventFormDialog({ event, onClose }) {
             <div>
               <Label>Venue</Label>
               <select
-                value={formData.venue}
-                onChange={(e) => setFormData({...formData, venue: e.target.value})}
+                value={venueSelect}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setVenueSelect(v);
+                  if (v !== 'Other') setOtherVenue('');
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               >
                 <option value="">Select a venue...</option>
-                <option value="99 M Street SE - Navy Yard PentHouse">99 M Street SE - Navy Yard PentHouse</option>
-                <option value="99 M Street SE - Navy Yard Downyard">99 M Street SE - Navy Yard Downyard</option>
+                {houseVenues.map((v) => (
+                  <option key={v.id} value={v.name}>
+                    {v.name}
+                  </option>
+                ))}
                 <option value="Virtual">Virtual</option>
+                <option value="Other">Other</option>
               </select>
+              {venueSelect === 'Other' && (
+                <Input
+                  className="mt-2"
+                  placeholder="Venue name"
+                  value={otherVenue}
+                  onChange={(e) => setOtherVenue(e.target.value)}
+                />
+              )}
             </div>
             <div>
               <Label>Headcount</Label>

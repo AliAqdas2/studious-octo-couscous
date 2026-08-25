@@ -1,84 +1,87 @@
 # 02 — Deposit intake and CRM sync
 
 **Depends on:** [01](./01-event-workflow-foundation.md)  
-**Unblocks:** [03](./03-task-timeline-and-roles.md)  
-**Primary code today:** [`createEventFromWonLead.ts`](../server/services/leads/createEventFromWonLead.ts), lead fields, Event detail UI
+**Traceability:** C001–C029, C032  
+**Conflict rule:** Deposit viewers = **Dave, Zach, Monica only**; FoDC/warm meal = **shared** add-on.
 
 ---
 
 ## Goal
 
-When a sale is confirmed / deposit received, **prefill** the event from the lead and force a structured **Deposit Intake** so Sales captures everything ops needs (without retyping into Slack as the source of truth).
+On Confirmed Sales / deposit: **prefill** event from lead and complete structured **Deposit Intake** so Sales captures everything ops needs without Slack as system of record.
 
 ---
 
-## Prefill from lead → event (meeting “sync” list)
+## Prefill (lead → event)
 
 | Field | Source |
 |-------|--------|
-| Company name | `lead.company` |
-| Contact name / email / phone | `lead.name`, `lead.email`, `lead.phone` |
-| Preferred experience | `lead.eventTypeInterest` → `event.eventType` |
-| Date | `lead.preferredDate` / meeting / confirmed event date |
-| Start time | Lead or deposit form (must be editable; store on event) |
-| Estimated headcount | `lead.headcountEstimate` → min/max range on form |
-| Venue | Lead notes / form |
-| Deposit amount / number | Lead deposit fields → **restricted** visibility |
-| Event planner POC | Lead or form (name, email, phone) |
-
-Anything overlapping CRM → workflow must **not** be re-highlighted as manual entry.
+| Company | `lead.company` |
+| Contact name / email / phone | lead |
+| Preferred experience | `eventTypeInterest` → `eventType` |
+| Date | preferred / confirmed |
+| Start time | lead or form (editable on event) |
+| Headcount | estimate → min/max range |
+| Venue | notes / form |
+| Deposit amount / number | lead → **restricted** |
+| Event planner POC | lead or form |
 
 ---
 
-## Deposit Intake UI (Sales)
+## First task on deposit
 
-Single form / Event section “Upon Deposit”, dropdown-heavy:
-
-1. Alcohol Y/N → if Y: Card on file | Ticketed | Fixed open bar; sub: wine/beer/soft, mixed drinks top shelf/rail  
-2. Competition vs Cooking experience  
-3. Dish configuration: Entree | App+Entree | App+Entree+Dessert (menu selected later at ROS)  
-4. Food additions (optional numeric/boolean fields)  
-5. Custom add-ons (shared across experiences)  
-6. Transportation Y/N + company (Alberto / DC Nation / Other)  
-7. Venue select from known list + “Other” + restrictions text  
-8. Headcount range (min–max, up to 3 digits each)  
-9. Deposit amount (role-gated: Sales/Ops managers only)
-
-Venue list from cooking doc (Launch Glover Park, Mr. Smith’s, City Tavern, Whittemore House, Wharf Penthouse, Wingos, 99 M St SE, The Foundry, 1015 15th St NW) + Other.
+**C001 — Meeting with sales** to determine location, date, timing, preferences (Sales). Completing meeting feeds / confirms intake.
 
 ---
 
-## Trigger workflow
+## Deposit Intake form (Sales)
 
-On intake save (or on Confirmed Sales if intake already complete):
+Dropdown-heavy; **Other** on each category where listed.
 
-1. Ensure Event exists (`createEventFromWonLead`)  
-2. Persist intake → event columns / `event_config`  
-3. Call template instantiation (plan 01) → create tasks  
-4. Mark `deposit_intake_completed_at`  
-5. Enqueue team notify (plan 03)
+1. **Alcohol** Y/N → if Y: Card on file | Ticketed | Fixed open bar → Wine/Beer/Soft; Mixed Top Shelf | Rail  
+2. **Competition vs Cooking**  
+3. **Dish configuration:** Entree | App+Entree | App+Entree+Dessert (menu at ROS)  
+4. **Food additions** (optional amounts):
+   - Charcuterie **boards** vs **platters** (distinct)
+   - Additional protein on side
+   - Mystery ingredients / alt sauces (**cooking-only**)
+   - **Flavors of DC / Warm Meal** (**shared** across experiences)
+5. **Custom add-ons** (shared; optional amount fields; not required to proceed):
+   - Embroidered aprons + custom name Y/N + **logo ordered?**
+   - Engraved glassware
+   - Cheeseboard (**25 unit minimum** if selected)
+   - Chocolate mold
+   - Chef hats ± embroidered
+   - Berets ± embroidered
+6. **Transportation** Y/N → **Sammy Transport** | **DC Nation Tours** | Other (+ [Vendor Directory](../BEO_System_docs/Vendor%20Directory.md); Alberto = Sammy contact)  
+7. **Venue**
+   - Mode: **go to them** vs **house venue**
+   - House list: Launch Glover Park, Mr. Smith’s, City Tavern, Whittemore House, Wharf Penthouse, Wingos, 99 M St SE, The Foundry, 1015 15th St NW, **Other**
+   - Restrictions text
+8. **Headcount** min–max (up to 3 digits each)  
+9. **Deposit amount** — visible/editable only to **Dave, Zach, Monica**
+
+Admin artifact fields on same flow (or Admin queue): participation URL + type **Sheets | Forms**.
 
 ---
 
-## Permissions
+## Trigger
 
-- Deposit amount: visible/editable only to users Dave named (Monica, Zach, Dave) — implement via role flag or allowlist, not “all staff.”
-- Marketing can open event but not see financial fields.
+On intake complete:
 
----
-
-## Acceptance checklist
-
-- [ ] Lead → Event copies company, contact, experience, date/time, headcount, deposit
-- [ ] Intake form validates required ops fields before marking complete
-- [ ] Completing intake generates cooking workflow tasks
-- [ ] Deposit amount hidden from non-privileged roles
-- [ ] Slack is no longer required to “know” the basics (alert may still fire)
+1. Ensure Event exists  
+2. Persist intake  
+3. Instantiate cooking template tasks  
+4. Set `deposit_intake_completed_at`  
+5. Enqueue **email blast** (plan 03) — not Slack send
 
 ---
 
-## Key files
+## Acceptance
 
-- Client Event / Lead deposit UI (existing Event detail pages)
-- [`createEventFromWonLead.ts`](../server/services/leads/createEventFromWonLead.ts)
-- Lead + Event schemas
+- [x] Prefill covers sync list; no double entry for overlapping CRM fields
+- [x] C001 sales meeting task exists
+- [x] Boards vs platters, 25-unit cheeseboard, FoDC shared, venue mode dichotomy
+- [x] Participation type Sheets|Forms
+- [x] Deposit amount gated to Dave/Zach/Monica
+- [x] Completing intake generates Family A cooking tasks

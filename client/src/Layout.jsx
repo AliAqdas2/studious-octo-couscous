@@ -200,9 +200,7 @@ export default function Layout({ children, currentPageName }) {
   { name: 'Email', icon: Mail, page: 'Email' },
   { name: 'Templates', icon: FileText, page: 'EventTemplates' },
   { name: 'Activity Log', icon: Activity, page: 'ActivityLog' },
-  ...(canManageGmail
-    ? [{ name: 'Settings', icon: Settings, page: 'Settings' }]
-    : [])] :
+  { name: 'Settings', icon: Settings, page: 'Settings' }] :
   [
   { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' },
   ...(canManageGmail
@@ -240,7 +238,7 @@ export default function Layout({ children, currentPageName }) {
       
       {/* Top Navigation Bar - fixed so it stays visible when scrolling */}
       <div className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-orange-100 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4">
+        <div className="w-full px-4 md:px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button
@@ -280,7 +278,7 @@ export default function Layout({ children, currentPageName }) {
       </div>
 
       {/* Side Navigation + Content - pt for fixed header */}
-      <div className="max-w-7xl mx-auto pt-[73px]">
+      <div className="w-full pt-[73px]">
         <div className="flex">
           {/* Sidebar - fixed on desktop so it stays visible when scrolling */}
           <aside className={`

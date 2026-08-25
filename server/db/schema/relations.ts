@@ -4,6 +4,8 @@ import { refreshTokens } from "./refresh-tokens.js";
 import { clients } from "./clients.js";
 import { leads } from "./leads.js";
 import { eventTemplates } from "./event-templates.js";
+import { eventWorkflowTemplates } from "./event-workflow-templates.js";
+import { eventWorkflowTaskDefs } from "./event-workflow-task-defs.js";
 import { events } from "./events.js";
 import { tasks } from "./tasks.js";
 import { roleAssignments } from "./role-assignments.js";
@@ -51,6 +53,24 @@ export const eventTemplatesRelations = relations(eventTemplates, ({ many }) => (
   events: many(events),
 }));
 
+export const eventWorkflowTemplatesRelations = relations(
+  eventWorkflowTemplates,
+  ({ many }) => ({
+    taskDefs: many(eventWorkflowTaskDefs),
+    events: many(events),
+  })
+);
+
+export const eventWorkflowTaskDefsRelations = relations(
+  eventWorkflowTaskDefs,
+  ({ one }) => ({
+    template: one(eventWorkflowTemplates, {
+      fields: [eventWorkflowTaskDefs.templateId],
+      references: [eventWorkflowTemplates.id],
+    }),
+  })
+);
+
 export const eventsRelations = relations(events, ({ one, many }) => ({
   lead: one(leads, {
     fields: [events.leadId],
@@ -68,6 +88,10 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
   template: one(eventTemplates, {
     fields: [events.templateId],
     references: [eventTemplates.id],
+  }),
+  workflowTemplate: one(eventWorkflowTemplates, {
+    fields: [events.workflowTemplateId],
+    references: [eventWorkflowTemplates.id],
   }),
   instructor: one(users, {
     fields: [events.instructorAssigned],

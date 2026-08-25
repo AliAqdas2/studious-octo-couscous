@@ -28,6 +28,10 @@ import {
 import { assignEventStaff } from "../events/assignEventStaff.js";
 import { cleanupEventTasks } from "../events/cleanupTasks.js";
 import { postEventAutomation } from "../events/postEventAutomation.js";
+import { redactDepositFields } from "../events/depositAccess.js";
+import { canViewDepositAmount } from "../events/depositAccess.js";
+import { rescheduleWorkflowTasks } from "../events/rescheduleWorkflowTasks.js";
+import { syncLeadEventVenue } from "../events/syncLeadEventVenue.js";
 
 export interface ListQuery {
   sort?: string;
@@ -217,6 +221,13 @@ function sanitizeUserPayload(
     next.updatedDate = new Date();
   }
 
+  if (entityName === "events") {
+    if (!canViewDepositAmount(user)) {
+      delete next.depositAmount;
+      delete next.deposit_amount;
+    }
+  }
+
   return next;
 }
 
@@ -251,7 +262,13 @@ export async function listEntities(
     ? await countQuery.where(where)
     : await countQuery;
 
-  const data = rows.map((row) => toApiRecord(row as Record<string, unknown>));
+  const data = rows.map((row) => {
+    const record = toApiRecord(row as Record<string, unknown>);
+    if (entityName === "events") {
+      return redactDepositFields(record, user);
+    }
+    return record;
+  });
 
   if (parsed.format === "array") {
     return data;
@@ -290,7 +307,11 @@ export async function getEntity(
     throw new AppError("Not found", 404);
   }
 
-  return toApiRecord(row as Record<string, unknown>);
+  const record = toApiRecord(row as Record<string, unknown>);
+  if (entityName === "events") {
+    return redactDepositFields(record, user);
+  }
+  return record;
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -513,6 +534,11 @@ export async function updateEntity(
   }
 
   let previousEventStage: string | undefined;
+  let previousEventDate: Date | null = null;
+  let previousLeadVenue: string | null | undefined;
+  let previousLeadVenueMode: string | null | undefined;
+  let previousEventVenue: string | null | undefined;
+  let previousEventVenueMode: string | null | undefined;
   if (entityName === "events") {
     const [existingEvent] = await db
       .select()
@@ -521,6 +547,24 @@ export async function updateEntity(
       .limit(1);
     previousEventStage = (existingEvent as { stage?: string } | undefined)
       ?.stage;
+    const rawDate = (existingEvent as { eventDate?: Date } | undefined)
+      ?.eventDate;
+    previousEventDate = rawDate ? new Date(rawDate) : null;
+    previousEventVenue = (existingEvent as { venue?: string | null })?.venue;
+    previousEventVenueMode = (
+      existingEvent as { venueMode?: string | null }
+    )?.venueMode;
+  }
+  if (entityName === "leads") {
+    const [existingLead] = await db
+      .select()
+      .from(def.table)
+      .where(eq(idColumn, id))
+      .limit(1);
+    previousLeadVenue = (existingLead as { venue?: string | null })?.venue;
+    previousLeadVenueMode = (
+      existingLead as { venueMode?: string | null }
+    )?.venueMode;
   }
 
   try {
@@ -555,6 +599,86 @@ export async function updateEntity(
         } catch (err) {
           console.warn(
             "[updateEntity] postEventAutomation failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
+      const nextDate = (row as { eventDate?: Date }).eventDate
+        ? new Date((row as { eventDate: Date }).eventDate)
+        : null;
+      if (
+        previousEventDate &&
+        nextDate &&
+        previousEventDate.getTime() !== nextDate.getTime()
+      ) {
+        try {
+          const result = await rescheduleWorkflowTasks(id);
+          if (result.updated > 0) {
+            console.log(
+              `[updateEntity] Rescheduled ${result.updated} workflow tasks for event ${id}`
+            );
+          }
+        } catch (err) {
+          console.warn(
+            "[updateEntity] rescheduleWorkflowTasks failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
+      const nextVenue = (row as { venue?: string | null }).venue ?? null;
+      const nextVenueMode =
+        (row as { venueMode?: "go_to_them" | "house_venue" | null })
+          .venueMode ?? null;
+      if (
+        nextVenue !== previousEventVenue ||
+        nextVenueMode !== previousEventVenueMode
+      ) {
+        try {
+          await syncLeadEventVenue({
+            eventId: id,
+            leadId: (row as { leadId?: string | null }).leadId,
+            venue: nextVenue,
+            venueMode: nextVenueMode,
+            skipEvent: true,
+          });
+        } catch (err) {
+          console.warn(
+            "[updateEntity] syncLeadEventVenue (event) failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
+      return redactDepositFields(record, user);
+    }
+
+    if (entityName === "leads") {
+      const nextVenue = (row as { venue?: string | null }).venue ?? null;
+      const nextVenueMode =
+        (row as { venueMode?: "go_to_them" | "house_venue" | null })
+          .venueMode ?? null;
+      const convertedId =
+        (row as { convertedToEventId?: string | null }).convertedToEventId ||
+        (row as { linkedEventId?: string | null }).linkedEventId ||
+        null;
+      if (
+        convertedId &&
+        (nextVenue !== previousLeadVenue ||
+          nextVenueMode !== previousLeadVenueMode)
+      ) {
+        try {
+          await syncLeadEventVenue({
+            leadId: id,
+            eventId: convertedId,
+            venue: nextVenue,
+            venueMode: nextVenueMode,
+            skipLead: true,
+          });
+        } catch (err) {
+          console.warn(
+            "[updateEntity] syncLeadEventVenue (lead) failed:",
             err instanceof Error ? err.message : err
           );
         }

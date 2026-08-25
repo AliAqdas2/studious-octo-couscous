@@ -374,6 +374,262 @@ async function main(): Promise<void> {
     } else {
       console.log("gmail_message_status processing already present");
     }
+
+    const workflowTables = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name in ('event_workflow_templates', 'event_workflow_task_defs')
+    `;
+    const workflowNames = new Set(
+      workflowTables.map((row) => String(row.table_name))
+    );
+    const eventCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'workflow_template_id'
+    `;
+    const needsEventWorkflow =
+      !workflowNames.has("event_workflow_templates") ||
+      !workflowNames.has("event_workflow_task_defs") ||
+      eventCols.length === 0;
+
+    if (needsEventWorkflow) {
+      console.log("Applying event workflow foundation migration (0010)...");
+      const migSql = readFileSync(
+        join(__dirname, "../drizzle/0010_event_workflow_foundation.sql"),
+        "utf8"
+      );
+      for (const statement of migSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("event workflow foundation migration applied");
+    } else {
+      console.log("event workflow foundation tables/columns already present");
+    }
+
+    const taskMetaCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'tasks'
+        and column_name = 'workflow_meta'
+    `;
+    if (taskMetaCol.length === 0) {
+      console.log("Applying task workflow_meta migration (0011)...");
+      await sql.unsafe(
+        `ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "workflow_meta" jsonb DEFAULT '{}'::jsonb`
+      );
+      console.log("task workflow_meta migration applied");
+    } else {
+      console.log("tasks.workflow_meta already present");
+    }
+
+    const vendorsTable = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = 'vendors'
+    `;
+    if (vendorsTable.length === 0) {
+      console.log("Applying inventory and vendors migration (0012)...");
+      const invSql = readFileSync(
+        join(__dirname, "../drizzle/0012_inventory_and_vendors.sql"),
+        "utf8"
+      );
+      for (const statement of invSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("inventory and vendors migration applied");
+    } else {
+      console.log("vendors / inventory tables already present");
+    }
+
+    const postEventCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'post_event'
+    `;
+    if (postEventCol.length === 0) {
+      console.log("Applying post-event + features migration (0013)...");
+      const peSql = readFileSync(
+        join(__dirname, "../drizzle/0013_post_event_and_features.sql"),
+        "utf8"
+      );
+      for (const statement of peSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("post-event + features migration applied");
+    } else {
+      console.log("events.post_event already present");
+      await sql.unsafe(
+        `ALTER TABLE "automation_config" ADD COLUMN IF NOT EXISTS "event_ops_features" jsonb DEFAULT '{}'::jsonb`
+      );
+    }
+
+    const tmplDocCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'event_workflow_templates'
+        and column_name = 'doc_quality'
+    `;
+    if (tmplDocCol.length === 0) {
+      console.log("Applying multi-experience templates migration (0014)...");
+      const mxSql = readFileSync(
+        join(__dirname, "../drizzle/0014_multi_experience_templates.sql"),
+        "utf8"
+      );
+      for (const statement of mxSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("multi-experience templates migration applied");
+    } else {
+      console.log("event_workflow_templates.doc_quality already present");
+    }
+
+    const venuesTable = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public' and table_name = 'venues'
+    `;
+    const leadVenueCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'leads'
+        and column_name = 'venue'
+    `;
+    if (venuesTable.length === 0 || leadVenueCol.length === 0) {
+      console.log("Applying venues + lead venue migration (0015)...");
+      const venuesSql = readFileSync(
+        join(__dirname, "../drizzle/0015_venues_and_lead_venue.sql"),
+        "utf8"
+      );
+      for (const statement of venuesSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("venues + lead venue migration applied");
+    } else {
+      console.log("venues table and leads.venue already present");
+    }
+
+    const catalogExpKeysCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'inventory_catalog_items'
+        and column_name = 'experience_keys'
+    `;
+    const catalogExpKeyCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'inventory_catalog_items'
+        and column_name = 'experience_key'
+    `;
+    if (catalogExpKeysCol.length === 0 || catalogExpKeyCol.length > 0) {
+      console.log("Applying catalog experience_keys migration (0016)...");
+      const expKeysSql = readFileSync(
+        join(__dirname, "../drizzle/0016_catalog_experience_keys.sql"),
+        "utf8"
+      );
+      for (const statement of expKeysSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate") ||
+            message.includes("does not exist")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("catalog experience_keys migration applied");
+    } else {
+      console.log("inventory_catalog_items.experience_keys already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

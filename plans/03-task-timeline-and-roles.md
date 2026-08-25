@@ -1,74 +1,93 @@
 # 03 — Task timeline and roles
 
 **Depends on:** [01](./01-event-workflow-foundation.md), [02](./02-deposit-intake-and-crm-sync.md)  
-**Unlocks:** day-to-day ops usage
+**Traceability:** C030–C044, C057–C094  
+**Meeting override:** Slack Sales Alert is **not** a required CRM step.
 
 ---
 
 ## Goal
 
-Turn template task defs into **dated, owned tasks** with queues per role and the **48-hour staff response** policy called out in the cooking doc.
+Instantiate dated, owned tasks with role queues, full Marketing week-before sub-checklist, apron/supply tasks, and 48h staff policy.
 
 ---
 
-## Timeline buckets (Cooking)
+## Family A timeline (Cooking)
 
-| Phase | When | Examples |
-|-------|------|----------|
-| Upon deposit | Immediate | Slack/email blast, FareHarbor item, BEO shell, staff outreach, loading dock |
-| ~2.5 weeks before | `eventDate - 17d` | Email client, schedule ROS + calendar invite |
-| Run of Show | At meeting | Confirm menu, bar, arrival, time change, HC, day-of POC, media permission, seating, add-ons |
-| One week before | `eventDate - 7d` | Menus/QR (Marketing), inventory order (Ops), remaining shopping |
-| Staff BEO check-in | 72–48h before | Phone chat host + instructor |
-| 24h before | `eventDate - 1d` | Triple-check inventory, ice Y/N, staging |
-| During | On `eventDate` | Photos, consumption, WhatsApp media, team debrief → survey |
-| Post | `eventDate + 0–1d` | Admin media for morning email; Sales thank-you; hours/invoice; optional new lead |
+| Phase | When | Key tasks |
+|-------|------|-----------|
+| `upon_deposit` | Immediate | Sales meeting; email blast; FH; Admin BEO + links; Ops shell; staff outreach; loading dock |
+| `two_point_five_weeks` | eventDate − 17d | Email client; schedule ROS; calendar invite client+Sales |
+| `ros` | At meeting | ROS form (plan 05) |
+| `one_week_before` | eventDate − 7d | Marketing print/QR; Ops inventory order; Basecamp apron send |
+| `staff_checkin_72_48h` | 72–48h before | Host+Instructor phone BEO check-in |
+| (still ~1w window) | Before event | Company aprons **cleaned**; logo’d aprons **ready for Basecamp pickup**; remaining supplies method |
+| `twenty_four_h` | eventDate − 1d | Triple-check inventory (**Ops Manager or Intern**); Ice Y/N |
+| `during` / `post` | Plan 06 | |
 
-Due dates = `eventDate` + `due_offset_days` (ET). If event date changes, **reschedule open tasks**.
-
----
-
-## Role queues (UI)
-
-- My Tasks (assigned user)  
-- Role inbox: Admin / Ops / Sales / Marketing / Event Host  
-- Event checklist view (all tasks for one event, grouped by phase)
-
-Each task card shows: title, due date, role, resource links (how-to video, Vendor Directory, Form), complete checkbox, notes.
+If `eventDate` changes → reschedule open tasks.
 
 ---
 
-## Staff availability policy
+## Deposit notify (C030 meeting override)
 
-Task: “Reach out to Instructor and Event Team Immediately”
+**Required:** email to **Dave, Zach, Monica, Eileen** with event summary + CRM link.  
+**Not required:** posting to Slack Salesalert. Slack URL may appear as optional resource on the notify task.
 
+---
+
+## Marketing week-before (exact sub-checklist)
+
+Owner: **Marketing Associate**
+
+1. Recipe cards / menu printed ([How to Create Recipe Cards](https://drive.google.com/file/d/1nTWDc2MRYW0tseNMDLnAtnqGUr1zyMNU/view))  
+2. **Menu verified by the chef for THIS function?**  
+3. **Appropriate paper in stock?** (Ops note: what paper)  
+4. **Printed in the office?** — FedEx how-to resource / Zach video note  
+5. QR: created already? if not create → **on website?** → **printed?** ([QR folder](https://drive.google.com/drive/folders/1qDXF2mUG_lSHrHyrGOviqHTwbov3sOmo))  
+6. **Menu tents**  
+7. **Recipe cards**  
+8. **Bar menu**
+
+---
+
+## Aprons & remaining supplies
+
+- Reconfirm custom aprons **sent to Basecamp DC** ([Vendor Directory](../BEO_System_docs/Vendor%20Directory.md))  
+- **Company aprons cleaned and ready** for this function  
+- **Logo’d aprons ready for pickup from Basecamp DC**  
+- Remaining supplies pickup method: **in-person | curbside | rush shipping**
+
+---
+
+## Staff availability (C038–C040)
+
+- Contact Instructor + Event Team **immediately**  
 - Sub-status: contacted | awaiting | confirmed | escalated  
-- If no response in **48 hours**, escalate task to Ops Manager / Zach  
-- Record which member reached out
+- No response in **48h** → escalate to Ops Manager / Zach  
+- Record which member reached out  
 
 ---
 
-## Notifications (v1)
+## Role UI
 
-Meeting preferred: email blast to Dave, Zach, Monica, Eileen on deposit (internal). Slack Salesalert can remain a **checklist link** until Slack API is wired.
-
-Digest: overdue workflow tasks in daily digest (reuse `DIGEST_RECIPIENTS` / digest job).
-
----
-
-## Acceptance checklist
-
-- [ ] Tasks get correct due dates from event date
-- [ ] Changing event date updates open task dues
-- [ ] Role filters work
-- [ ] 48h escalation path exists for staff outreach
-- [ ] Resource links from cooking doc appear on relevant tasks
+My Tasks | Role inbox (Admin/Ops/Sales/Marketing/Event Host) | Event checklist by phase.  
+Each card: title, due, role, resources, complete, notes.
 
 ---
 
-## Key files
+## Digest
 
-- [`tasks` schema / task UI](../server/db/schema/)
-- [`generateWorkflow.ts`](../server/services/events/generateWorkflow.ts)
-- [`assignEventStaff.ts`](../server/services/events/assignEventStaff.ts)
-- [`sendDailyDigest.ts`](../server/jobs/sendDailyDigest.ts)
+Overdue workflow tasks in daily digest.
+
+---
+
+## Acceptance
+
+- [x] No required Slack send step
+- [x] Email blast to four named people
+- [x] All Marketing sub-checks named (incl. bar menu, QR on website, chef verify)
+- [x] Apron clean + Basecamp pickup tasks
+- [x] Remaining supplies method enum
+- [x] 24h assignee Ops Manager or Intern; ice Y/N; no invented staging-only requirement
+- [x] `staff_checkin_72_48h` phase used

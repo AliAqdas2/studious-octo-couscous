@@ -133,13 +133,20 @@ export default function Dashboard() {
 
   const eventStageColors = {
     'Deposit Received': 'bg-blue-100 text-blue-800',
+    'Planning': 'bg-purple-100 text-purple-800',
+    'Run Of Show Scheduled': 'bg-violet-100 text-violet-800',
+    'Pre-Event Ready': 'bg-yellow-100 text-yellow-800',
+    'In Progress': 'bg-red-100 text-red-800',
+    'Post-Event': 'bg-indigo-100 text-indigo-800',
+    'Completed': 'bg-emerald-100 text-emerald-800',
+    'Lost': 'bg-slate-100 text-slate-800',
+    'Canceled': 'bg-gray-100 text-gray-800',
     'Pre-Event Planning': 'bg-purple-100 text-purple-800',
     'Inventory Ordering': 'bg-yellow-100 text-yellow-800',
     'Staff Confirmed': 'bg-green-100 text-green-800',
     '72hr Final Check': 'bg-orange-100 text-orange-800',
     'Event Day': 'bg-red-100 text-red-800',
     'Post-Event Processing': 'bg-indigo-100 text-indigo-800',
-    'Completed': 'bg-emerald-100 text-emerald-800',
     'Cancelled': 'bg-gray-100 text-gray-800'
   };
 

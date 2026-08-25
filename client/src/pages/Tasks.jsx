@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ThreadView from '@/components/thread/ThreadView';
+import WorkflowTaskExtras, { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
 
 export default function Tasks() {
   const queryClient = useQueryClient();
@@ -19,6 +20,8 @@ export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [viewMode, setViewMode] = useState('mine'); // mine | role | phase
+  const [phaseFilter, setPhaseFilter] = useState('all');
   const [eventFilter, setEventFilter] = useState('all');
   const [expandedThread, setExpandedThread] = useState(null);
   const [editingDueDate, setEditingDueDate] = useState(null);
@@ -144,6 +147,18 @@ export default function Tasks() {
     }
   });
 
+  const updateWorkflowMetaMutation = useMutation({
+    mutationFn: async ({ taskId, workflow_meta }) => {
+      return base44.entities.Task.update(taskId, { workflow_meta });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['tasks']);
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to update');
+    }
+  });
+
 
 
   const userOperationalRole = roleAssignments[0]?.role;
@@ -155,15 +170,41 @@ export default function Tasks() {
       const assignedToUser = task.assigned_user === user.id;
       if (!matchesRole && !assignedToUser) return false;
     }
+
+    // View modes: My Tasks | Role inbox | By phase
+    if (viewMode === 'mine' && user) {
+      const assignedToMe = task.assigned_user === user.id;
+      const unassignedInMyRole =
+        !task.assigned_user &&
+        task.responsible_role ===
+          (user.role === 'admin' ? task.responsible_role : userOperationalRole) &&
+        (user.role !== 'admin' || activeTab === 'all' || task.responsible_role === activeTab);
+      if (user.role === 'admin') {
+        // Admin "My": assigned to me; if a role tab is selected, also unassigned in that role
+        if (activeTab === 'all') {
+          if (!assignedToMe) return false;
+        } else if (
+          !assignedToMe &&
+          !( !task.assigned_user && task.responsible_role === activeTab)
+        ) {
+          return false;
+        }
+      } else if (!assignedToMe && !unassignedInMyRole) {
+        return false;
+      }
+    } else if (viewMode === 'role') {
+      if (activeTab !== 'all' && task.responsible_role !== activeTab) return false;
+    } else if (viewMode === 'phase') {
+      if (phaseFilter !== 'all' && task.workflow_phase !== phaseFilter) return false;
+    } else if (activeTab !== 'all' && task.responsible_role !== activeTab) {
+      return false;
+    }
     
     // Status filter
     if (statusFilter === 'acknowledged' && task.status === 'Not Acknowledged') return false;
     if (statusFilter === 'working' && task.status !== 'Working On It') return false;
     if (statusFilter === 'done' && task.status !== 'Done') return false;
     if (statusFilter === 'not-acknowledged' && task.status !== 'Not Acknowledged') return false;
-    
-    // Role filter (Tab)
-    if (activeTab !== 'all' && task.responsible_role !== activeTab) return false;
     
     // Event filter
     if (eventFilter !== 'all' && task.event_id !== eventFilter) return false;
@@ -196,7 +237,8 @@ export default function Tasks() {
     return task.status !== 'Done' && new Date(task.due_date) < new Date();
   };
 
-  const roles = ['Admin', 'Sales', 'Ops', 'Chef', 'Event Host', 'Finance'];
+  const roles = ['Admin', 'Sales', 'Ops', 'Marketing', 'Chef', 'Event Host', 'Finance'];
+  const phases = Object.keys(PHASE_LABELS);
   const uniqueEvents = [...new Set(tasks.map(t => t.event_id))].filter(Boolean);
 
   // Show loading if tasks or role info still loading
@@ -269,6 +311,15 @@ export default function Tasks() {
         </Card>
       </div>
 
+      {/* View mode: My Tasks | Role inbox | By phase */}
+      <Tabs value={viewMode} onValueChange={setViewMode}>
+        <TabsList className="bg-white/80">
+          <TabsTrigger value="mine">My Tasks</TabsTrigger>
+          <TabsTrigger value="role">Role inbox</TabsTrigger>
+          <TabsTrigger value="phase">By phase</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Filters */}
       <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
         <CardContent className="p-4 md:p-6">
@@ -312,14 +363,30 @@ export default function Tasks() {
                 })}
               </SelectContent>
             </Select>
+
+            {viewMode === 'phase' && (
+              <Select value={phaseFilter} onValueChange={setPhaseFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Phase" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All phases</SelectItem>
+                  {phases.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PHASE_LABELS[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Role Tabs - Only show for admin */}
-      {user?.role === 'admin' && (
+      {/* Role Tabs - admin or role inbox */}
+      {(user?.role === 'admin' || viewMode === 'role') && viewMode !== 'phase' && (
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4 md:grid-cols-7 bg-white/80 backdrop-blur-sm overflow-x-auto">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-8 bg-white/80 backdrop-blur-sm overflow-x-auto">
             <TabsTrigger value="all">All</TabsTrigger>
             {roles.map(role => (
               <TabsTrigger key={role} value={role}>{role}</TabsTrigger>
@@ -332,10 +399,16 @@ export default function Tasks() {
         </Tabs>
       )}
 
-      {/* Non-admin view - no tabs, just task list */}
-      {user?.role !== 'admin' && (
+      {/* Phase / My view without nested role tabs */}
+      {(viewMode === 'phase' || (viewMode === 'mine' && user?.role !== 'admin')) && (
         <div className="mt-6">
           {renderTaskList()}
+        </div>
+      )}
+
+      {viewMode === 'mine' && user?.role === 'admin' && (
+        <div className="mt-2 text-sm text-gray-500">
+          Showing tasks assigned to you{activeTab !== 'all' ? ` (plus unassigned ${activeTab})` : ''}.
         </div>
       )}
     </div>
@@ -416,6 +489,19 @@ export default function Tasks() {
                             </div>
                           )}
                         </div>
+
+                        <WorkflowTaskExtras
+                          task={task}
+                          canEdit={
+                            task.assigned_user === user?.id || user?.role === 'admin'
+                          }
+                          onMetaChange={(workflow_meta) =>
+                            updateWorkflowMetaMutation.mutate({
+                              taskId: task.id,
+                              workflow_meta,
+                            })
+                          }
+                        />
                       </div>
 
                       <div className="flex gap-2 flex-wrap w-full md:w-auto">

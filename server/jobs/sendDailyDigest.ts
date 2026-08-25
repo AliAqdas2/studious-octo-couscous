@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, isNotNull } from "drizzle-orm";
 import { env } from "../config/env.js";
 import { getDb } from "../db/index.js";
-import { activityLogs, leads } from "../db/schema/index.js";
+import { activityLogs, events, leads, tasks } from "../db/schema/index.js";
 import { AppError } from "../lib/errors.js";
 import { sendGmailEmail } from "../services/gmail/send.js";
 
@@ -488,10 +488,64 @@ export async function sendDailyDigest(): Promise<Record<string, unknown>> {
     )
     .join("");
 
+  // Overdue event workflow tasks (plan 03)
+  const overdueWorkflowTasks = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      dueDate: tasks.dueDate,
+      responsibleRole: tasks.responsibleRole,
+      workflowPhase: tasks.workflowPhase,
+      eventId: tasks.eventId,
+      eventName: events.eventName,
+      eventType: events.eventType,
+    })
+    .from(tasks)
+    .innerJoin(events, eq(tasks.eventId, events.id))
+    .where(
+      and(
+        ne(tasks.status, "Done"),
+        ne(tasks.category, "Checklist"),
+        isNotNull(tasks.dueDate),
+        lt(tasks.dueDate, now)
+      )
+    )
+    .orderBy(tasks.dueDate)
+    .limit(50);
+
+  const eventUrl = (id: string) =>
+    appBaseUrl ? `${appBaseUrl}/EventDetail?id=${id}` : "#";
+
+  const workflowOverdueRows = overdueWorkflowTasks
+    .map((t) => {
+      const due = t.dueDate
+        ? new Date(t.dueDate).toLocaleDateString("en-US", {
+            timeZone: DC_TZ,
+            month: "short",
+            day: "numeric",
+          })
+        : "";
+      const style = `display:block;padding:10px;border-left:3px solid #C84B31;background:#FFF5F2;margin-bottom:6px;text-decoration:none;color:inherit;cursor:pointer;border-radius:2px;`;
+      const inner = `
+        <span style="color:#C84B31;font-weight:bold;">${escapeHtml(t.title)}</span><br/>
+        <span style="color:#555;font-size:13px;">${escapeHtml(t.eventName || "Event")} · ${escapeHtml(t.responsibleRole || "Ops")} · due ${escapeHtml(due)}</span>
+        ${
+          t.workflowPhase
+            ? `<div style="color:#777;font-size:12px;margin-top:4px;">Phase: ${escapeHtml(t.workflowPhase)}</div>`
+            : ""
+        }
+      `;
+      return t.eventId && appBaseUrl
+        ? `<a href="${eventUrl(t.eventId)}" style="${style}">${inner}</a>`
+        : `<div style="${style}">${inner}</div>`;
+    })
+    .join("");
+
   const totalItems =
     leadMeetingsToday.length +
     followUpMeetingsToday.length +
-    overdueActions.length;
+    overdueActions.length +
+    overdueWorkflowTasks.length;
 
   const body = `
       <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:20px;background:#fff;">
@@ -505,6 +559,7 @@ export async function sendDailyDigest(): Promise<Record<string, unknown>> {
         ${section("📅 Lead Meetings Scheduled Today", leadMeetingsToday.length, leadMeetingRows)}
         ${section("🔄 Follow-Up Meetings Today", followUpMeetingsToday.length, followUpRows)}
         ${section("⚠ Overdue Pipeline Actions", overdueActions.length, overdueRows)}
+        ${section("📋 Overdue Event Workflow Tasks", overdueWorkflowTasks.length, workflowOverdueRows)}
         <p style="color:#999;font-size:12px;margin-top:32px;text-align:center;border-top:1px solid #eee;padding-top:16px;">
           Sent automatically each morning at 7:00 AM ET · Mangia DC CRM
         </p>
@@ -545,6 +600,7 @@ export async function sendDailyDigest(): Promise<Record<string, unknown>> {
           meetings: leadMeetingsToday.length,
           followUps: followUpMeetingsToday.length,
           overdue: overdueActions.length,
+          overdueWorkflowTasks: overdueWorkflowTasks.length,
         };
       }
       console.error(`[sendDailyDigest] Failed to send to ${to}:`, message);
@@ -565,5 +621,6 @@ export async function sendDailyDigest(): Promise<Record<string, unknown>> {
     meetings: leadMeetingsToday.length,
     followUps: followUpMeetingsToday.length,
     overdue: overdueActions.length,
+    overdueWorkflowTasks: overdueWorkflowTasks.length,
   };
 }

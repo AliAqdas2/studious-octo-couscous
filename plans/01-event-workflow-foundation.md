@@ -2,110 +2,80 @@
 
 **Depends on:** nothing  
 **Unblocks:** 02–07  
-**Primary code today:** [`events` schema](../server/db/schema/events.ts), [`generateWorkflow.ts`](../server/services/events/generateWorkflow.ts), [`tasks` schema](../server/db/schema/tasks.ts)
+**Traceability:** [COOKING-TRACEABILITY.md](./COOKING-TRACEABILITY.md) (all C* IDs must be seedable)  
+**Primary code today:** [`events` schema](../server/db/schema/events.ts), [`generateWorkflow.ts`](../server/services/events/generateWorkflow.ts), tasks schema
 
 ---
 
 ## Goal
 
-Make the CRM able to store **experience-specific workflow templates** and instantiate them onto an Event as **structured tasks + config**, matching the In-Person Cooking doc structure (timeline buckets + owners).
-
----
-
-## Why
-
-`generateWorkflow.ts` already hardcodes thin task lists per event type. The cooking BEO doc is far richer (deposit intake fields, ROS checklist, inventory SKUs, post-event copy). We need a template model we can grow without rewriting TypeScript for every checkbox.
+Store **experience-specific workflow templates** and instantiate them as **structured tasks + config**, matching Cooking.md with **no `etc.` gaps**.
 
 ---
 
 ## Deliverables
 
-### 1. Workflow template storage
+### 1. Template tables
 
-Add (or extend) tables / JSON:
+- **`event_workflow_templates`**: `experience_key`, `display_name`, `timeline_family` (`A`|`B`), `version`, `is_active`
+- **`event_workflow_task_defs`**:
+  - `phase`: `upon_deposit` | `two_point_five_weeks` | `ros` | `one_week_before` | `staff_checkin_72_48h` | `twenty_four_h` | `during` | `post`
+  - `title`, `description`, `role`, `due_offset_days`, `due_anchor` (`event_date`|`deposit_date`|`immediate`)
+  - `sort_order`, `resource_links` jsonb, `conditional` jsonb
+  - `trace_id` optional string (e.g. `C038`) linking to COOKING-TRACEABILITY
 
-- **`event_workflow_templates`**
-  - `experience_key` (e.g. `in_person_cooking`)
-  - `display_name`
-  - `version`
-  - `is_active`
-- **`event_workflow_task_defs`**
-  - `template_id`
-  - `phase`: `upon_deposit` | `ros` | `one_week_before` | `24h_before` | `during` | `post`
-  - `title`
-  - `description` (optional how-to)
-  - `role`: Sales | Admin | Ops | Marketing | Event Host | Finance
-  - `due_offset_days` (relative to `eventDate`; negative = before)
-  - `due_anchor`: `event_date` | `deposit_date` | `immediate`
-  - `sort_order`
-  - `resource_links` jsonb (videos, Vendor Directory, forms)
-  - `conditional` jsonb (e.g. only if `alcohol_included`, only if `custom_addons.aprons`)
-  - `is_cooking_specific` boolean (for later multi-experience)
+**Seed v1:** every cooking checklist line → task def and/or intake field (see traceability).
 
-Seed **v1 from** [`Copy of _In-Person Cooking.md`](../BEO_System_docs/Copy%20of%20_In-Person%20Cooking.md).
+### 2. Roles
 
-### 2. Event config blob for intake answers
+`Sales` | `Admin` | `Ops` | `Marketing` | `Event Host`  
+Intern = assignee option on `twenty_four_h` tasks (with Ops Manager).  
+Do **not** invent Finance unless a cooking line requires it.
 
-Extend `events` (columns and/or `event_config` jsonb) for cooking intake fields not already first-class:
+### 3. Admin BEO vs Ops BEO shell (cooking split)
 
-Already on `events` (reuse): venue, alcoholIncluded, alcoholPreference, transportationNeeded, transportationDetails, customAddons, headcount, depositAmount, poc*, beoLink, fareharborLink, menu, inventoryStatus, loadingDockReserved, stage.
+| Who | What |
+|-----|------|
+| **Admin** | Creates **BEO** artifact on deposit (C035) plus participation, survey, CRM workflow link, ROS template |
+| **Ops** | Creates **BEO Shell**, links to FareHarbor (C037); after ROS emails BEO to staff (C056) |
 
-Add / nest:
+### 4. Required resource_links (seed constants)
 
-- `headcount_min` / `headcount_max` (range)
-- `event_start_time` (or ensure `eventDate` stores wall time in ET)
-- `is_competition` boolean
-- `dish_configuration` enum: `entree` | `app_entree` | `app_entree_dessert`
-- `food_additions` jsonb
-- `bar_details` jsonb (card / ticketed / fixed; wine/beer/soft; mixed top shelf/rail)
-- `media_permission` enum (ok marketing | internal only | no photos)
-- `seating_curated` + `seating_mode`
-- `run_of_show` jsonb (answers from ROS meeting)
-- `participation_list_url`, `post_event_survey_url`, `workflow_crm_url`
-- `slack_alert_sent_at`
+Vendor Directory ([local](../BEO_System_docs/Vendor%20Directory.md) + Drive), FareHarbor how-to video, BEO shell video, Recipe Cards video, QR Drive folder, Inventory Links doc, Post Event Survey Form, Event Photos Drive, Company Handbook, Slack Salesalert (**optional resource only**), embroidery Wattz Web Design & Marketing + Minuteman Press, Sammy Transport / DC Nation Tours.
 
-### 3. Event stages (pipeline for ops)
+Full URLs: COOKING-TRACEABILITY “Named resources”.
 
-Align `eventStageEnum` with cooking lifecycle if gaps exist:
+### 5. Event config
 
-Suggested: `Deposit Received` → `Planning` → `Run Of Show Scheduled` → `Pre-Event Ready` → `In Progress` → `Post-Event` → `Completed` (keep Lost/Canceled).
+Reuse existing event columns where possible; add/nest:
 
-Auto-advance “In Progress” when `now` crosses `eventDate` (job or on read).
+- `headcount_min` / `headcount_max`
+- `is_competition`, `dish_configuration`
+- `food_additions` jsonb (incl. shared FoDC/warm meal)
+- `bar_details` jsonb
+- `custom_addons` jsonb (amounts, 25-unit cheeseboard min, embroidered flags, logo_ordered)
+- `venue_mode` (`go_to_them`|`house_venue`), `venue_restrictions`
+- `media_permission`, seating fields
+- `run_of_show` jsonb
+- `participation_list_url`, `participation_list_type` (`sheets`|`forms`)
+- `post_event_survey_url`, `workflow_crm_url`, `beo_url`, `beo_shell_url`
+- `deposit_intake_completed_at`
 
-### 4. Replace thin hardcoded cooking path
+### 6. Event stages
 
-In `generateWorkflow` / `createEventFromWonLead`:
+`Deposit Received` → `Planning` → `Run Of Show Scheduled` → `Pre-Event Ready` → `In Progress` → `Post-Event` → `Completed` (+ Lost/Canceled).  
+Auto `In Progress` when now crosses `eventDate`.
 
-- Prefer DB template for Cooking Class / In-Person Cooking
-- Keep hardcoded map as fallback for unmigrated types until plan 07
+### 7. Wire generation
 
-### 5. Admin UI (minimal)
-
-- View active template + task defs (read-only first is OK)
-- Ability to toggle task active / edit resource URLs later (plan 04)
+`createEventFromWonLead` / `generateWorkflow`: Cooking → DB template; keep hardcoded fallback only for unmigrated types until plan 07.
 
 ---
 
-## Non-goals
+## Acceptance
 
-- Full BEO document generator
-- Multi-experience parity (plan 07)
-- Slack API integration (plan 03 can start with email blast)
-
----
-
-## Acceptance checklist
-
-- [ ] Cooking template seeded with phases matching the cooking doc
-- [ ] Creating an event can attach `template_id` and generate tasks from defs
-- [ ] Event can store competition / dish config / food additions / bar details
-- [ ] Old short DEFAULT_CHECKLIST is not the only output for cooking
-
----
-
-## Key files
-
-- [`server/db/schema/events.ts`](../server/db/schema/events.ts)
-- [`server/services/events/generateWorkflow.ts`](../server/services/events/generateWorkflow.ts)
-- [`server/services/leads/createEventFromWonLead.ts`](../server/services/leads/createEventFromWonLead.ts)
-- Source: [`BEO_System_docs/Copy of _In-Person Cooking.md`](../BEO_System_docs/Copy%20of%20_In-Person%20Cooking.md)
+- [x] Phase enum includes all Family A phases above
+- [x] Every COOKING-TRACEABILITY row has a seed target
+- [x] Admin BEO and Ops BEO shell are distinct tasks
+- [x] Resource URL list seeded (no missing named resources)
+- [x] Short DEFAULT_CHECKLIST is not the only cooking output

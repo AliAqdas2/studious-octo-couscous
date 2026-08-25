@@ -196,6 +196,9 @@ const ENTITY_MAP = {
   OnboardingWorkflowTemplate: "onboarding-workflow-templates",
   OnboardingWorkflowStep: "onboarding-workflow-steps",
   CandidateStep: "candidate-steps",
+  Vendor: "vendors",
+  Venue: "venues",
+  InventoryCatalogItem: "inventory-catalog-items",
 };
 
 const entities = Object.fromEntries(
@@ -496,6 +499,251 @@ export const base44 = {
             body: JSON.stringify(payload ?? {}),
           }
         );
+        return { data: body };
+      }
+
+      if (name === "regenerateEventWorkflow") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/regenerate-workflow`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              confirm: payload.confirm === true,
+            }),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "getExperienceMatrix") {
+        const body = await request("/api/experience-matrix", { method: "GET" });
+        return { data: body };
+      }
+
+      if (name === "getEventExperience") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/experience`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "getDepositIntake") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/deposit-intake`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "completeDepositIntake") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/deposit-intake`,
+          {
+            method: "POST",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "getEventInventory") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/inventory`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "patchEventInventory") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/inventory`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ patches: payload.patches ?? [] }),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "ensureEventInventory") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/inventory/ensure`,
+          { method: "POST", body: JSON.stringify({}) }
+        );
+        return { data: body };
+      }
+
+      if (name === "addEventInventory") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload;
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/inventory`,
+          {
+            method: "POST",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "deleteEventInventory") {
+        const eventId = payload.eventId || payload.id;
+        const itemId = payload.itemId || payload.item_id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!itemId) {
+          throw new ApiError("itemId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/inventory/${encodeURIComponent(itemId)}`,
+          { method: "DELETE" }
+        );
+        return { data: body };
+      }
+
+      if (name === "getRunOfShow") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/run-of-show`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "saveRunOfShow") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/run-of-show`,
+          {
+            method: "POST",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "saveEventArtifacts") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/artifacts`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "getBeoDocument") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/beo-document`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "saveBeoDocument") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/beo-document`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ html: payload.html ?? "" }),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "getPostEvent") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/post-event`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "savePostEvent") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/post-event`,
+          {
+            method: "POST",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "getEventOpsFeatures") {
+        const body = await request("/api/event-ops-features", { method: "GET" });
+        return { data: body };
+      }
+
+      if (name === "updateEventOpsFeatures") {
+        const body = await request("/api/event-ops-features", {
+          method: "PATCH",
+          body: JSON.stringify(payload ?? {}),
+        });
         return { data: body };
       }
 
