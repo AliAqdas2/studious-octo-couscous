@@ -630,6 +630,41 @@ async function main(): Promise<void> {
     } else {
       console.log("inventory_catalog_items.experience_keys already present");
     }
+
+    const beoDocHtmlCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'beo_document_html'
+    `;
+    if (beoDocHtmlCol.length === 0) {
+      console.log("Applying BEO document migration (0017)...");
+      const beoDocSql = readFileSync(
+        join(__dirname, "../drizzle/0017_beo_document.sql"),
+        "utf8"
+      );
+      for (const statement of beoDocSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("BEO document migration applied");
+    } else {
+      console.log("events.beo_document_html already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

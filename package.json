@@ -19,6 +19,8 @@
     "db:seed-event-workflows": "tsx scripts/seed-event-workflows.ts",
     "db:seed-inventory": "tsx scripts/seed-inventory.ts",
     "db:seed-venues": "tsx scripts/seed-venues.ts",
+    "db:seed-inventory:prod": "node dist/seed-inventory.js",
+    "db:seed-venues:prod": "node dist/seed-venues.js",
     "db:backfill-candidate-steps": "tsx scripts/backfill-candidate-steps.ts",
     "db:erase": "tsx scripts/erase-data.ts",
     "db:load-data": "tsx scripts/load-data.ts",

@@ -48,6 +48,18 @@ RUN npm run build \
     --packages=external \
     --outfile=dist/seed-onboarding.js \
     --format=esm \
+  && npx esbuild scripts/seed-inventory.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed-inventory.js \
+    --format=esm \
+  && npx esbuild scripts/seed-venues.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed-venues.js \
+    --format=esm \
   && npx esbuild scripts/send-daily-digest.ts \
     --bundle \
     --platform=node \
