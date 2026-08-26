@@ -7,6 +7,11 @@ export function toCamelCase(key: string): string {
 }
 
 export function toApiRecord(row: Record<string, unknown>): Record<string, unknown> {
+  const isUserRow = "passwordHash" in row || "inviteToken" in row || "inviteExpiresAt" in row;
+  const passwordSet = Boolean(row.passwordHash);
+  const invitePending =
+    !passwordSet && Boolean(row.inviteToken || row.inviteExpiresAt);
+
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
     if (key === "passwordHash" || key === "inviteToken") {
@@ -19,6 +24,12 @@ export function toApiRecord(row: Record<string, unknown>): Record<string, unknow
       out[snake] = value;
     }
   }
+
+  if (isUserRow) {
+    out.password_set = passwordSet;
+    out.invite_pending = invitePending;
+  }
+
   return out;
 }
 

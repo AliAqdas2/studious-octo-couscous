@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import AddUserDialog from '@/components/users/AddUserDialog';
 
 const ROLES = ['Admin', 'Sales', 'Ops', 'Chef', 'Event Host', 'Finance', 'Instructor'];
+const CONTACT_REQUIRED_ROLES = ['Instructor', 'Event Host'];
 
 const roleColors = {
   'Admin': 'bg-purple-100 text-purple-800',
@@ -25,13 +26,41 @@ const roleColors = {
   'Instructor': 'bg-teal-100 text-teal-800'
 };
 
-async function resolveLinkedUserId(assignment) {
-  if (assignment.user_id) return assignment.user_id;
-  const email = (
+const ACCESS = {
+  password_set: { label: 'Password set', className: 'bg-emerald-100 text-emerald-800' },
+  invite_pending: { label: 'Invite pending', className: 'bg-amber-100 text-amber-800' },
+  contact_only: { label: 'Contact only', className: 'bg-gray-100 text-gray-600' },
+};
+
+function assignmentEmail(assignment) {
+  return (
     assignment.contact_email ||
     assignment.user_email ||
     ''
   ).trim().toLowerCase();
+}
+
+function findLinkedUser(assignment, usersById, usersByEmail) {
+  if (assignment.user_id && usersById[assignment.user_id]) {
+    return usersById[assignment.user_id];
+  }
+  const email = assignmentEmail(assignment);
+  if (email && usersByEmail[email]) {
+    return usersByEmail[email];
+  }
+  return null;
+}
+
+function accessKeyFor(assignment, portalUser) {
+  if (!portalUser) return 'contact_only';
+  if (portalUser.password_set) return 'password_set';
+  if (portalUser.invite_pending || !portalUser.password_set) return 'invite_pending';
+  return 'contact_only';
+}
+
+async function resolveLinkedUserId(assignment) {
+  if (assignment.user_id) return assignment.user_id;
+  const email = assignmentEmail(assignment);
   if (!email) return null;
   const matches = await base44.entities.User.filter({ email });
   return matches[0]?.id || null;
@@ -40,11 +69,7 @@ async function resolveLinkedUserId(assignment) {
 function isSelfAssignment(assignment, currentUser) {
   if (!currentUser) return false;
   if (assignment.user_id && assignment.user_id === currentUser.id) return true;
-  const email = (
-    assignment.contact_email ||
-    assignment.user_email ||
-    ''
-  ).trim().toLowerCase();
+  const email = assignmentEmail(assignment);
   return Boolean(email && email === String(currentUser.email || '').toLowerCase());
 }
 
@@ -55,13 +80,36 @@ export default function Users() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [accessFilter, setAccessFilter] = useState('all');
   const [sortKey, setSortKey] = useState('name');
   const [sortDir, setSortDir] = useState('asc');
 
-  const { data: assignments = [], isLoading } = useQuery({
+  const { data: assignments = [], isLoading: assignmentsLoading } = useQuery({
     queryKey: ['role-assignments'],
     queryFn: () => base44.entities.RoleAssignment.list(),
   });
+
+  const { data: portalUsers = [], isLoading: usersLoading } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => base44.entities.User.list(),
+  });
+
+  const usersById = useMemo(() => {
+    const map = {};
+    for (const u of portalUsers) {
+      map[u.id] = u;
+    }
+    return map;
+  }, [portalUsers]);
+
+  const usersByEmail = useMemo(() => {
+    const map = {};
+    for (const u of portalUsers) {
+      const email = String(u.email || '').trim().toLowerCase();
+      if (email) map[email] = u;
+    }
+    return map;
+  }, [portalUsers]);
 
   const deactivateMutation = useMutation({
     mutationFn: async (assignment) => {
@@ -123,6 +171,34 @@ export default function Users() {
     },
   });
 
+  const changeRoleMutation = useMutation({
+    mutationFn: async ({ assignment, newRole }) => {
+      if (isSelfAssignment(assignment, currentUser)) {
+        throw new Error('Cannot change your own role');
+      }
+      if (CONTACT_REQUIRED_ROLES.includes(newRole)) {
+        if (!assignment.contact_name?.trim() || !assignment.contact_email?.trim()) {
+          throw new Error('Contact name and email are required for this role');
+        }
+      }
+      await base44.entities.RoleAssignment.update(assignment.id, { role: newRole });
+      const userId = await resolveLinkedUserId(assignment);
+      if (userId) {
+        await base44.entities.User.update(userId, {
+          role: newRole === 'Admin' ? 'admin' : 'user',
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['role-assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('Role updated');
+    },
+    onError: (err) => {
+      toast.error(err?.body?.error || err?.message || 'Failed to update role');
+    },
+  });
+
   const toggleSort = (key) => {
     if (sortKey === key) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -152,6 +228,13 @@ export default function Users() {
       list = list.filter(a => a.is_active === active);
     }
 
+    if (accessFilter !== 'all') {
+      list = list.filter(a => {
+        const portalUser = findLinkedUser(a, usersById, usersByEmail);
+        return accessKeyFor(a, portalUser) === accessFilter;
+      });
+    }
+
     list.sort((a, b) => {
       let va, vb;
       if (sortKey === 'name') {
@@ -163,6 +246,11 @@ export default function Users() {
       } else if (sortKey === 'status') {
         va = a.is_active ? 1 : 0;
         vb = b.is_active ? 1 : 0;
+      } else if (sortKey === 'access') {
+        const pa = findLinkedUser(a, usersById, usersByEmail);
+        const pb = findLinkedUser(b, usersById, usersByEmail);
+        va = accessKeyFor(a, pa);
+        vb = accessKeyFor(b, pb);
       } else {
         return 0;
       }
@@ -172,9 +260,9 @@ export default function Users() {
     });
 
     return list;
-  }, [assignments, search, roleFilter, statusFilter, sortKey, sortDir]);
+  }, [assignments, search, roleFilter, statusFilter, accessFilter, sortKey, sortDir, usersById, usersByEmail]);
 
-  const hasFilters = search || roleFilter !== 'all' || statusFilter !== 'all';
+  const hasFilters = search || roleFilter !== 'all' || statusFilter !== 'all' || accessFilter !== 'all';
 
   const SortHeader = ({ label, field }) => (
     <TableHead>
@@ -188,7 +276,7 @@ export default function Users() {
     </TableHead>
   );
 
-  if (isLoading) return null;
+  if (assignmentsLoading || usersLoading) return null;
 
   return (
     <div className="space-y-6">
@@ -245,6 +333,17 @@ export default function Users() {
             <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={accessFilter} onValueChange={setAccessFilter}>
+          <SelectTrigger className="w-[160px] border-gray-200">
+            <SelectValue placeholder="All Access" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Access</SelectItem>
+            <SelectItem value="password_set">Password set</SelectItem>
+            <SelectItem value="invite_pending">Invite pending</SelectItem>
+            <SelectItem value="contact_only">Contact only</SelectItem>
+          </SelectContent>
+        </Select>
         {hasFilters && (
           <span className="text-xs text-gray-500">
             {filteredAndSorted.length} of {assignments.length} users
@@ -259,6 +358,7 @@ export default function Users() {
               <SortHeader label="Name" field="name" />
               <SortHeader label="Role" field="role" />
               <SortHeader label="Status" field="status" />
+              <SortHeader label="Access" field="access" />
               <TableHead className="hidden md:table-cell">Contact</TableHead>
               <TableHead className="w-[120px]">Actions</TableHead>
             </TableRow>
@@ -266,13 +366,16 @@ export default function Users() {
           <TableBody>
             {filteredAndSorted.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-12 text-gray-500">
+                <TableCell colSpan={6} className="text-center py-12 text-gray-500">
                   {hasFilters ? 'No users match your filters' : 'No users yet — add your first team member'}
                 </TableCell>
               </TableRow>
             ) : (
               filteredAndSorted.map(assignment => {
                 const isSelf = isSelfAssignment(assignment, currentUser);
+                const portalUser = findLinkedUser(assignment, usersById, usersByEmail);
+                const accessKey = accessKeyFor(assignment, portalUser);
+                const accessMeta = ACCESS[accessKey];
                 return (
                   <TableRow key={assignment.id} className="hover:bg-orange-50/50">
                     <TableCell className="font-medium text-gray-900">
@@ -282,13 +385,38 @@ export default function Users() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge className={roleColors[assignment.role]}>
-                        {assignment.role}
-                      </Badge>
+                      {isSelf ? (
+                        <Badge className={roleColors[assignment.role]}>
+                          {assignment.role}
+                        </Badge>
+                      ) : (
+                        <Select
+                          value={assignment.role}
+                          onValueChange={(newRole) => {
+                            if (newRole === assignment.role) return;
+                            changeRoleMutation.mutate({ assignment, newRole });
+                          }}
+                          disabled={changeRoleMutation.isPending}
+                        >
+                          <SelectTrigger className={`h-8 w-[140px] border-0 ${roleColors[assignment.role] || ''}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLES.map(r => (
+                              <SelectItem key={r} value={r}>{r}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge className={assignment.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
                         {assignment.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={accessMeta.className}>
+                        {accessMeta.label}
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
