@@ -8,6 +8,19 @@ const TEAL_DARK = '#1F7A7D';
 const BORDER = '#1a1a1a';
 const STRIPE = '#f3f7f7';
 
+/** Same labels as ROS multimedia permissions (stored as snake_case codes). */
+const MEDIA_PERMISSION_LABELS = {
+  marketing_ok: 'OK for client + marketing use',
+  internal_only: 'OK internal only, not marketing',
+  no_photos: 'No photos',
+};
+
+function mediaPermissionLabel(value) {
+  if (!value) return '';
+  const key = String(value);
+  return MEDIA_PERMISSION_LABELS[key] || key.replace(/_/g, ' ');
+}
+
 function esc(value) {
   if (value == null || value === '') return '';
   return String(value)
@@ -143,8 +156,26 @@ export function buildBeoHtml(input) {
     : '';
   const venueRestrictions =
     event.venue_restrictions || event.venueRestrictions || '';
-  const eventDate = event.event_date || event.eventDate;
-  const startTime = event.start_time || event.startTime || '';
+  const eventDateRaw = event.event_date || event.eventDate;
+  const startTimeRaw = event.start_time || event.startTime || '';
+  const eventDate =
+    ros.timeChanged && ros.newEventDate
+      ? ros.newEventDate
+      : eventDateRaw;
+  const startTime =
+    ros.timeChanged && ros.newStartTime
+      ? String(ros.newStartTime).trim()
+      : startTimeRaw;
+  const timeChangeBits = [];
+  if (ros.newEventDate) timeChangeBits.push(formatDate(ros.newEventDate));
+  if (ros.newStartTime) timeChangeBits.push(String(ros.newStartTime).trim());
+  const timeChangeLabel = ros.timeChanged
+    ? timeChangeBits.length
+      ? `Yes → ${timeChangeBits.join(' · ')}`
+      : 'Yes'
+    : ros.timeChanged === false
+      ? 'No'
+      : '';
   const hcMin = event.headcount_min ?? event.headcountMin;
   const hcMax = event.headcount_max ?? event.headcountMax;
   const headcount =
@@ -195,11 +226,12 @@ export function buildBeoHtml(input) {
   const menu = asRecord(ros.menu);
   const activity = asRecord(ros.activityConfirm);
   const confirmLabel = input?.rosConfirmLabel || 'Menu / activity';
-  const media =
+  const media = mediaPermissionLabel(
     ros.mediaPermission ||
-    event.media_permission ||
-    event.mediaPermission ||
-    '';
+      event.media_permission ||
+      event.mediaPermission ||
+      ''
+  );
   const special =
     event.special_requests || event.specialRequests || '';
   const dietary =
@@ -240,11 +272,7 @@ export function buildBeoHtml(input) {
     cell('Arrival', ros.arrivalMethod || '', { stripe: true }) +
     cell(
       'Time change',
-      ros.timeChanged
-        ? `Yes${ros.newStartTime ? ` → ${ros.newStartTime}` : ''}`
-        : ros.timeChanged === false
-          ? 'No'
-          : ''
+      timeChangeLabel
     ) +
     cell(
       'Transport',

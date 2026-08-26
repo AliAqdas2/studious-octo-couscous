@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -15,6 +14,8 @@ import {
 } from '@/components/ui/dialog';
 import { ExternalLink, Package, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import OpsPanelShell from '@/components/events/OpsPanelShell';
+import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 function cloneItems(items) {
   return (items || []).map((i) => ({ ...i }));
@@ -67,6 +68,7 @@ function VendorLinks({ item }) {
  */
 export default function EventInventoryChecklist({
   eventId,
+  event = null,
   experienceKey = 'In-Person Cooking',
   canEdit = false,
 }) {
@@ -260,20 +262,17 @@ export default function EventInventoryChecklist({
   };
 
   const displayRows = isEditing ? draft : items;
+  const hasInventory = (summary?.total ?? items.length) > 0;
+  const inventoryComplete = hasInventory && !isEditing;
+  const inventoryMilestone = getPanelMilestoneLabel('inventory', event || {}, {
+    hasInventory,
+  });
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Package className="w-4 h-4" />
-            Inventory checklist
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-24 animate-pulse bg-slate-100 rounded" />
-        </CardContent>
-      </Card>
+      <OpsPanelShell title="Inventory checklist" icon={Package} forceOpen>
+        <div className="h-24 animate-pulse bg-slate-100 rounded" />
+      </OpsPanelShell>
     );
   }
 
@@ -282,15 +281,18 @@ export default function EventInventoryChecklist({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Package className="w-4 h-4" />
-            Inventory checklist
-          </CardTitle>
-          {summary && (
-            <p className="text-xs text-gray-500 mt-1">
+    <OpsPanelShell
+      title="Inventory checklist"
+      icon={Package}
+      complete={inventoryComplete}
+      forceOpen={isEditing || !hasInventory}
+      doneBadge={inventoryComplete}
+      milestoneLabel={inventoryMilestone}
+    >
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {summary ? (
+            <p className="text-xs text-gray-500">
               {summary.in_office}/{summary.needed} needed items in office
               {summary.triple_check_ready ? (
                 <Badge className="ml-2 bg-emerald-100 text-emerald-800 border-emerald-200">
@@ -298,38 +300,43 @@ export default function EventInventoryChecklist({
                 </Badge>
               ) : null}
             </p>
+          ) : (
+            <span />
           )}
-        </div>
-        {canEdit && (
-          <div className="flex gap-2 flex-wrap justify-end">
-            {!isEditing ? (
-              <Button size="sm" variant="outline" onClick={startEdit}>
-                <Pencil className="w-3.5 h-3.5 mr-1" />
-                Edit
-              </Button>
-            ) : (
-              <>
-                {displayRows.length === 0 && (
+          {canEdit && (
+            <div className="flex gap-2 flex-wrap justify-end">
+              {!isEditing ? (
+                <Button size="sm" variant="outline" onClick={startEdit}>
+                  <Pencil className="w-3.5 h-3.5 mr-1" />
+                  {hasInventory ? 'View / Edit' : 'Edit'}
+                </Button>
+              ) : (
+                <>
+                  {displayRows.length === 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => ensureMutation.mutate()}
+                      disabled={ensureMutation.isPending}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                      Load catalog
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => ensureMutation.mutate()}
-                    disabled={ensureMutation.isPending}
+                    onClick={() => setAddOpen(true)}
                   >
-                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                    Load catalog
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Add item
                   </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  Add item
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-2">
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {displayRows.length === 0 ? (
           <p className="text-sm text-gray-500">
             No checklist yet. Generate the event workflow or load the catalog for
@@ -354,27 +361,36 @@ export default function EventInventoryChecklist({
               </thead>
               <tbody>
                 {displayRows.map((item) => (
-                  <tr key={item.id} className="border-b border-slate-50 align-top">
+                  <tr
+                    key={item.id}
+                    className="border-b border-slate-50 align-top"
+                  >
                     <td className="py-2 pr-2">
-                      <div className="font-medium text-gray-800">{item.name}</div>
+                      <div className="font-medium text-gray-800">
+                        {item.name}
+                      </div>
                     </td>
-                    {['needed', 'ordered', 'received', 'in_office'].map((field) => {
-                      const checked = Boolean(item[field]);
-                      return (
-                        <td key={field} className="py-2 px-1 text-center">
-                          {isEditing && canEdit ? (
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(v) =>
-                                updateDraft(item.id, { [field]: Boolean(v) })
-                              }
-                            />
-                          ) : (
-                            <span className="text-xs">{flag(checked)}</span>
-                          )}
-                        </td>
-                      );
-                    })}
+                    {['needed', 'ordered', 'received', 'in_office'].map(
+                      (field) => {
+                        const checked = Boolean(item[field]);
+                        return (
+                          <td key={field} className="py-2 px-1 text-center">
+                            {isEditing && canEdit ? (
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(v) =>
+                                  updateDraft(item.id, {
+                                    [field]: Boolean(v),
+                                  })
+                                }
+                              />
+                            ) : (
+                              <span className="text-xs">{flag(checked)}</span>
+                            )}
+                          </td>
+                        );
+                      }
+                    )}
                     <td className="py-2 pl-2">
                       <VendorLinks item={item} />
                       {isEditing && canEdit && (
@@ -456,9 +472,10 @@ export default function EventInventoryChecklist({
         )}
 
         <p className="text-xs text-gray-500 pt-1">
-          24h before: confirm every needed row is in office, then set Acquire Ice Y/N on the ice task.
+          24h before: confirm every needed row is in office, then set Acquire Ice
+          Y/N on the ice task.
         </p>
-      </CardContent>
+      </div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
@@ -541,6 +558,6 @@ export default function EventInventoryChecklist({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </OpsPanelShell>
   );
 }

@@ -1,15 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
 import {
   Bold,
   Download,
@@ -18,14 +11,19 @@ import {
   Italic,
   List,
   ListOrdered,
+  Printer,
   Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import {
   beoHtmlPreview,
   buildBeoHtml,
   wrapBeoDocument,
 } from '@/lib/beoTemplate';
+import OpsPanelShell from '@/components/events/OpsPanelShell';
+import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 function beoLogoSrc() {
   if (typeof window === 'undefined') return '/mangiadc-logo.png';
@@ -108,33 +106,114 @@ function Toolbar({ iframeRef, canEdit }) {
   );
 }
 
-function downloadBeoHtml(html, eventName) {
+function buildBeoDocHtml(html, eventName) {
   const safeName = (eventName || 'BEO').replace(/[^\w\-]+/g, '_').slice(0, 60);
   const bodyHtml = normalizeSheetHtml(html);
-  const doc = wrapBeoDocument(bodyHtml, {
-    title: `BEO — ${safeName}`,
-    editable: false,
-  });
-  const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${safeName}_BEO.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  return {
+    safeName,
+    doc: wrapBeoDocument(bodyHtml, {
+      title: `BEO — ${safeName}`,
+      editable: false,
+    }),
+  };
+}
 
+/** Current print behavior: open a window and trigger the browser print dialog. */
+function printBeo(html, eventName) {
+  const { doc } = buildBeoDocHtml(html, eventName);
   const printWin = window.open('', '_blank');
-  if (printWin) {
-    printWin.document.write(doc);
-    printWin.document.close();
-    printWin.focus();
-    setTimeout(() => {
-      try {
-        printWin.print();
-      } catch {
-        /* ignore */
-      }
-    }, 400);
+  if (!printWin) {
+    toast.error('Pop-up blocked — allow pop-ups to print');
+    return;
+  }
+  printWin.document.write(doc);
+  printWin.document.close();
+  printWin.focus();
+  setTimeout(() => {
+    try {
+      printWin.print();
+    } catch {
+      /* ignore */
+    }
+  }, 400);
+}
+
+/** Render BEO HTML to a multi-page PDF and download it. */
+async function downloadBeoPdf(html, eventName) {
+  const { safeName, doc } = buildBeoDocHtml(html, eventName);
+  const host = document.createElement('div');
+  host.style.cssText =
+    'position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'width:794px;border:0;background:#fff;';
+  host.appendChild(iframe);
+  document.body.appendChild(host);
+
+  try {
+    await new Promise((resolve, reject) => {
+      iframe.onload = () => resolve();
+      iframe.onerror = () => reject(new Error('Failed to load BEO for PDF'));
+      iframe.srcdoc = doc;
+    });
+
+    const iframeDoc = iframe.contentDocument;
+    const target =
+      iframeDoc?.querySelector('.beo-sheet') || iframeDoc?.body;
+    if (!target) throw new Error('BEO content missing');
+
+    // Let images (logo) settle before capture
+    const imgs = Array.from(target.querySelectorAll('img'));
+    await Promise.all(
+      imgs.map(
+        (img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((res) => {
+                img.onload = () => res();
+                img.onerror = () => res();
+              })
+      )
+    );
+    await new Promise((r) => setTimeout(r, 150));
+
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+    });
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter',
+    });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 10;
+    const usableWidth = pageWidth - margin * 2;
+    const usableHeight = pageHeight - margin * 2;
+    const imgWidth = usableWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let heightLeft = imgHeight;
+    let position = margin;
+    const imgData = canvas.toDataURL('image/png');
+
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+    heightLeft -= usableHeight;
+
+    while (heightLeft > 0) {
+      position = margin - (imgHeight - heightLeft);
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      heightLeft -= usableHeight;
+    }
+
+    pdf.save(`${safeName}_BEO.pdf`);
+  } finally {
+    host.remove();
   }
 }
 
@@ -146,10 +225,10 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
   const queryClient = useQueryClient();
   const iframeRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [accordionValue, setAccordionValue] = useState([]);
   const [draftHtml, setDraftHtml] = useState(null);
   const [srcDoc, setSrcDoc] = useState('');
   const [iframeReady, setIframeReady] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const { data: state, isLoading } = useQuery({
     queryKey: ['beo-document', eventId],
@@ -171,11 +250,9 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
 
   useEffect(() => {
     if (showSummary) {
-      setAccordionValue([]);
       setDraftHtml(null);
       return;
     }
-    setAccordionValue(['editor']);
     if (draftHtml == null && state) {
       setDraftHtml(state.html || buildFromState(state, event));
     }
@@ -225,21 +302,14 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
 
   if (!eventId || isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            BEO document
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-20 animate-pulse bg-slate-100 rounded" />
-        </CardContent>
-      </Card>
+      <OpsPanelShell title="BEO document" icon={FileText} forceOpen>
+        <div className="h-20 animate-pulse bg-slate-100 rounded" />
+      </OpsPanelShell>
     );
   }
 
   const eventName = event?.event_name || event?.eventName || 'Event';
+  const beoMilestone = getPanelMilestoneLabel('beo', event);
   const softHint =
     !state?.rosCompleted && !state?.rosScheduled
       ? 'Tip: schedule and complete Run of Show first for a fuller BEO. You can still draft early.'
@@ -274,36 +344,83 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
     saveMutation.mutate(html);
   };
 
-  const handleDownload = () => {
-    const html =
-      !showSummary && iframeReady
-        ? readIframeHtml()
-        : state?.html || buildFromState(state, event);
-    downloadBeoHtml(html, eventName);
+  const currentBeoHtml = () =>
+    !showSummary && iframeReady
+      ? readIframeHtml()
+      : state?.html || buildFromState(state, event);
+
+  const handlePrint = () => {
+    const html = currentBeoHtml();
+    if (!html?.trim()) {
+      toast.error('BEO document is empty');
+      return;
+    }
+    printBeo(html, eventName);
   };
 
+  const handleDownloadPdf = async () => {
+    const html = currentBeoHtml();
+    if (!html?.trim()) {
+      toast.error('BEO document is empty');
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      await downloadBeoPdf(html, eventName);
+      toast.success('PDF downloaded');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to create PDF');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  const exportButtons = (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={handlePrint}
+      >
+        <Printer className="w-4 h-4 mr-1" />
+        Print
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={pdfBusy}
+        onClick={handleDownloadPdf}
+      >
+        <Download className="w-4 h-4 mr-1" />
+        {pdfBusy ? 'Creating PDF…' : 'Download PDF'}
+      </Button>
+    </>
+  );
+
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              BEO document
-            </CardTitle>
-            <p className="text-xs text-gray-500 mt-1">
-              Generate a Banquet Event Order from deposit + Run of Show, edit,
-              save, and download.
-            </p>
-          </div>
+    <OpsPanelShell
+      title="BEO document"
+      icon={FileText}
+      complete={showSummary}
+      forceOpen={!showSummary}
+      doneBadge={hasDocument && showSummary}
+      milestoneLabel={beoMilestone}
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-gray-500">
+            Generate a Banquet Event Order from deposit + Run of Show, edit,
+            save, and download.
+          </p>
           {hasDocument ? (
             <Badge className="bg-green-600 text-white">Saved</Badge>
           ) : (
             <Badge variant="outline">Not generated</Badge>
           )}
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+
         {softHint ? (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded p-2">
             {softHint}
@@ -311,137 +428,105 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
         ) : null}
 
         {showSummary ? (
-          <Card className="border-green-200 bg-green-50/60">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="font-medium text-green-900">BEO saved</p>
-                  <p className="text-sm text-green-700">
-                    {state?.updatedAt
-                      ? `Updated ${new Date(state.updatedAt).toLocaleString()}`
-                      : 'In-app Admin BEO document'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge className="bg-green-600 text-white">Done</Badge>
-                  {canEdit ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="border-green-300 text-green-800 hover:bg-green-100"
-                      onClick={openEdit}
-                    >
-                      View / Edit
-                    </Button>
-                  ) : null}
+          <div className="rounded-lg border border-green-200 bg-green-50/60 p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <p className="font-medium text-green-900">BEO saved</p>
+                <p className="text-sm text-green-700">
+                  {state?.updatedAt
+                    ? `Updated ${new Date(state.updatedAt).toLocaleString()}`
+                    : 'In-app Admin BEO document'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canEdit ? (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={handleDownload}
+                    className="border-green-300 text-green-800 hover:bg-green-100"
+                    onClick={openEdit}
                   >
-                    <Download className="w-4 h-4 mr-1" />
-                    Download
+                    View / Edit
                   </Button>
-                </div>
+                ) : null}
+                {exportButtons}
               </div>
-              {preview ? (
-                <p className="text-sm text-green-950/80 line-clamp-3">{preview}</p>
-              ) : null}
-              {state?.beoUrl ? (
-                <p className="text-xs text-green-800">
-                  External BEO link still on file:{' '}
-                  <a
-                    href={state.beoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    Open URL
-                  </a>
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
+            </div>
+            {preview ? (
+              <p className="text-sm text-green-950/80 line-clamp-3">{preview}</p>
+            ) : null}
+            {state?.beoUrl ? (
+              <p className="text-xs text-green-800">
+                External BEO link still on file:{' '}
+                <a
+                  href={state.beoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  Open URL
+                </a>
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {!showSummary ? (
-          <Accordion
-            type="multiple"
-            value={accordionValue}
-            onValueChange={setAccordionValue}
-          >
-            <AccordionItem value="editor" className="border rounded-lg px-3">
-              <AccordionTrigger className="hover:no-underline py-3">
-                <span className="font-semibold text-sm">
-                  {hasDocument ? 'Edit BEO' : 'Create BEO'}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="space-y-3">
-                {canEdit ? (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-[#C84B31] hover:bg-[#A03A23]"
-                      onClick={generateFresh}
-                    >
-                      {hasDocument ? 'Regenerate from CRM' : 'Generate BEO'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={saveMutation.isPending || !iframeReady}
-                      onClick={handleSave}
-                    >
-                      <Save className="w-4 h-4 mr-1" />
-                      Save
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={handleDownload}
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      Download
-                    </Button>
-                    {isEditing && hasDocument ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsEditing(false);
-                          setDraftHtml(null);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500">View only for your role.</p>
-                )}
-                <Toolbar iframeRef={iframeRef} canEdit={canEdit} />
-                <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
-                  <iframe
-                    ref={iframeRef}
-                    title="BEO editor"
-                    srcDoc={srcDoc}
-                    className="w-full bg-white border-0"
-                    style={{ minHeight: 720, height: 900 }}
-                    onLoad={() => setIframeReady(true)}
-                    sandbox="allow-same-origin"
-                  />
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+          <div className="space-y-3">
+            {canEdit ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-[#C84B31] hover:bg-[#A03A23]"
+                  onClick={generateFresh}
+                >
+                  {hasDocument ? 'Regenerate from CRM' : 'Generate BEO'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={saveMutation.isPending || !iframeReady}
+                  onClick={handleSave}
+                >
+                  <Save className="w-4 h-4 mr-1" />
+                  Save
+                </Button>
+                {exportButtons}
+                {isEditing && hasDocument ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setDraftHtml(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">View only for your role.</p>
+            )}
+            <Toolbar iframeRef={iframeRef} canEdit={canEdit} />
+            <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
+              <iframe
+                ref={iframeRef}
+                title="BEO editor"
+                srcDoc={srcDoc}
+                className="w-full bg-white border-0"
+                style={{ minHeight: 720, height: 900 }}
+                onLoad={() => setIframeReady(true)}
+                sandbox="allow-same-origin"
+              />
+            </div>
+          </div>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </OpsPanelShell>
   );
 }

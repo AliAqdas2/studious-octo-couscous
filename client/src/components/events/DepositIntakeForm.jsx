@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +16,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ClipboardList, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import OpsPanelShell from '@/components/events/OpsPanelShell';
+import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 const VENDOR_DIRECTORY =
   'https://docs.google.com/document/d/1HHU1nfh-3a0UdJVzgWqRqUFxBpfeC3Y_GQT-2Serbv4/edit';
@@ -633,6 +634,7 @@ export default function DepositIntakeForm({ event, user }) {
 
   const completedAt =
     event?.deposit_intake_completed_at || intakeState?.completedAt;
+  const depositMilestone = getPanelMilestoneLabel('deposit', event);
 
   if (completed && !isEditing) {
     const summaryRows = formatIntakeSummary(sourceEvent, {
@@ -641,8 +643,14 @@ export default function DepositIntakeForm({ event, user }) {
     });
 
     return (
-      <Card className="border-green-200 bg-green-50/60">
-        <CardContent className="p-4 space-y-3">
+      <OpsPanelShell
+        title="Deposit Intake"
+        icon={ClipboardList}
+        complete
+        doneBadge
+        milestoneLabel={null}
+      >
+        <div className="rounded-lg border border-green-200 bg-green-50/60 p-4 space-y-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <p className="font-medium text-green-900">Deposit intake complete</p>
@@ -652,18 +660,15 @@ export default function DepositIntakeForm({ event, user }) {
                   : 'Fields saved — workflow tasks are live.'}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge className="bg-green-600 text-white">Done</Badge>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="border-green-300 text-green-800 hover:bg-green-100"
-                onClick={openEdit}
-              >
-                View / Edit
-              </Button>
-            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-green-300 text-green-800 hover:bg-green-100"
+              onClick={openEdit}
+            >
+              View / Edit
+            </Button>
           </div>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm text-green-950">
             {summaryRows.map((row) => (
@@ -746,28 +751,30 @@ export default function DepositIntakeForm({ event, user }) {
               </div>
             ))}
           </dl>
-        </CardContent>
-      </Card>
+        </div>
+      </OpsPanelShell>
     );
   }
 
   return (
-    <Card className="border-orange-200 bg-orange-50/40">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-[#C84B31]">
-          <ClipboardList className="w-5 h-5" />
-          Deposit Intake
-          <Badge variant="outline" className="ml-2 font-normal">
+    <OpsPanelShell
+      title="Deposit Intake"
+      icon={ClipboardList}
+      complete={false}
+      forceOpen
+      milestoneLabel={depositMilestone}
+    >
+      <div className="space-y-6 rounded-lg border border-orange-200 bg-orange-50/40 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="font-normal">
             {completed ? 'Editing' : 'Sales meeting'}
           </Badge>
-        </CardTitle>
+        </div>
         <p className="text-sm text-gray-600">
           {completed
             ? 'Update intake fields below. Saving does not re-send the deposit notify email.'
             : 'Prefill from CRM — confirm location, preferences, and add-ons. Completing this generates the event workflow and emails Dave, Zach, Monica, and Eileen (Slack alert not required).'}
         </p>
-      </CardHeader>
-      <CardContent className="space-y-6">
         {/* Core prefill */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -1281,8 +1288,8 @@ export default function DepositIntakeForm({ event, user }) {
         {!user && (
           <p className="text-xs text-amber-700">Sign in required to submit.</p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </OpsPanelShell>
   );
 }
 

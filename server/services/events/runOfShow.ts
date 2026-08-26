@@ -18,6 +18,7 @@ import {
 } from "./runOfShowTypes.js";
 import { TRANSPORT_COMPANIES } from "./depositIntakeTypes.js";
 import { getRosConfirmLabel } from "./experienceMatrix.js";
+import { rescheduleWorkflowTasks } from "./rescheduleWorkflowTasks.js";
 
 function requireDb() {
   const db = getDb();
@@ -206,6 +207,7 @@ export async function getRunOfShowState(eventId: string, user?: AuthUser | null)
     runOfShow: ros,
     prefill: {
       startTime: event.startTime,
+      eventDate: event.eventDate,
       headcount: event.headcount,
       headcountMin: event.headcountMin,
       headcountMax: event.headcountMax,
@@ -340,6 +342,27 @@ export async function saveRunOfShow(
       ? merged.newStartTime.trim()
       : event.startTime;
 
+  let nextEventDate = event.eventDate;
+  let eventDateChanged = false;
+  if (merged.timeChanged && merged.newEventDate?.trim()) {
+    const raw = merged.newEventDate.trim();
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+      ? new Date(`${raw}T12:00:00`)
+      : new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      const prev = event.eventDate ? new Date(event.eventDate) : null;
+      const sameDay =
+        prev &&
+        prev.getFullYear() === parsed.getFullYear() &&
+        prev.getMonth() === parsed.getMonth() &&
+        prev.getDate() === parsed.getDate();
+      if (!sameDay) {
+        nextEventDate = parsed;
+        eventDateChanged = true;
+      }
+    }
+  }
+
   const headcount =
     merged.headcountConfirmed != null &&
     Number.isFinite(Number(merged.headcountConfirmed))
@@ -363,6 +386,7 @@ export async function saveRunOfShow(
     .set({
       runOfShow: merged,
       startTime,
+      eventDate: nextEventDate,
       headcount,
       mediaPermission: merged.mediaPermission ?? event.mediaPermission,
       seatingCurated:
@@ -405,6 +429,17 @@ export async function saveRunOfShow(
     );
   }
 
+  if (eventDateChanged) {
+    try {
+      await rescheduleWorkflowTasks(eventId);
+    } catch (err) {
+      console.error(
+        "[saveRunOfShow] rescheduleWorkflowTasks failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
   await db.insert(activityLogs).values({
     entityType: "Event",
     entityId: eventId,
@@ -417,6 +452,7 @@ export async function saveRunOfShow(
       complete,
       mark_scheduled: markScheduled,
       media_permission: merged.mediaPermission ?? null,
+      event_date_changed: eventDateChanged,
     },
     userId: user?.id || null,
     userName: user?.full_name || "System",

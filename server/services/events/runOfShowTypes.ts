@@ -112,6 +112,8 @@ export interface RunOfShowPayload {
   bar?: RosBarCheck | null;
   arrivalMethod?: (typeof ROS_ARRIVAL_METHODS)[number] | null;
   timeChanged?: boolean | null;
+  /** YYYY-MM-DD when event date also changed with timeChanged. */
+  newEventDate?: string | null;
   newStartTime?: string | null;
   headcountConfirmed?: number | null;
   dayOfPoc?: RosDayOfPoc | null;

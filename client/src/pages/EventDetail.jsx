@@ -18,7 +18,6 @@ import RunOfShowForm from '@/components/events/RunOfShowForm';
 import BeoDocumentPanel from '@/components/events/BeoDocumentPanel';
 import EventArtifactsPanel from '@/components/events/EventArtifactsPanel';
 import PostEventPanel from '@/components/events/PostEventPanel';
-import EventOpsFeaturesPanel from '@/components/events/EventOpsFeaturesPanel';
 import WorkflowTaskExtras from '@/components/events/WorkflowTaskExtras';
 import { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
 
@@ -75,7 +74,14 @@ export default function EventDetail() {
     enabled: !!eventId,
   });
   const experience = experienceInfo?.experience;
-  const needsZach = Boolean(experienceInfo?.needsZachReview);
+  const zachTaskDone = tasks.some(
+    (t) =>
+      (t.trace_id === 'Z001' || t.traceId === 'Z001') &&
+      (t.status === 'Done' || t.status === 'Completed')
+  );
+  // Matrix flags incomplete/stub experiences; clear per-event when Z001 is Done.
+  const needsZach =
+    Boolean(experienceInfo?.needsZachReview) && !zachTaskDone;
   // Meeting: ROS is shared across experiences (not Cooking-only).
   const hasRos = Boolean(event?.event_type);
 
@@ -571,7 +577,7 @@ export default function EventDetail() {
               </Badge>
             )}
           </div>
-          {experience?.flagNote && (
+          {needsZach && experience?.flagNote && (
             <p className="text-xs text-amber-800 mt-2 max-w-xl">{experience.flagNote}</p>
           )}
         </div>
@@ -614,6 +620,7 @@ export default function EventDetail() {
       {event?.event_type && (
         <EventInventoryChecklist
           eventId={eventId}
+          event={event}
           experienceKey={event.event_type}
           canEdit={
             user?.role === 'admin' ||
@@ -672,8 +679,6 @@ export default function EventDetail() {
           )
         }
       />
-
-      <EventOpsFeaturesPanel canEdit={user?.role === 'admin'} />
 
       {/* Progress Bar */}
       {visibleTasks.length > 0 && (

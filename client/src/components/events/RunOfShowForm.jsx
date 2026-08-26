@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,12 +23,43 @@ import {
 } from '@/components/ui/accordion';
 import { ClipboardList, CalendarPlus, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import OpsPanelShell from '@/components/events/OpsPanelShell';
+import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 import {
   ROS_CALENDAR_SAVE_HINT,
   fromDatetimeLocalValue,
   sendRosCalendarInvite,
   toDatetimeLocalValue,
 } from '@/lib/rosCalendarInvite';
+
+function toDateInputValue(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    const s = String(value);
+    return s.length >= 10 ? s.slice(0, 10) : '';
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function toTimeInputValue(value) {
+  if (!value) return '';
+  const s = String(value).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m) {
+    return `${m[1].padStart(2, '0')}:${m[2]}`;
+  }
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(
+      d.getMinutes()
+    ).padStart(2, '0')}`;
+  }
+  return '';
+}
 
 const emptyCustom = () => ({
   embroideredAprons: {
@@ -101,6 +132,13 @@ function formatDetailsSummary(form, { isCooking, rosConfirmLabel, mediaLabels })
 
   if (form.arrivalMethod) {
     rows.push({ label: 'Arrival', value: form.arrivalMethod });
+  }
+  if (form.timeChanged) {
+    const bits = [form.newEventDate, form.newStartTime].filter(Boolean);
+    rows.push({
+      label: 'Event time changed',
+      value: bits.length ? bits.join(' · ') : 'Yes',
+    });
   }
   if (form.headcountConfirmed !== '' && form.headcountConfirmed != null) {
     rows.push({
@@ -216,7 +254,13 @@ function buildInitial(state) {
     },
     arrivalMethod: ros.arrivalMethod || '',
     timeChanged: Boolean(ros.timeChanged),
-    newStartTime: ros.newStartTime || '',
+    newEventDate:
+      ros.newEventDate ||
+      toDateInputValue(pre.eventDate || state?.event?.event_date),
+    newStartTime:
+      ros.newStartTime ||
+      toTimeInputValue(pre.startTime) ||
+      '',
     headcountConfirmed:
       ros.headcountConfirmed ??
       pre.headcount ??
@@ -365,6 +409,7 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
       },
       arrivalMethod: form.arrivalMethod || null,
       timeChanged: form.timeChanged,
+      newEventDate: form.timeChanged ? form.newEventDate || null : null,
       newStartTime: form.timeChanged ? form.newStartTime || null : null,
       headcountConfirmed:
         form.headcountConfirmed === ''
@@ -459,17 +504,9 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
 
   if (!eventId || isLoading || !form) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <ClipboardList className="w-4 h-4" />
-            Run of Show
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-28 animate-pulse bg-slate-100 rounded" />
-        </CardContent>
-      </Card>
+      <OpsPanelShell title="Run of Show" icon={ClipboardList} forceOpen>
+        <div className="h-28 animate-pulse bg-slate-100 rounded" />
+      </OpsPanelShell>
     );
   }
 
@@ -492,6 +529,9 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
 
   const showScheduleSummary = isScheduled && !editingSchedule;
   const showDetailsSummary = completed && !editingDetails;
+  const rosFullyComplete =
+    isScheduled && completed && !editingSchedule && !editingDetails;
+  const rosMilestone = getPanelMilestoneLabel('ros', event || state?.event);
 
   const scheduleForm = (
     <div className="space-y-3 rounded-lg border border-orange-200 bg-orange-50/40 p-4">
@@ -740,17 +780,52 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
           <Checkbox
             checked={form.timeChanged}
             disabled={!canEdit}
-            onCheckedChange={(v) => setField('timeChanged', Boolean(v))}
+            onCheckedChange={(v) => {
+              const on = Boolean(v);
+              if (on) {
+                const preDate =
+                  form.newEventDate ||
+                  toDateInputValue(state?.prefill?.eventDate) ||
+                  toDateInputValue(state?.event?.event_date) ||
+                  toDateInputValue(event?.event_date);
+                const preTime =
+                  form.newStartTime ||
+                  toTimeInputValue(state?.prefill?.startTime) ||
+                  toTimeInputValue(event?.start_time);
+                setForm((prev) => ({
+                  ...prev,
+                  timeChanged: true,
+                  newEventDate: preDate,
+                  newStartTime: preTime,
+                }));
+              } else {
+                setField('timeChanged', false);
+              }
+            }}
           />
           Event time changed
         </label>
         {form.timeChanged && (
-          <Input
-            disabled={!canEdit}
-            placeholder="New start time"
-            value={form.newStartTime}
-            onChange={(e) => setField('newStartTime', e.target.value)}
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs text-gray-500">New event date</Label>
+              <Input
+                type="date"
+                disabled={!canEdit}
+                value={form.newEventDate || ''}
+                onChange={(e) => setField('newEventDate', e.target.value)}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-gray-500">New start time</Label>
+              <Input
+                type="time"
+                disabled={!canEdit}
+                value={form.newStartTime || ''}
+                onChange={(e) => setField('newStartTime', e.target.value)}
+              />
+            </div>
+          </div>
         )}
         <div>
           <Label className="text-xs text-gray-500">Headcount confirm</Label>
@@ -1087,19 +1162,20 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
   );
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <ClipboardList className="w-4 h-4" />
-              Run of Show
-            </CardTitle>
-            <p className="text-xs text-gray-500 mt-1">
-              Schedule the meeting first (~2.5 weeks out), then capture details
-              after it happens.
-            </p>
-          </div>
+    <OpsPanelShell
+      title="Run of Show"
+      icon={ClipboardList}
+      complete={rosFullyComplete}
+      forceOpen={!rosFullyComplete}
+      doneBadge={rosFullyComplete}
+      milestoneLabel={rosMilestone}
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-gray-500">
+            Schedule the meeting first (~2.5 weeks out), then capture details
+            after it happens.
+          </p>
           <div className="flex gap-1.5">
             {isScheduled && (
               <Badge variant="outline" className="text-xs">
@@ -1113,8 +1189,7 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
             )}
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+
         {showScheduleSummary ? (
           <PhaseSummaryCard
             title="1. Schedule saved"
@@ -1191,7 +1266,7 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
             ) : null}
           </Accordion>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </OpsPanelShell>
   );
 }
