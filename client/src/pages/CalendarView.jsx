@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { STAGE_COLORS, CHANNEL_COLORS } from '@/components/leads/pipelineConfig';
 import CalendarGrid from '@/components/calendar/CalendarGrid';
+import { useAuth } from '@/lib/AuthContext';
+import { isOpsRole, isSystemAdmin } from '@/lib/operationalAccess';
 
 function isSameDay(d1, d2) {
   return d1.getFullYear() === d2.getFullYear() &&
@@ -134,10 +136,33 @@ function TodoCalendar({ currentDate, todos }) {
 }
 
 export default function CalendarView() {
-  const [activeTab, setActiveTab] = useState('leads');
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data: assignment } = useQuery({
+    queryKey: ['user-assignment', user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      if (user.role === 'admin') return { is_active: true, role: 'Admin' };
+      const assignments = await base44.entities.RoleAssignment.filter({
+        user_id: user.id,
+      });
+      return assignments[0] || null;
+    },
+    enabled: !!user,
+  });
+
+  const eventsOnly = isOpsRole(assignment) && !isSystemAdmin(user);
+  const [activeTab, setActiveTab] = useState(eventsOnly ? 'events' : 'leads');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activeFilter, setActiveFilter] = useState(null); // null = show all
-  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (eventsOnly && activeTab !== 'events') {
+      setActiveTab('events');
+      setActiveFilter(null);
+    }
+  }, [eventsOnly, activeTab]);
 
   const handleLeadDateChange = async (leadId, newDate) => {
     await base44.entities.Lead.update(leadId, { meeting_date: newDate });
@@ -152,6 +177,7 @@ export default function CalendarView() {
   const { data: leads = [] } = useQuery({
     queryKey: ['leads'],
     queryFn: () => base44.entities.Lead.list('-updated_date', 500),
+    enabled: !eventsOnly,
   });
 
   const { data: events = [] } = useQuery({
@@ -162,6 +188,7 @@ export default function CalendarView() {
   const { data: emailLogs = [] } = useQuery({
     queryKey: ['lead-email-logs'],
     queryFn: () => base44.entities.ActivityLog.filter({ entity_type: 'Lead' }),
+    enabled: !eventsOnly,
   });
 
   // Stage → wait hours before flagging "no response"
@@ -312,23 +339,36 @@ export default function CalendarView() {
     <div className="space-y-6">
       <div>
         <h1 className="text-4xl font-bold text-[#C84B31] mb-2">Calendar</h1>
-        <p className="text-gray-600">View lead meetings and event schedules</p>
+        <p className="text-gray-600">
+          {eventsOnly
+            ? 'View event schedules'
+            : 'View lead meetings and event schedules'}
+        </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-orange-50 border border-orange-200">
-          <TabsTrigger value="leads" className="data-[state=active]:bg-[#C84B31] data-[state=active]:text-white" onClick={() => setActiveFilter(null)}>
-            Leads
-          </TabsTrigger>
-          <TabsTrigger value="events" className="data-[state=active]:bg-[#C84B31] data-[state=active]:text-white" onClick={() => setActiveFilter(null)}>
-            Events
-          </TabsTrigger>
-
-        </TabsList>
+        {!eventsOnly ? (
+          <TabsList className="bg-orange-50 border border-orange-200">
+            <TabsTrigger
+              value="leads"
+              className="data-[state=active]:bg-[#C84B31] data-[state=active]:text-white"
+              onClick={() => setActiveFilter(null)}
+            >
+              Leads
+            </TabsTrigger>
+            <TabsTrigger
+              value="events"
+              className="data-[state=active]:bg-[#C84B31] data-[state=active]:text-white"
+              onClick={() => setActiveFilter(null)}
+            >
+              Events
+            </TabsTrigger>
+          </TabsList>
+        ) : null}
 
         {/* Color Legend — clickable filters */}
         <div className="flex flex-wrap items-center gap-2 mt-3 px-1">
-          {activeTab === 'leads' ? (
+          {activeTab === 'leads' && !eventsOnly ? (
             <>
               {[
                 { key: 'meeting', dot: 'bg-orange-400', label: 'Meeting' },
@@ -382,6 +422,7 @@ export default function CalendarView() {
           <Button variant="outline" size="sm" onClick={goToToday}>Today</Button>
         </div>
 
+        {!eventsOnly ? (
         <TabsContent value="leads">
           <CalendarGrid
             currentDate={currentDate}
@@ -463,6 +504,7 @@ export default function CalendarView() {
             );
           })()}
         </TabsContent>
+        ) : null}
 
         <TabsContent value="events">
 

@@ -22,6 +22,11 @@ import {
 } from '@/components/ui/dialog';
 import SettingsVenuesPanel from '@/components/settings/SettingsVenuesPanel';
 import SettingsInventoryCatalogPanel from '@/components/settings/SettingsInventoryCatalogPanel';
+import {
+  canAccessOpsSettings,
+  isOpsRole,
+  isSystemAdmin,
+} from '@/lib/operationalAccess';
 
 function formatTs(iso) {
   if (!iso) return null;
@@ -250,10 +255,27 @@ function GmailSettingsSection({ user }) {
 
 export default function Settings() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = isSystemAdmin(user);
   const canManageGmail = isGmailAdminEmail(user?.email);
 
-  if (!user || (!isAdmin && !canManageGmail)) {
+  const { data: assignment } = useQuery({
+    queryKey: ['user-assignment', user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      if (user.role === 'admin') return { is_active: true, role: 'Admin' };
+      const assignments = await base44.entities.RoleAssignment.filter({
+        user_id: user.id,
+      });
+      return assignments[0] || null;
+    },
+    enabled: !!user,
+  });
+
+  const isOps = isOpsRole(assignment);
+  const canOpenSettings =
+    canAccessOpsSettings(user, assignment) || canManageGmail;
+
+  if (!user || !canOpenSettings) {
     return (
       <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
         <CardContent className="p-12 text-center">
@@ -273,12 +295,13 @@ export default function Settings() {
           Settings
         </h1>
         <p className="text-gray-600">
-          Manage house venues, inventory catalog, and shared Gmail (when
-          authorized).
+          {isOps && !isAdmin
+            ? 'House venues and inventory catalog for event ops.'
+            : 'Manage house venues, inventory catalog, and shared Gmail (when authorized).'}
         </p>
       </div>
 
-      {isAdmin && (
+      {(isAdmin || isOps) && (
         <>
           <SettingsVenuesPanel />
           <SettingsInventoryCatalogPanel />

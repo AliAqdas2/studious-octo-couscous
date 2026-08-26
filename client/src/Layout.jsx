@@ -30,6 +30,11 @@ import {
   DEFAULT_APP_PATH,
   MY_ONBOARDING_PATH,
 } from '@/lib/postLoginPath';
+import {
+  getNavProfile,
+  isPageAllowed,
+  OPS_HOME_PATH,
+} from '@/lib/operationalAccess';
 
 function SpamLeadsCounter() {
   const { data: count = 0 } = useQuery({
@@ -189,29 +194,49 @@ export default function Layout({ children, currentPageName }) {
   // Role-based navigation visibility
   const isAdmin = user?.role === 'admin';
   const canManageGmail = isGmailAdminEmail(user?.email);
+  const navProfile = getNavProfile(user, userAssignment);
 
-  const navItems = isAdmin ? [
-  { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
-  { name: 'Leads', icon: Users, page: 'Leads' },
-  //{ name: 'Recruitment', icon: UserPlus, page: 'Recruitment' },
-  { name: 'Events', icon: Calendar, page: 'Events' },
-  { name: 'Tasks', icon: CheckSquare, page: 'Tasks' },
-  { name: 'Calendar', icon: Calendar, page: 'CalendarView' },
-  { name: 'Email', icon: Mail, page: 'Email' },
-  { name: 'Templates', icon: FileText, page: 'EventTemplates' },
-  { name: 'Activity Log', icon: Activity, page: 'ActivityLog' },
-  { name: 'Settings', icon: Settings, page: 'Settings' }] :
-  [
-  { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' },
-  ...(canManageGmail
-    ? [{ name: 'Settings', icon: Settings, page: 'Settings' }]
-    : [])];
+  if (
+    user &&
+    currentPageName &&
+    !isPageAllowed(currentPageName, user, userAssignment)
+  ) {
+    return <Navigate to={OPS_HOME_PATH} replace />;
+  }
 
+  const navItems =
+    navProfile === 'admin'
+      ? [
+          { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard' },
+          { name: 'Leads', icon: Users, page: 'Leads' },
+          { name: 'Events', icon: Calendar, page: 'Events' },
+          { name: 'Tasks', icon: CheckSquare, page: 'Tasks' },
+          { name: 'Calendar', icon: Calendar, page: 'CalendarView' },
+          { name: 'Email', icon: Mail, page: 'Email' },
+          { name: 'Templates', icon: FileText, page: 'EventTemplates' },
+          { name: 'Activity Log', icon: Activity, page: 'ActivityLog' },
+          { name: 'Settings', icon: Settings, page: 'Settings' },
+        ]
+      : navProfile === 'ops'
+        ? [
+            { name: 'Events', icon: Calendar, page: 'Events' },
+            { name: 'Calendar', icon: Calendar, page: 'CalendarView' },
+            { name: 'Settings', icon: Settings, page: 'Settings' },
+          ]
+        : [
+            { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' },
+            ...(canManageGmail
+              ? [{ name: 'Settings', icon: Settings, page: 'Settings' }]
+              : []),
+          ];
 
-  const historyItems = isAdmin ? [
-  { name: 'Confirmed Events', icon: Calendar, page: 'ConfirmedEvents' },
-  { name: 'Client Database', icon: Users, page: 'ClientDatabase' }] :
-  [];
+  const historyItems =
+    navProfile === 'admin'
+      ? [
+          { name: 'Confirmed Events', icon: Calendar, page: 'ConfirmedEvents' },
+          { name: 'Client Database', icon: Users, page: 'ClientDatabase' },
+        ]
+      : [];
 
   const adminItems = [
   { name: 'Role Assignment', icon: SlidersHorizontal, page: 'RoleAssignment' },

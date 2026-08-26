@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { OPS_HOME_PATH } from "@/lib/operationalAccess.js";
 
 export const MY_ONBOARDING_PATH = "/MyOnboarding";
 export const DEFAULT_APP_PATH = "/Dashboard";
@@ -17,6 +18,9 @@ export async function resolvePostLoginPath(user) {
       assignment?.is_active !== false
     ) {
       return MY_ONBOARDING_PATH;
+    }
+    if (assignment?.role === "Ops" && assignment?.is_active !== false) {
+      return OPS_HOME_PATH;
     }
   } catch {
     return DEFAULT_APP_PATH;
