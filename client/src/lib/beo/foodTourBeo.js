@@ -120,7 +120,7 @@ export function buildFoodTourBeoHtml(input) {
 
   const inner = `
     ${headerBlock(logoSrc, printDate)}
-    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
+    <table class="beo-keep" style="width:100%;border-collapse:collapse;margin-bottom:12px;">
       <tr>
         <td style="width:50%;vertical-align:top;padding:0 6px 0 0;">${eventInfoTable(core)}</td>
         <td style="width:50%;vertical-align:top;padding:0 0 0 6px;">${contactInfoTable(core)}</td>
@@ -128,18 +128,20 @@ export function buildFoodTourBeoHtml(input) {
     </table>
     ${openSection(
       'Client-specific details',
-      core.special ? `<p style="margin:0;">${esc(core.special)}</p>` : '&nbsp;'
+      core.special ? `<p style="margin:0;">${esc(core.special)}</p>` : '&nbsp;',
+      { keep: true }
     )}
     ${logisticsTable(core)}
     ${openSection(
       'Details',
       detailBits.length
         ? detailBits.map((t) => `<p style="margin:0 0 8px;">${esc(t)}</p>`).join('')
-        : '<p style="margin:0;">HIGH-LEVEL NOTES:</p><p style="margin:0;">&nbsp;</p>'
+        : '<p style="margin:0;">HIGH-LEVEL NOTES:</p><p style="margin:0;">&nbsp;</p>',
+      { keep: true }
     )}
     ${openSection('Orders', ordersHtml(stops))}
     ${openSection('Food stops order key', orderKeyTable(stops))}
-    ${openSection('Tour route', routeScaffold())}
+    ${openSection('Tour route', routeScaffold(), { keep: true })}
     ${
       asArray(input?.inventory).length
         ? openSection('Inventory', inventoryChecklistHtml(input.inventory))

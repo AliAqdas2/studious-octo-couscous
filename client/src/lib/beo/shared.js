@@ -76,19 +76,18 @@ export function sectionBar(title) {
 }
 
 export function sectionTable(title, rowsHtml) {
-  return `<table style="width:100%;border-collapse:collapse;margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;">
+  return `<table class="beo-keep" style="width:100%;border-collapse:collapse;margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;">
     ${sectionBar(title)}
     ${rowsHtml}
   </table>`;
 }
 
-export function openSection(title, innerHtml) {
-  return `<table style="width:100%;border-collapse:collapse;margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;">
-    ${sectionBar(title)}
-    <tr><td style="border:1px solid ${BORDER};padding:10px 12px;font-size:12px;line-height:1.5;vertical-align:top;">
-      ${innerHtml}
-    </td></tr>
-  </table>`;
+export function openSection(title, innerHtml, opts = {}) {
+  const keep = opts.keep ? ' beo-keep' : '';
+  return `<div class="beo-section${keep}">
+    <div class="beo-section-title">${esc(title)}</div>
+    <div class="beo-section-body">${innerHtml}</div>
+  </div>`;
 }
 
 export function listBlock(items) {
@@ -123,7 +122,7 @@ function twoColumnChecklist(lines) {
   const mid = Math.ceil(lines.length / 2);
   const left = lines.slice(0, mid);
   const right = lines.slice(mid);
-  return `<table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
+  return `<table class="beo-keep" style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
     <tr>
       <td style="width:50%;vertical-align:top;padding:0 8px 0 0;">${checkboxColumn(left)}</td>
       <td style="width:50%;vertical-align:top;padding:0 0 0 8px;">${checkboxColumn(right)}</td>
@@ -152,7 +151,7 @@ export function inventoryChecklistHtml(items) {
         .map(inventoryItemLabel)
         .filter(Boolean);
       const heading = `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">${esc(section)}</p>`;
-      return `${heading}${twoColumnChecklist(lines)}`;
+      return `<div class="beo-keep beo-inv-group">${heading}${twoColumnChecklist(lines)}</div>`;
     })
     .join('');
 }
@@ -261,7 +260,7 @@ export function imageBlock(images) {
       .map((img) => {
         const src = esc(img.image_url || img.imageUrl);
         const cap = esc(img.caption || '');
-        return `<figure style="margin:0;max-width:48%;">
+        return `<figure class="beo-floor-map beo-keep" style="margin:0;max-width:48%;">
           <img src="${src}" alt="${cap || 'Floor map'}" style="display:block;max-width:100%;height:auto;border:1px solid ${BORDER};" />
           ${cap ? `<figcaption style="font-size:11px;color:#555;margin-top:4px;">${cap}</figcaption>` : ''}
         </figure>`;
@@ -293,7 +292,10 @@ export function attendeeTable(participationUrl, attendees = [], rowCount = 12) {
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(phone)) || '&nbsp;'}</td>
   </tr>`;
   });
-  const blankNeeded = Math.max(0, rowCount - filled.length);
+  const extra = filled.length === 0 ? 4 : 2;
+  const cap = rowCount || 12;
+  const blankNeeded =
+    filled.length >= cap ? 0 : Math.min(extra, cap - filled.length);
   const blanks = Array.from({ length: blankNeeded }, () => `<tr>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
@@ -307,7 +309,7 @@ export function attendeeTable(participationUrl, attendees = [], rowCount = 12) {
 }
 
 export function headerBlock(logoSrc, printDate) {
-  return `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">
+  return `<table class="beo-keep" style="width:100%;border-collapse:collapse;margin-bottom:14px;">
     <tr>
       <td style="width:140px;vertical-align:middle;padding:0 12px 0 0;">
         <img src="${esc(logoSrc)}" alt="Mangia DC" width="120" height="auto" style="display:block;width:120px;height:auto;" />
@@ -325,7 +327,7 @@ export function headerBlock(logoSrc, printDate) {
 }
 
 export function approvalsBlock() {
-  return `<table style="width:100%;border-collapse:collapse;margin-top:8px;font-family:Arial,Helvetica,sans-serif;">
+  return `<table class="beo-keep" style="width:100%;border-collapse:collapse;margin-top:8px;font-family:Arial,Helvetica,sans-serif;">
     ${sectionBar('Approvals')}
     <tr>
       <td style="width:50%;border:1px solid ${BORDER};padding:14px 10px;font-size:12px;vertical-align:bottom;">

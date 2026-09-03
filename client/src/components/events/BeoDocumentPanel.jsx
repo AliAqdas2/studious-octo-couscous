@@ -15,8 +15,6 @@ import {
   Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import { getAccessToken } from '@/api/apiClient';
 import {
   beoHtmlPreview,
@@ -142,17 +140,20 @@ function buildBeoDocHtml(html, eventName) {
   };
 }
 
-/** Current print behavior: open a window and trigger the browser print dialog. */
-function printBeo(html, eventName) {
+/** Open a print window. Destination: printer or Save as PDF (vector, small file). */
+function printBeo(html, eventName, { downloadHint = false } = {}) {
   const { doc } = buildBeoDocHtml(html, eventName);
   const printWin = window.open('', '_blank');
   if (!printWin) {
-    toast.error('Pop-up blocked — allow pop-ups to print');
+    toast.error('Pop-up blocked — allow pop-ups to print or save PDF');
     return;
   }
   printWin.document.write(doc);
   printWin.document.close();
   printWin.focus();
+  if (downloadHint) {
+    toast.message('In the print dialog, choose Save as PDF');
+  }
   setTimeout(() => {
     try {
       printWin.print();
@@ -160,85 +161,6 @@ function printBeo(html, eventName) {
       /* ignore */
     }
   }, 400);
-}
-
-/** Render BEO HTML to a multi-page PDF and download it. */
-async function downloadBeoPdf(html, eventName) {
-  const { safeName, doc } = buildBeoDocHtml(html, eventName);
-  const host = document.createElement('div');
-  host.style.cssText =
-    'position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'width:794px;border:0;background:#fff;';
-  host.appendChild(iframe);
-  document.body.appendChild(host);
-
-  try {
-    await new Promise((resolve, reject) => {
-      iframe.onload = () => resolve();
-      iframe.onerror = () => reject(new Error('Failed to load BEO for PDF'));
-      iframe.srcdoc = doc;
-    });
-
-    const iframeDoc = iframe.contentDocument;
-    const target =
-      iframeDoc?.querySelector('.beo-sheet') || iframeDoc?.body;
-    if (!target) throw new Error('BEO content missing');
-
-    // Let images (logo) settle before capture
-    const imgs = Array.from(target.querySelectorAll('img'));
-    await Promise.all(
-      imgs.map(
-        (img) =>
-          img.complete
-            ? Promise.resolve()
-            : new Promise((res) => {
-                img.onload = () => res();
-                img.onerror = () => res();
-              })
-      )
-    );
-    await new Promise((r) => setTimeout(r, 150));
-
-    const canvas = await html2canvas(target, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-    });
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'letter',
-    });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 10;
-    const usableWidth = pageWidth - margin * 2;
-    const usableHeight = pageHeight - margin * 2;
-    const imgWidth = usableWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    let heightLeft = imgHeight;
-    let position = margin;
-    const imgData = canvas.toDataURL('image/png');
-
-    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-    heightLeft -= usableHeight;
-
-    while (heightLeft > 0) {
-      position = margin - (imgHeight - heightLeft);
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-      heightLeft -= usableHeight;
-    }
-
-    pdf.save(`${safeName}_BEO.pdf`);
-  } finally {
-    host.remove();
-  }
 }
 
 /**
@@ -252,7 +174,6 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
   const [draftHtml, setDraftHtml] = useState(null);
   const [srcDoc, setSrcDoc] = useState('');
   const [iframeReady, setIframeReady] = useState(false);
-  const [pdfBusy, setPdfBusy] = useState(false);
 
   const { data: state, isLoading } = useQuery({
     queryKey: ['beo-document', eventId],
@@ -382,21 +303,13 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
     printBeo(html, eventName);
   };
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = () => {
     const html = currentBeoHtml();
     if (!html?.trim()) {
       toast.error('BEO document is empty');
       return;
     }
-    setPdfBusy(true);
-    try {
-      await downloadBeoPdf(html, eventName);
-      toast.success('PDF downloaded');
-    } catch (err) {
-      toast.error(err?.message || 'Failed to create PDF');
-    } finally {
-      setPdfBusy(false);
-    }
+    printBeo(html, eventName, { downloadHint: true });
   };
 
   const exportButtons = (
@@ -414,11 +327,10 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
         type="button"
         size="sm"
         variant="outline"
-        disabled={pdfBusy}
         onClick={handleDownloadPdf}
       >
         <Download className="w-4 h-4 mr-1" />
-        {pdfBusy ? 'Creating PDF…' : 'Download PDF'}
+        Download PDF
       </Button>
     </>
   );

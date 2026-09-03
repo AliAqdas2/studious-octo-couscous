@@ -87,7 +87,7 @@ export function buildEventBeoHtml(input) {
 
   const inner = `
     ${headerBlock(logoSrc, printDate)}
-    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
+    <table class="beo-keep" style="width:100%;border-collapse:collapse;margin-bottom:12px;">
       <tr>
         <td style="width:50%;vertical-align:top;padding:0 6px 0 0;">${eventInfoTable(core)}</td>
         <td style="width:50%;vertical-align:top;padding:0 0 0 6px;">${contactInfoTable(core)}</td>
@@ -98,12 +98,13 @@ export function buildEventBeoHtml(input) {
       'Client-specific details',
       clientBits.length
         ? clientBits.map((t) => `<p style="margin:0 0 8px;">${esc(t)}</p>`).join('')
-        : '&nbsp;'
+        : '&nbsp;',
+      { keep: true }
     )}
     ${logisticsTable(core)}
-    ${openSection('Event flow', eventFlowHtml(core))}
+    ${openSection('Event flow', eventFlowHtml(core), { keep: true })}
     ${openSection('Cooking supplies', inventoryChecklistHtml(input?.inventory))}
-    ${openSection('Floor map', imageBlock(input?.venueImages))}
+    ${openSection('Floor map', imageBlock(input?.venueImages), { keep: true })}
     ${openSection(
       'Venue guidelines',
       guidelinesBlock(venueRow.guidelines)
