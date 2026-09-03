@@ -13,6 +13,7 @@ export * from "./venue-images.js";
 export * from "./instructors.js";
 export * from "./eateries.js";
 export * from "./event-eatery-stops.js";
+export * from "./event-attendees.js";
 export * from "./event-inventory-items.js";
 export * from "./events.js";
 export * from "./tasks.js";

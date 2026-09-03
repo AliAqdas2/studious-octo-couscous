@@ -13,6 +13,7 @@ import { toApiRecord } from "../entities/serialize.js";
 import { redactDepositFields } from "./depositAccess.js";
 import { getEventInventory } from "./eventInventory.js";
 import { listEventEateryStops } from "./eateryStops.js";
+import { listEventAttendees } from "./eventAttendees.js";
 import {
   getRosConfirmLabel,
   isFoodTourExperience,
@@ -109,18 +110,19 @@ export async function getBeoDocumentState(
       ? (event.runOfShow as Record<string, unknown>)
       : {};
 
-  const rosInstructorId =
-    (typeof ros.instructorId === "string" && ros.instructorId) ||
-    event.instructorId ||
-    null;
-
-  const [{ venue, venueImages: images }, instructor, inventory, eateryStops] =
-    await Promise.all([
-      loadVenueByName(event.venue),
-      loadInstructor(rosInstructorId),
-      getEventInventory(eventId),
-      listEventEateryStops(eventId),
-    ]);
+  const [
+    { venue, venueImages: images },
+    instructor,
+    inventory,
+    eateryStops,
+    attendees,
+  ] = await Promise.all([
+    loadVenueByName(event.venue),
+    loadInstructor(event.instructorId),
+    getEventInventory(eventId),
+    listEventEateryStops(eventId),
+    listEventAttendees(eventId),
+  ]);
 
   const inventoryItems = Array.isArray(inventory?.items)
     ? inventory.items.filter(
@@ -149,6 +151,7 @@ export async function getBeoDocumentState(
     instructor,
     inventory: inventoryItems,
     eateryStops,
+    attendees,
   };
 }
 

@@ -68,6 +68,11 @@ export const eventTypeEnum = pgEnum("event_type", [
   "In-Person Cheeseboard",
   "In-Person Gingerbread",
   "In-Person Lend a Hand",
+  "Group Food Tour",
+  "Italian Food Tour",
+  "Georgetown Foodie Tour",
+  "Private Food Tour",
+  "Indoor Food Tour",
 ]);
 
 /** Timeline family: A = Cooking ROS, B = 3/2/1w, C = collapsed 1w stubs. */

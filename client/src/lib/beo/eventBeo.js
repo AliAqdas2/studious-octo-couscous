@@ -2,12 +2,10 @@
  * Cooking / class / mixology / paint / terrarium BEO (Eli Lilly layout).
  */
 import {
-  addonLines,
-  approvalsBlock,
-  asArray,
   asRecord,
   attendeeTable,
-  bulletBlock,
+  addonLines,
+  approvalsBlock,
   cell,
   contactInfoTable,
   esc,
@@ -15,49 +13,16 @@ import {
   eventInfoTable,
   foodLines,
   formatDate,
+  guidelinesBlock,
   headerBlock,
   imageBlock,
-  listBlock,
+  inventoryChecklistHtml,
   logisticsTable,
   openSection,
   sectionTable,
   wrapSheet,
   yn,
 } from './shared.js';
-
-function groupInventory(items) {
-  const groups = [];
-  const bySection = new Map();
-  for (const item of asArray(items)) {
-    const key = item.section || 'Cooking Supplies';
-    if (!bySection.has(key)) {
-      bySection.set(key, []);
-      groups.push(key);
-    }
-    bySection.get(key).push(item);
-  }
-  return groups.map((section) => ({
-    section,
-    rows: bySection.get(section) || [],
-  }));
-}
-
-function inventoryHtml(items) {
-  const groups = groupInventory(items);
-  if (!groups.length) {
-    return `<p style="margin:0;font-size:12px;color:#666;">No inventory checklist items yet.</p>`;
-  }
-  return groups
-    .map(({ section, rows }) => {
-      const lines = rows.map((r) => {
-        const qty = r.quantity != null ? ` ×${r.quantity}` : '';
-        const hint = r.quantity_hint ? ` (${r.quantity_hint})` : '';
-        return `${r.name || ''}${qty}${hint}`;
-      });
-      return `<p style="margin:8px 0 2px;font-size:12px;font-weight:700;">${esc(section)}</p>${listBlock(lines)}`;
-    })
-    .join('');
-}
 
 function menuSection(core, input) {
   const event = core.event;
@@ -137,22 +102,20 @@ export function buildEventBeoHtml(input) {
     )}
     ${logisticsTable(core)}
     ${openSection('Event flow', eventFlowHtml(core))}
-    ${openSection('Cooking supplies', inventoryHtml(input?.inventory))}
+    ${openSection('Cooking supplies', inventoryChecklistHtml(input?.inventory))}
     ${openSection('Floor map', imageBlock(input?.venueImages))}
     ${openSection(
       'Venue guidelines',
-      venueRow.guidelines
-        ? bulletBlock(venueRow.guidelines)
-        : '<p style="margin:0;font-size:12px;color:#666;">No guidelines saved for this venue.</p>'
+      guidelinesBlock(venueRow.guidelines)
     )}
     ${openSection(
       'Instructor bio / script',
       instructor.name
         ? `<p style="margin:0 0 8px;font-weight:700;">${esc(instructor.name)}</p>
            <p style="margin:0;white-space:pre-wrap;">${esc(instructor.bio || '')}</p>`
-        : '<p style="margin:0;font-size:12px;color:#666;">Select an instructor in Run of Show to pull their bio.</p>'
+        : '<p style="margin:0;font-size:12px;color:#666;">Select an instructor on Event Detail to pull their bio.</p>'
     )}
-    ${openSection('Attendees', attendeeTable(core.participationUrl))}
+    ${openSection('Attendees', attendeeTable(core.participationUrl, input?.attendees))}
     ${approvalsBlock()}
   `;
 

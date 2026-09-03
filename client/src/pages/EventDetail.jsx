@@ -15,6 +15,7 @@ import ThreadView from '@/components/thread/ThreadView';
 import DepositIntakeForm from '@/components/events/DepositIntakeForm';
 import EventInventoryChecklist from '@/components/events/EventInventoryChecklist';
 import EventFoodTourStopsPanel from '@/components/events/EventFoodTourStopsPanel';
+import EventAttendeesPanel from '@/components/events/EventAttendeesPanel';
 import RunOfShowForm from '@/components/events/RunOfShowForm';
 import BeoDocumentPanel from '@/components/events/BeoDocumentPanel';
 import { isFoodTourExperience } from '@/lib/foodTourExperiences';
@@ -86,6 +87,12 @@ export default function EventDetail() {
     Boolean(experienceInfo?.needsZachReview) && !zachTaskDone;
   // Meeting: ROS is shared across experiences (not Cooking-only).
   const hasRos = Boolean(event?.event_type);
+
+  const canEditOps =
+    user?.role === 'admin' ||
+    roleAssignments.some((r) =>
+      ['Ops', 'Ops Manager', 'Intern', 'Admin'].includes(r.role)
+    );
 
   const generateWorkflowMutation = useMutation({
     mutationFn: () => base44.functions.invoke('generateEventWorkflow', { eventId }),
@@ -637,14 +644,15 @@ export default function EventDetail() {
         <EventFoodTourStopsPanel
           eventId={eventId}
           event={event}
-          canEdit={
-            user?.role === 'admin' ||
-            roleAssignments.some((r) =>
-              ['Ops', 'Ops Manager', 'Intern', 'Admin'].includes(r.role)
-            )
-          }
+          canEdit={canEditOps}
         />
       )}
+
+      <EventAttendeesPanel
+        eventId={eventId}
+        event={event}
+        canEdit={canEditOps}
+      />
 
       <EventArtifactsPanel
         event={event}

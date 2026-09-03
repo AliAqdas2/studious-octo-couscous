@@ -131,6 +131,56 @@ export const EXPERIENCE_MATRIX: ExperienceMatrixRow[] = [
     ],
   },
   {
+    experienceKey: "Group Food Tour",
+    eventType: "Group Food Tour",
+    displayName: "Group Food Tour",
+    timelineFamily: "B",
+    docQuality: "complete",
+    flagNote: null,
+    rosConfirmLabel: "Confirm tour itinerary",
+    deltas: ["Multi-stop ordering; restaurant reservations; BEO mailed"],
+  },
+  {
+    experienceKey: "Italian Food Tour",
+    eventType: "Italian Food Tour",
+    displayName: "Italian Food Tour",
+    timelineFamily: "B",
+    docQuality: "complete",
+    flagNote: null,
+    rosConfirmLabel: "Confirm tour itinerary",
+    deltas: ["Multi-stop ordering; restaurant reservations; BEO mailed"],
+  },
+  {
+    experienceKey: "Georgetown Foodie Tour",
+    eventType: "Georgetown Foodie Tour",
+    displayName: "Georgetown Foodie Tour",
+    timelineFamily: "B",
+    docQuality: "complete",
+    flagNote: null,
+    rosConfirmLabel: "Confirm tour itinerary",
+    deltas: ["Multi-stop ordering; restaurant reservations; BEO mailed"],
+  },
+  {
+    experienceKey: "Private Food Tour",
+    eventType: "Private Food Tour",
+    displayName: "Private Food Tour",
+    timelineFamily: "B",
+    docQuality: "complete",
+    flagNote: null,
+    rosConfirmLabel: "Confirm tour itinerary",
+    deltas: ["Same as private food tour + drinks 0–4 deferred to 2w"],
+  },
+  {
+    experienceKey: "Indoor Food Tour",
+    eventType: "Indoor Food Tour",
+    displayName: "Indoor Food Tour",
+    timelineFamily: "B",
+    docQuality: "complete",
+    flagNote: null,
+    rosConfirmLabel: "Confirm tour itinerary",
+    deltas: ["Multi-stop ordering; restaurant reservations; BEO mailed"],
+  },
+  {
     experienceKey: "In-Person Mixology",
     eventType: "In-Person Mixology",
     displayName: "In-Person Mixology",
@@ -204,19 +254,31 @@ export const COOKING_EVENT_EXPERIENCE_KEYS = [
   "In-Person Gingerbread",
 ] as const;
 
-/** Experiences whose BEO uses the food-tour layout (orders, order key, route). */
+/** Canonical Mangia food-tour products (restaurant-stop BEO). */
 export const FOOD_TOUR_EXPERIENCE_KEYS = [
-  "In-Person Private Food Tour",
+  "Group Food Tour",
   "Flavors of DC",
-  "In-Person Private Monuments",
+  "Italian Food Tour",
+  "Georgetown Foodie Tour",
+  "Private Food Tour",
+  "Indoor Food Tour",
+] as const;
+
+/** Legacy stored event_type values that still use the food-tour BEO. */
+export const FOOD_TOUR_EXPERIENCE_ALIASES = [
+  "In-Person Private Food Tour",
 ] as const;
 
 export function isFoodTourExperience(
   eventTypeOrKey: string | null | undefined
 ): boolean {
   if (!eventTypeOrKey) return false;
-  const key = experienceKeyForEventType(eventTypeOrKey) ?? eventTypeOrKey;
-  return (FOOD_TOUR_EXPERIENCE_KEYS as readonly string[]).includes(key);
+  const raw = String(eventTypeOrKey).trim();
+  if (raw.toLowerCase() === "flavors of dc") return true;
+  const key = experienceKeyForEventType(raw) ?? raw;
+  const keys = FOOD_TOUR_EXPERIENCE_KEYS as readonly string[];
+  const aliases = FOOD_TOUR_EXPERIENCE_ALIASES as readonly string[];
+  return keys.includes(key) || aliases.includes(key) || keys.includes(raw) || aliases.includes(raw);
 }
 
 export function getExperienceRow(

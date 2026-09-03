@@ -1,5 +1,6 @@
 /**
- * Private food tour / Flavors of DC / monuments BEO (Marriott layout).
+ * Food-tour BEO (restaurant stops / orders) — Group, Flavors of DC, Italian,
+ * Georgetown Foodie, Private, Indoor.
  */
 import { formatOrderLine, normalizeOrderLines } from '../eateryOrders.js';
 import {
@@ -14,6 +15,7 @@ import {
   eventInfoTable,
   formatDate,
   headerBlock,
+  inventoryChecklistHtml,
   logisticsTable,
   openSection,
   STRIPE,
@@ -138,7 +140,12 @@ export function buildFoodTourBeoHtml(input) {
     ${openSection('Orders', ordersHtml(stops))}
     ${openSection('Food stops order key', orderKeyTable(stops))}
     ${openSection('Tour route', routeScaffold())}
-    ${openSection('Attendees', attendeeTable(core.participationUrl))}
+    ${
+      asArray(input?.inventory).length
+        ? openSection('Inventory', inventoryChecklistHtml(input.inventory))
+        : ''
+    }
+    ${openSection('Attendees', attendeeTable(core.participationUrl, input?.attendees))}
     ${approvalsBlock()}
   `;
 

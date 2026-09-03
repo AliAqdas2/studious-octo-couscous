@@ -747,6 +747,154 @@ export const base44 = {
         return { data: body };
       }
 
+      if (name === "getEventAttendees") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/attendees`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "createEventAttendee") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/attendees`,
+          {
+            method: "POST",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "updateEventAttendee") {
+        const eventId = payload.eventId || payload.id;
+        const attendeeId = payload.attendeeId || payload.attendee_id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!attendeeId) {
+          throw new ApiError("attendeeId is required", 400);
+        }
+        const {
+          eventId: _e,
+          id: _i,
+          attendeeId: _a,
+          attendee_id: _aid,
+          ...rest
+        } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/attendees/${encodeURIComponent(attendeeId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "deleteEventAttendee") {
+        const eventId = payload.eventId || payload.id;
+        const attendeeId = payload.attendeeId || payload.attendee_id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!attendeeId) {
+          throw new ApiError("attendeeId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/attendees/${encodeURIComponent(attendeeId)}`,
+          { method: "DELETE" }
+        );
+        return { data: body };
+      }
+
+      if (name === "importEventAttendees") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/attendees/import`,
+          {
+            method: "POST",
+            body: JSON.stringify({ rows: payload.rows ?? [] }),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "importEventAttendeesFile") {
+        const eventId = payload.eventId || payload.id;
+        const file = payload.file;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!file) {
+          throw new ApiError("file is required", 400);
+        }
+        const doUpload = async () => {
+          const form = new FormData();
+          form.append("file", file, file.name || "attendees.xlsx");
+          const headers = {};
+          if (accessToken) {
+            headers.Authorization = `Bearer ${accessToken}`;
+          }
+          return fetch(
+            `/api/events/${encodeURIComponent(eventId)}/attendees/import-file`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers,
+              body: form,
+            }
+          );
+        };
+        let res = await doUpload();
+        if (res.status === 401) {
+          try {
+            await refreshAccessToken();
+            res = await doUpload();
+          } catch {
+            clearAccessToken();
+            redirectToLoginPage();
+            throw new ApiError("Unauthorized", 401);
+          }
+        }
+        const body = await parseJson(res);
+        if (!res.ok) {
+          throw new ApiError(
+            body?.error || body?.message || res.statusText,
+            res.status,
+            body
+          );
+        }
+        return { data: body };
+      }
+
+      if (name === "importEventAttendeesSheet") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/attendees/import-sheet`,
+          {
+            method: "POST",
+            body: JSON.stringify({ url: payload.url }),
+          }
+        );
+        return { data: body };
+      }
+
       if (name === "getBeoDocument") {
         const eventId = payload.eventId || payload.id;
         if (!eventId) {

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 import {
   ChevronDown,
   ChevronUp,
@@ -364,21 +364,20 @@ export default function SettingsVenuesPanel() {
                     <div className="border border-orange-100 rounded-lg p-3 bg-[#FFF9F0]/50 space-y-3">
                       <div className="space-y-1">
                         <Label className="text-xs">
-                          Venue guidelines (one bullet per line)
+                          Venue guidelines (rich text)
                         </Label>
-                        <Textarea
-                          rows={4}
-                          className="resize-y text-sm bg-white"
-                          placeholder="Be sure to park in the building garage…"
+                        <RichTextEditor
                           value={
                             guidelinesDraft[v.id] ?? (v.guidelines || '')
                           }
-                          onChange={(e) =>
+                          onChange={(html) =>
                             setGuidelinesDraft((d) => ({
                               ...d,
-                              [v.id]: e.target.value,
+                              [v.id]: html,
                             }))
                           }
+                          placeholder="Parking, load-in, cleanup rules…"
+                          minHeight={160}
                         />
                         <Button
                           size="sm"

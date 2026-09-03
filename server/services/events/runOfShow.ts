@@ -398,12 +398,6 @@ export async function saveRunOfShow(
       dayOfPocName: merged.dayOfPoc?.name?.trim() || event.dayOfPocName,
       dayOfPocEmail: merged.dayOfPoc?.email?.trim() || event.dayOfPocEmail,
       dayOfPocPhone: merged.dayOfPoc?.phone?.trim() || event.dayOfPocPhone,
-      instructorId:
-        merged.instructorId != null && String(merged.instructorId).trim()
-          ? String(merged.instructorId).trim()
-          : payload.instructorId !== undefined
-            ? null
-            : event.instructorId,
       foodAdditions,
       customAddons,
       transportationNeeded: transportNeeded,

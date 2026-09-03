@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { AppError } from "../lib/errors.js";
 import {
   requireAdmin,
@@ -41,6 +42,16 @@ import {
   type AddEateryStopPayload,
   type UpdateEateryStopPayload,
 } from "../services/events/eateryStops.js";
+import {
+  createEventAttendee,
+  deleteEventAttendee,
+  getEventAttendees,
+  importAttendeesFromSheetUrl,
+  parseAttendeeSpreadsheetBuffer,
+  replaceEventAttendeesFromImport,
+  updateEventAttendee,
+  type AttendeeRowInput,
+} from "../services/events/eventAttendees.js";
 import type {
   EventArtifactsPayload,
   RunOfShowPayload,
@@ -63,6 +74,11 @@ function requireDb() {
 }
 
 const router = Router();
+
+const attendeeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 router.post(
   "/events/:id/generate-workflow",
@@ -419,6 +435,134 @@ router.delete(
       if (!eventId) throw new AppError("eventId is required", 400);
       if (!stopId) throw new AppError("stopId is required", 400);
       const result = await removeEateryStop(eventId, stopId);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.get(
+  "/events/:id/attendees",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const result = await getEventAttendees(eventId);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/events/:id/attendees",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const payload = (req.body ?? {}) as AttendeeRowInput;
+      const result = await createEventAttendee(eventId, payload);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/events/:id/attendees/import",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const rows = (req.body?.rows ?? []) as AttendeeRowInput[];
+      const result = await replaceEventAttendeesFromImport(eventId, rows);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/events/:id/attendees/import-file",
+  requireAuth,
+  attendeeUpload.single("file"),
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const file = req.file;
+      if (!file?.buffer) throw new AppError("file is required", 400);
+      const name = (file.originalname || "").toLowerCase();
+      if (
+        !/\.(xlsx|xls|csv)$/.test(name) &&
+        !file.mimetype?.includes("sheet") &&
+        !file.mimetype?.includes("csv")
+      ) {
+        throw new AppError("Upload an .xlsx or .csv file", 400);
+      }
+      const rows = parseAttendeeSpreadsheetBuffer(file.buffer);
+      const result = await replaceEventAttendeesFromImport(eventId, rows);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/events/:id/attendees/import-sheet",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const url = String(req.body?.url ?? "").trim();
+      if (!url) throw new AppError("url is required", 400);
+      const result = await importAttendeesFromSheetUrl(eventId, url);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  "/events/:id/attendees/:attendeeId",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      const attendeeId = req.params.attendeeId;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      if (!attendeeId) throw new AppError("attendeeId is required", 400);
+      const payload = (req.body ?? {}) as AttendeeRowInput & {
+        sort_order?: number | null;
+      };
+      const result = await updateEventAttendee(eventId, attendeeId, payload);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.delete(
+  "/events/:id/attendees/:attendeeId",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      const attendeeId = req.params.attendeeId;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      if (!attendeeId) throw new AppError("attendeeId is required", 400);
+      const result = await deleteEventAttendee(eventId, attendeeId);
       res.json(result);
     } catch (err) {
       next(err);

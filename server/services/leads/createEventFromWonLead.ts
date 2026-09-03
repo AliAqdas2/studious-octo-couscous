@@ -28,7 +28,15 @@ const EVENT_TYPE_MAPPING: Record<string, string> = {
   Monuments: "In-Person Private Monuments",
   "Paint & Sip": "In-Person Paint & Sip",
   "Paint and Sip": "In-Person Paint & Sip",
-  "Food Tour": "In-Person Private Food Tour",
+  "Food Tour": "Private Food Tour",
+  "Private Food Tour": "Private Food Tour",
+  "In-Person Private Food Tour": "Private Food Tour",
+  "Group Food Tour": "Group Food Tour",
+  "Italian Food Tour": "Italian Food Tour",
+  "Georgetown Food Tour": "Georgetown Foodie Tour",
+  "Georgetown Foodie Tour": "Georgetown Foodie Tour",
+  "Indoor Food Tour": "Indoor Food Tour",
+  "Flavors of DC": "Flavors of DC",
   "Yoga & UnWined": "In-Person Yoga & UnWined",
   "Virtual Mixology": "Virtual Mixology",
   "Virtual Paint & Sip": "Virtual Paint & Sip",
@@ -194,6 +202,12 @@ export async function createEventFromWonLead(
       | "In-Person Private Monuments"
       | "In-Person Paint & Sip"
       | "In-Person Private Food Tour"
+      | "Private Food Tour"
+      | "Group Food Tour"
+      | "Italian Food Tour"
+      | "Georgetown Foodie Tour"
+      | "Indoor Food Tour"
+      | "Flavors of DC"
       | "In-Person Yoga & UnWined"
       | "Virtual Mixology"
       | "Virtual Paint & Sip"

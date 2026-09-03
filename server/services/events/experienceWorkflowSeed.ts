@@ -854,6 +854,11 @@ export function buildExperienceTaskDefs(
       out.push(...tourDeltas("monuments"));
       break;
     case "In-Person Private Food Tour":
+    case "Private Food Tour":
+    case "Group Food Tour":
+    case "Italian Food Tour":
+    case "Georgetown Foodie Tour":
+    case "Indoor Food Tour":
       out.push(...tourDeltas("food"));
       break;
     case "In-Person Mixology":

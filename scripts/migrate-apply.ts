@@ -809,6 +809,75 @@ async function main(): Promise<void> {
     } else {
       console.log("eateries table and venues.guidelines already present");
     }
+
+    const attendeesTable = await sql`
+      select 1
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = 'event_attendees'
+    `;
+    if (attendeesTable.length === 0) {
+      console.log("Applying event attendees migration (0022)...");
+      const attendeesSql = readFileSync(
+        join(__dirname, "../drizzle/0022_event_attendees.sql"),
+        "utf8"
+      );
+      for (const statement of attendeesSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("event attendees migration applied");
+    } else {
+      console.log("event_attendees table already present");
+    }
+
+    const foodTourEnum = await sql`
+      select enumlabel
+      from pg_enum e
+      join pg_type t on e.enumtypid = t.oid
+      where t.typname = 'event_type'
+        and enumlabel = 'Private Food Tour'
+    `;
+    if (foodTourEnum.length === 0) {
+      console.log("Applying food-tour event types migration (0023)...");
+      const foodTourSql = readFileSync(
+        join(__dirname, "../drizzle/0023_food_tour_event_types.sql"),
+        "utf8"
+      );
+      for (const statement of foodTourSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("food-tour event types migration applied");
+    } else {
+      console.log("food-tour event_type values already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

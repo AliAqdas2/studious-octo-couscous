@@ -94,7 +94,7 @@ function formatScheduleSummary(form) {
   ];
 }
 
-function formatDetailsSummary(form, { isCooking, rosConfirmLabel, mediaLabels, instructorName }) {
+function formatDetailsSummary(form, { isCooking, rosConfirmLabel, mediaLabels }) {
   if (!form) return [];
   const rows = [];
 
@@ -150,10 +150,6 @@ function formatDetailsSummary(form, { isCooking, rosConfirmLabel, mediaLabels, i
     .filter(Boolean)
     .join(' · ');
   if (poc) rows.push({ label: 'Day-of POC', value: poc });
-
-  if (instructorName) {
-    rows.push({ label: 'Instructor', value: instructorName });
-  }
 
   if (form.mediaPermission) {
     rows.push({
@@ -320,11 +316,6 @@ function buildInitial(state) {
       companyOther: ros.transport?.companyOther || '',
     },
     notes: ros.notes || '',
-    instructorId:
-      ros.instructorId ||
-      pre.instructorId ||
-      state?.event?.instructor_id ||
-      '',
   };
 }
 
@@ -345,18 +336,6 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
       return res?.data ?? res;
     },
     enabled: !!eventId,
-  });
-
-  const { data: instructors = [] } = useQuery({
-    queryKey: ['instructors-active'],
-    queryFn: async () => {
-      const rows = await base44.entities.Instructor.filter(
-        { is_active: true },
-        'sort_order',
-        200
-      );
-      return Array.isArray(rows) ? rows : [];
-    },
   });
 
   const rosConfirmLabel =
@@ -472,7 +451,6 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
             : null,
       },
       notes: form.notes || null,
-      instructorId: form.instructorId || null,
     };
   }, [form, isCooking, rosConfirmLabel]);
 
@@ -548,7 +526,6 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
     isCooking,
     rosConfirmLabel,
     mediaLabels,
-    instructorName: instructors.find((r) => r.id === form?.instructorId)?.name,
   });
 
   const showScheduleSummary = isScheduled && !editingSchedule;
@@ -738,32 +715,6 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
             </label>
           </>
         )}
-      </section>
-
-      <section className="space-y-2 border-t pt-4">
-        <Label className="text-sm font-semibold">Instructor</Label>
-        <Select
-          value={form.instructorId || '__none__'}
-          disabled={!canEdit}
-          onValueChange={(v) =>
-            setField('instructorId', v === '__none__' ? '' : v)
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select instructor…" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">None</SelectItem>
-            {instructors.map((row) => (
-              <SelectItem key={row.id} value={row.id}>
-                {row.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-gray-500">
-          Bio is pulled into the BEO from Settings → Instructors.
-        </p>
       </section>
 
       <section className="space-y-2 border-t pt-4">

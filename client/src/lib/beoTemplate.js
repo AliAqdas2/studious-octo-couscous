@@ -18,6 +18,7 @@ import { isFoodTourExperience } from './foodTourExperiences.js';
  *   instructor?: { name?: string, bio?: string } | null,
  *   inventory?: unknown[],
  *   eateryStops?: unknown[],
+ *   attendees?: unknown[],
  * }} input
  * @returns {string} HTML
  */

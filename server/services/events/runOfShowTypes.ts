@@ -125,7 +125,6 @@ export interface RunOfShowPayload {
   transport?: RosTransportConfirm | null;
   /** ROS template Drive/doc URL (Admin artifact C036). */
   rosTemplateUrl?: string | null;
-  instructorId?: string | null;
   notes?: string | null;
   completedAt?: string | null;
 }

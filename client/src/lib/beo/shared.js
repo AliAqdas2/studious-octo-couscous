@@ -100,12 +100,155 @@ export function listBlock(items) {
   </ul>`;
 }
 
+function inventoryItemLabel(item) {
+  const r = item && typeof item === 'object' ? item : {};
+  const qty = r.quantity != null ? ` ×${r.quantity}` : '';
+  const hint = r.quantity_hint || r.quantityHint ? ` (${r.quantity_hint || r.quantityHint})` : '';
+  return `${r.name || ''}${qty}${hint}`.trim();
+}
+
+function checkboxColumn(lines) {
+  if (!lines.length) {
+    return '&nbsp;';
+  }
+  return lines
+    .map(
+      (line) =>
+        `<div style="font-size:12px;line-height:1.55;padding:1px 0;">☐ ${esc(line)}</div>`
+    )
+    .join('');
+}
+
+function twoColumnChecklist(lines) {
+  const mid = Math.ceil(lines.length / 2);
+  const left = lines.slice(0, mid);
+  const right = lines.slice(mid);
+  return `<table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
+    <tr>
+      <td style="width:50%;vertical-align:top;padding:0 8px 0 0;">${checkboxColumn(left)}</td>
+      <td style="width:50%;vertical-align:top;padding:0 0 0 8px;">${checkboxColumn(right)}</td>
+    </tr>
+  </table>`;
+}
+
+/** Two-column empty-checkbox inventory, grouped by section. */
+export function inventoryChecklistHtml(items) {
+  const groups = [];
+  const bySection = new Map();
+  for (const item of asArray(items)) {
+    const key = item.section || 'Cooking Supplies';
+    if (!bySection.has(key)) {
+      bySection.set(key, []);
+      groups.push(key);
+    }
+    bySection.get(key).push(item);
+  }
+  if (!groups.length) {
+    return `<p style="margin:0;font-size:12px;color:#666;">No inventory checklist items yet.</p>`;
+  }
+  return groups
+    .map((section) => {
+      const lines = (bySection.get(section) || [])
+        .map(inventoryItemLabel)
+        .filter(Boolean);
+      const heading = `<p style="margin:8px 0 4px;font-size:12px;font-weight:700;">${esc(section)}</p>`;
+      return `${heading}${twoColumnChecklist(lines)}`;
+    })
+    .join('');
+}
+
 export function bulletBlock(text) {
   const lines = String(text || '')
     .split(/\r?\n/)
     .map((l) => l.replace(/^[-•*]\s*/, '').trim())
     .filter(Boolean);
   return listBlock(lines);
+}
+
+const GUIDELINES_ALLOWED_TAGS = new Set([
+  'P',
+  'UL',
+  'OL',
+  'LI',
+  'STRONG',
+  'B',
+  'EM',
+  'I',
+  'A',
+  'BR',
+  'H1',
+  'H2',
+  'H3',
+]);
+
+/**
+ * Allowlist-sanitize venue guidelines HTML for safe BEO injection.
+ * Falls back to bulletBlock for plain text.
+ */
+export function guidelinesBlock(raw) {
+  const text = String(raw || '').trim();
+  if (!text) {
+    return '<p style="margin:0;font-size:12px;color:#666;">No guidelines saved for this venue.</p>';
+  }
+  if (!/<[a-z][\s\S]*>/i.test(text)) {
+    return bulletBlock(text);
+  }
+
+  if (typeof document === 'undefined') {
+    // SSR / build-time: strip tags that look dangerous, keep structure loosely.
+    return text
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  }
+
+  const doc = new DOMParser().parseFromString(
+    `<div id="root">${text}</div>`,
+    'text/html'
+  );
+  const root = doc.getElementById('root');
+  if (!root) return bulletBlock(text);
+
+  const walk = (node) => {
+    const children = Array.from(node.childNodes);
+    for (const child of children) {
+      if (child.nodeType === 3) continue; // text
+      if (child.nodeType !== 1) {
+        child.remove();
+        continue;
+      }
+      const el = /** @type {Element} */ (child);
+      const tag = el.tagName.toUpperCase();
+      if (!GUIDELINES_ALLOWED_TAGS.has(tag)) {
+        // Unwrap: keep children, drop the wrapper
+        while (el.firstChild) {
+          el.parentNode?.insertBefore(el.firstChild, el);
+        }
+        el.remove();
+        continue;
+      }
+      // Strip all attributes except href on anchors
+      const attrs = Array.from(el.attributes);
+      for (const attr of attrs) {
+        if (tag === 'A' && attr.name.toLowerCase() === 'href') {
+          const href = attr.value.trim();
+          if (!/^https?:\/\//i.test(href) && !href.startsWith('/')) {
+            el.removeAttribute(attr.name);
+          } else {
+            el.setAttribute('href', href);
+            el.setAttribute('target', '_blank');
+            el.setAttribute('rel', 'noopener noreferrer');
+          }
+        } else {
+          el.removeAttribute(attr.name);
+        }
+      }
+      walk(el);
+    }
+  };
+  walk(root);
+  const html = root.innerHTML.trim();
+  return html || bulletBlock(text);
 }
 
 export function imageBlock(images) {
@@ -127,24 +270,39 @@ export function imageBlock(images) {
   </div>`;
 }
 
-export function attendeeTable(participationUrl, rowCount = 12) {
+export function attendeeTable(participationUrl, attendees = [], rowCount = 12) {
+  const list = Array.isArray(attendees) ? attendees : [];
   const link = participationUrl
     ? `<p style="margin:0 0 8px;font-size:12px;">Participation list: <a href="${esc(participationUrl)}">${esc(participationUrl)}</a></p>`
-    : `<p style="margin:0 0 8px;font-size:12px;color:#666;">Add the participation spreadsheet link on Event artifacts. Fill names below for day-of.</p>`;
+    : list.length
+      ? ''
+      : `<p style="margin:0 0 8px;font-size:12px;color:#666;">Add attendees on Event Detail (or a participation spreadsheet link on Artifacts). Blank rows below for day-of notes.</p>`;
   const header = `<tr>
     <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:40%;">Name</th>
     <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:35%;">Allergies</th>
     <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:25%;">Phone Number</th>
   </tr>`;
-  const rows = Array.from({ length: rowCount }, () => `<tr>
+  const filled = list.map((row) => {
+    const r = row && typeof row === 'object' ? row : {};
+    const name = r.name || r.Name || '';
+    const allergies = r.allergies || r.Allergies || r.dietary || '';
+    const phone = r.phone || r.Phone || r.phone_number || '';
+    return `<tr>
+    <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(name)) || '&nbsp;'}</td>
+    <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(allergies)) || '&nbsp;'}</td>
+    <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(phone)) || '&nbsp;'}</td>
+  </tr>`;
+  });
+  const blankNeeded = Math.max(0, rowCount - filled.length);
+  const blanks = Array.from({ length: blankNeeded }, () => `<tr>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
-  </tr>`).join('');
+  </tr>`);
   return `${link}
   <table style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
     ${header}
-    ${rows}
+    ${[...filled, ...blanks].join('')}
   </table>`;
 }
 

@@ -59,6 +59,7 @@ function buildFromState(state, event) {
     instructor: state?.instructor,
     inventory: state?.inventory,
     eateryStops: state?.eateryStops,
+    attendees: state?.attendees,
   });
 }
 
