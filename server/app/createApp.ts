@@ -1,6 +1,7 @@
 import cookieParser from "cookie-parser";
 import express, { type Express } from "express";
 import { registerRoutes } from "../routes/index.js";
+import { registerVenueImages } from "../venueImages.js";
 import { registerTrainingVideos } from "../videos.js";
 
 export function createApp(): Express {
@@ -13,6 +14,7 @@ export function createApp(): Express {
 
   registerRoutes(app);
   registerTrainingVideos(app);
+  registerVenueImages(app);
 
   return app;
 }

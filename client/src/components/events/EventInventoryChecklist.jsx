@@ -25,6 +25,22 @@ function flag(v) {
   return v ? '✓' : '—';
 }
 
+function groupRowsBySection(rows) {
+  const groups = [];
+  const bySection = new Map();
+  for (const row of rows) {
+    const key = row.section || 'Other';
+    if (!bySection.has(key)) {
+      bySection.set(key, []);
+    }
+    bySection.get(key).push(row);
+  }
+  for (const [section, sectionRows] of bySection) {
+    groups.push({ section, rows: sectionRows });
+  }
+  return groups;
+}
+
 function VendorLinks({ item }) {
   return (
     <div className="min-w-[140px]">
@@ -262,6 +278,10 @@ export default function EventInventoryChecklist({
   };
 
   const displayRows = isEditing ? draft : items;
+  const groupedRows = useMemo(
+    () => groupRowsBySection(displayRows),
+    [displayRows]
+  );
   const hasInventory = (summary?.total ?? items.length) > 0;
   const inventoryComplete = hasInventory && !isEditing;
   const inventoryMilestone = getPanelMilestoneLabel('inventory', event || {}, {
@@ -360,7 +380,17 @@ export default function EventInventoryChecklist({
                 </tr>
               </thead>
               <tbody>
-                {displayRows.map((item) => (
+                {groupedRows.map(({ section, rows: sectionRows }) => (
+                  <React.Fragment key={section}>
+                    <tr className="bg-[#FFF9F0]">
+                      <td
+                        colSpan={isEditing && canEdit ? 8 : 7}
+                        className="py-2 px-1 text-xs font-semibold uppercase tracking-wide text-[#C84B31]"
+                      >
+                        {section}
+                      </td>
+                    </tr>
+                    {sectionRows.map((item) => (
                   <tr
                     key={item.id}
                     className="border-b border-slate-50 align-top"
@@ -369,6 +399,11 @@ export default function EventInventoryChecklist({
                       <div className="font-medium text-gray-800">
                         {item.name}
                       </div>
+                      {item.quantity_hint ? (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {item.quantity_hint}
+                        </p>
+                      ) : null}
                     </td>
                     {['needed', 'ordered', 'received', 'in_office'].map(
                       (field) => {
@@ -444,6 +479,8 @@ export default function EventInventoryChecklist({
                       </td>
                     )}
                   </tr>
+                    ))}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

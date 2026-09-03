@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   console.log(`${LOG} starting`);
   const result = await seedInventoryAndVendors();
   console.log(
-    `${LOG} vendors=${result.vendorsUpserted} catalog=${result.catalogUpserted}`
+    `${LOG} vendors=${result.vendorsUpserted} catalog=${result.catalogUpserted} deactivated=${result.catalogDeactivated}`
   );
   console.log(`${LOG} done`);
 }

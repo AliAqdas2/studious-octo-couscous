@@ -60,6 +60,24 @@ RUN npm run build \
     --packages=external \
     --outfile=dist/seed-venues.js \
     --format=esm \
+  && npx esbuild scripts/seed-venue-images.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed-venue-images.js \
+    --format=esm \
+  && npx esbuild scripts/seed-instructors.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed-instructors.js \
+    --format=esm \
+  && npx esbuild scripts/seed-eateries.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed-eateries.js \
+    --format=esm \
   && npx esbuild scripts/send-daily-digest.ts \
     --bundle \
     --platform=node \
@@ -83,6 +101,7 @@ RUN npm ci --omit=dev \
 
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
+COPY venueimages ./venueimages
 COPY scripts/data ./scripts/data
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

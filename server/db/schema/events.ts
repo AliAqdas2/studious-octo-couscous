@@ -12,6 +12,7 @@ import {
 import { clients } from "./clients.js";
 import { eventTemplates } from "./event-templates.js";
 import { eventWorkflowTemplates } from "./event-workflow-templates.js";
+import { instructors } from "./instructors.js";
 import { leads } from "./leads.js";
 import { users } from "./users.js";
 import { createdBy, createdDate, updatedDate } from "./metadata.js";
@@ -98,6 +99,10 @@ export const events = pgTable("events", {
   dayOfPocEmail: varchar("day_of_poc_email", { length: 255 }),
   dayOfPocPhone: varchar("day_of_poc_phone", { length: 50 }),
   instructorAssigned: uuid("instructor_assigned").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  /** Instructor bio catalog entry rendered into the BEO. */
+  instructorId: uuid("instructor_id").references(() => instructors.id, {
     onDelete: "set null",
   }),
   opsSupportAssigned: uuid("ops_support_assigned").references(() => users.id, {

@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { getAccessToken } from '@/api/apiClient';
 import {
   beoHtmlPreview,
   buildBeoHtml,
@@ -24,6 +25,22 @@ import {
 } from '@/lib/beoTemplate';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
+
+function authVenueImageUrl(url) {
+  const token = getAccessToken();
+  if (!token || !url) return url;
+  if (!String(url).startsWith('/venueimages/')) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}access_token=${encodeURIComponent(token)}`;
+}
+
+function withAuthImages(images) {
+  if (!Array.isArray(images)) return [];
+  return images.map((img) => ({
+    ...img,
+    image_url: authVenueImageUrl(img.image_url || img.imageUrl),
+  }));
+}
 
 function beoLogoSrc() {
   if (typeof window === 'undefined') return '/mangiadc-logo.png';
@@ -36,6 +53,12 @@ function buildFromState(state, event) {
     runOfShow: state?.runOfShow,
     rosConfirmLabel: state?.rosConfirmLabel,
     logoSrc: beoLogoSrc(),
+    isFoodTour: state?.isFoodTour,
+    venue: state?.venue,
+    venueImages: withAuthImages(state?.venueImages),
+    instructor: state?.instructor,
+    inventory: state?.inventory,
+    eateryStops: state?.eateryStops,
   });
 }
 

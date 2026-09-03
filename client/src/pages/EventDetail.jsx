@@ -14,8 +14,10 @@ import { toast } from 'sonner';
 import ThreadView from '@/components/thread/ThreadView';
 import DepositIntakeForm from '@/components/events/DepositIntakeForm';
 import EventInventoryChecklist from '@/components/events/EventInventoryChecklist';
+import EventFoodTourStopsPanel from '@/components/events/EventFoodTourStopsPanel';
 import RunOfShowForm from '@/components/events/RunOfShowForm';
 import BeoDocumentPanel from '@/components/events/BeoDocumentPanel';
+import { isFoodTourExperience } from '@/lib/foodTourExperiences';
 import EventArtifactsPanel from '@/components/events/EventArtifactsPanel';
 import PostEventPanel from '@/components/events/PostEventPanel';
 import WorkflowTaskExtras from '@/components/events/WorkflowTaskExtras';
@@ -626,6 +628,19 @@ export default function EventDetail() {
             user?.role === 'admin' ||
             roleAssignments.some((r) =>
               ['Ops', 'Ops Manager', 'Intern'].includes(r.role)
+            )
+          }
+        />
+      )}
+
+      {isFoodTourExperience(event?.event_type) && (
+        <EventFoodTourStopsPanel
+          eventId={eventId}
+          event={event}
+          canEdit={
+            user?.role === 'admin' ||
+            roleAssignments.some((r) =>
+              ['Ops', 'Ops Manager', 'Intern', 'Admin'].includes(r.role)
             )
           }
         />

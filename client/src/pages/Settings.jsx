@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/dialog';
 import SettingsVenuesPanel from '@/components/settings/SettingsVenuesPanel';
 import SettingsInventoryCatalogPanel from '@/components/settings/SettingsInventoryCatalogPanel';
+import SettingsInstructorsPanel from '@/components/settings/SettingsInstructorsPanel';
+import SettingsEateriesPanel from '@/components/settings/SettingsEateriesPanel';
 import {
   canAccessOpsSettings,
   isOpsRole,
@@ -296,8 +298,8 @@ export default function Settings() {
         </h1>
         <p className="text-gray-600">
           {isOps && !isAdmin
-            ? 'House venues and inventory catalog for event ops.'
-            : 'Manage house venues, inventory catalog, and shared Gmail (when authorized).'}
+            ? 'House venues, instructors, eateries, and inventory catalog for event ops.'
+            : 'Manage house venues, instructors, eateries, inventory catalog, and shared Gmail (when authorized).'}
         </p>
       </div>
 
@@ -305,6 +307,8 @@ export default function Settings() {
         <>
           <SettingsVenuesPanel />
           <SettingsInventoryCatalogPanel />
+          <SettingsInstructorsPanel />
+          <SettingsEateriesPanel />
         </>
       )}
 

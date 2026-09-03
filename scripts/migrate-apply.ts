@@ -665,6 +665,150 @@ async function main(): Promise<void> {
     } else {
       console.log("events.beo_document_html already present");
     }
+
+    const catalogSectionCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'inventory_catalog_items'
+        and column_name = 'section'
+    `;
+    if (catalogSectionCol.length === 0) {
+      console.log("Applying inventory catalog sections migration (0018)...");
+      const sectionsSql = readFileSync(
+        join(__dirname, "../drizzle/0018_inventory_catalog_sections.sql"),
+        "utf8"
+      );
+      for (const statement of sectionsSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("inventory catalog sections migration applied");
+    } else {
+      console.log("inventory_catalog_items.section already present");
+    }
+
+    const venueImagesTable = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = 'venue_images'
+    `;
+    if (venueImagesTable.length === 0) {
+      console.log("Applying venue images migration (0019)...");
+      const venueImagesSql = readFileSync(
+        join(__dirname, "../drizzle/0019_venue_images.sql"),
+        "utf8"
+      );
+      for (const statement of venueImagesSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("venue images migration applied");
+    } else {
+      console.log("venue_images table already present");
+    }
+
+    const instructorsTable = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = 'instructors'
+    `;
+    if (instructorsTable.length === 0) {
+      console.log("Applying instructors migration (0020)...");
+      const instructorsSql = readFileSync(
+        join(__dirname, "../drizzle/0020_instructors.sql"),
+        "utf8"
+      );
+      for (const statement of instructorsSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("instructors migration applied");
+    } else {
+      console.log("instructors table already present");
+    }
+
+    const eateriesTable = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = 'eateries'
+    `;
+    const venueGuidelinesCol = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'venues'
+        and column_name = 'guidelines'
+    `;
+    if (eateriesTable.length === 0 || venueGuidelinesCol.length === 0) {
+      console.log("Applying eateries + BEO fields migration (0021)...");
+      const eateriesSql = readFileSync(
+        join(__dirname, "../drizzle/0021_eateries_and_beo_fields.sql"),
+        "utf8"
+      );
+      for (const statement of eateriesSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("eateries + BEO fields migration applied");
+    } else {
+      console.log("eateries table and venues.guidelines already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

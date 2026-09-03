@@ -2,6 +2,7 @@ import {
   boolean,
   integer,
   pgTable,
+  text,
   uniqueIndex,
   uuid,
   varchar,
@@ -14,6 +15,8 @@ export const venues = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: varchar("name", { length: 255 }).notNull(),
+    /** Bullet guidelines rendered into the BEO, one per line. */
+    guidelines: text("guidelines"),
     sortOrder: integer("sort_order").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
     createdDate: createdDate(),

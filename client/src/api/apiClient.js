@@ -198,7 +198,10 @@ const ENTITY_MAP = {
   CandidateStep: "candidate-steps",
   Vendor: "vendors",
   Venue: "venues",
+  VenueImage: "venue-images",
   InventoryCatalogItem: "inventory-catalog-items",
+  Instructor: "instructors",
+  Eatery: "eateries",
 };
 
 const entities = Object.fromEntries(
@@ -675,6 +678,71 @@ export const base44 = {
             method: "PATCH",
             body: JSON.stringify(rest),
           }
+        );
+        return { data: body };
+      }
+
+      if (name === "getEventEateryStops") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/eatery-stops`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "addEventEateryStop") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/eatery-stops`,
+          {
+            method: "POST",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "updateEventEateryStop") {
+        const eventId = payload.eventId || payload.id;
+        const stopId = payload.stopId || payload.stop_id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!stopId) {
+          throw new ApiError("stopId is required", 400);
+        }
+        const { eventId: _e, id: _i, stopId: _s, stop_id: _sid, ...rest } =
+          payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/eatery-stops/${encodeURIComponent(stopId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "deleteEventEateryStop") {
+        const eventId = payload.eventId || payload.id;
+        const stopId = payload.stopId || payload.stop_id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!stopId) {
+          throw new ApiError("stopId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/eatery-stops/${encodeURIComponent(stopId)}`,
+          { method: "DELETE" }
         );
         return { data: body };
       }

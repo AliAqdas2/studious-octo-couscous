@@ -1,11 +1,22 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { AppError } from "../../lib/errors.js";
 import { getDb } from "../../db/index.js";
-import { events, tasks } from "../../db/schema/index.js";
+import {
+  events,
+  instructors,
+  tasks,
+  venueImages,
+  venues,
+} from "../../db/schema/index.js";
 import type { AuthUser } from "../../types/auth.js";
 import { toApiRecord } from "../entities/serialize.js";
 import { redactDepositFields } from "./depositAccess.js";
-import { getRosConfirmLabel } from "./experienceMatrix.js";
+import { getEventInventory } from "./eventInventory.js";
+import { listEventEateryStops } from "./eateryStops.js";
+import {
+  getRosConfirmLabel,
+  isFoodTourExperience,
+} from "./experienceMatrix.js";
 
 function requireDb() {
   const db = getDb();
@@ -39,6 +50,48 @@ async function markBeoTaskDone(eventId: string, note: string) {
   }
 }
 
+async function loadVenueByName(name: string | null | undefined) {
+  if (!name) return { venue: null, venueImages: [] as Record<string, unknown>[] };
+  const db = requireDb();
+  const [venue] = await db
+    .select()
+    .from(venues)
+    .where(eq(venues.name, name))
+    .limit(1);
+  if (!venue) return { venue: null, venueImages: [] as Record<string, unknown>[] };
+
+  const images = await db
+    .select()
+    .from(venueImages)
+    .where(
+      and(eq(venueImages.venueId, venue.id), eq(venueImages.isActive, true))
+    )
+    .orderBy(asc(venueImages.sortOrder));
+
+  return {
+    venue: toApiRecord(venue as Record<string, unknown>),
+    venueImages: images.map((img) =>
+      toApiRecord(img as Record<string, unknown>)
+    ),
+  };
+}
+
+async function loadInstructor(instructorId: string | null | undefined) {
+  if (!instructorId) return null;
+  const db = requireDb();
+  const [row] = await db
+    .select()
+    .from(instructors)
+    .where(eq(instructors.id, instructorId))
+    .limit(1);
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    bio: row.bio,
+  };
+}
+
 export async function getBeoDocumentState(
   eventId: string,
   user?: AuthUser | null
@@ -56,6 +109,25 @@ export async function getBeoDocumentState(
       ? (event.runOfShow as Record<string, unknown>)
       : {};
 
+  const rosInstructorId =
+    (typeof ros.instructorId === "string" && ros.instructorId) ||
+    event.instructorId ||
+    null;
+
+  const [{ venue, venueImages: images }, instructor, inventory, eateryStops] =
+    await Promise.all([
+      loadVenueByName(event.venue),
+      loadInstructor(rosInstructorId),
+      getEventInventory(eventId),
+      listEventEateryStops(eventId),
+    ]);
+
+  const inventoryItems = Array.isArray(inventory?.items)
+    ? inventory.items.filter(
+        (item) => item && (item as { needed?: boolean }).needed !== false
+      )
+    : [];
+
   return {
     html: event.beoDocumentHtml || null,
     updatedAt: event.beoDocumentUpdatedAt
@@ -66,11 +138,17 @@ export async function getBeoDocumentState(
     rosCompleted: Boolean(ros.completedAt),
     rosScheduled: Boolean(ros.scheduledAt),
     rosConfirmLabel: getRosConfirmLabel(event.eventType),
+    isFoodTour: isFoodTourExperience(event.eventType),
     event: redactDepositFields(
       toApiRecord(event as Record<string, unknown>),
       user
     ),
     runOfShow: ros,
+    venue,
+    venueImages: images,
+    instructor,
+    inventory: inventoryItems,
+    eateryStops,
   };
 }
 

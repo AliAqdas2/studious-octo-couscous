@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 import { AppError } from "../../lib/errors.js";
 import { getDb } from "../../db/index.js";
 import { inventoryCatalogItems, vendors } from "../../db/schema/index.js";
-import { COOKING_INVENTORY_CATALOG } from "./cookingInventoryCatalogSeed.js";
+import { INVENTORY_CATALOG } from "./inventoryCatalogSeed.js";
 import { VENDOR_SEED } from "./vendorSeedData.js";
 
 function requireDb() {
@@ -10,13 +10,23 @@ function requireDb() {
   if (!db) throw new AppError("Database is not configured", 503);
   return db;
 }
+
+function mergeExperienceKeys(
+  existing: string[] | null | undefined,
+  seeded: string[]
+): string[] {
+  const current = Array.isArray(existing) ? existing : [];
+  return [...new Set([...current, ...seeded])];
+}
+
 export interface SeedInventoryResult {
   vendorsUpserted: number;
   catalogUpserted: number;
+  catalogDeactivated: number;
 }
 
 /**
- * Idempotent seed of Vendor Directory cooking vendors + Cooking inventory SKUs.
+ * Idempotent seed of Vendor Directory + Inventory Per Event catalog SKUs.
  */
 export async function seedInventoryAndVendors(): Promise<SeedInventoryResult> {
   const db = requireDb();
@@ -66,7 +76,9 @@ export async function seedInventoryAndVendors(): Promise<SeedInventoryResult> {
     vendorRows.map((v: typeof vendors.$inferSelect) => [v.name, v.id])
   );
 
-  for (const row of COOKING_INVENTORY_CATALOG) {
+  const seededSkuKeys = INVENTORY_CATALOG.map((row) => row.skuKey);
+
+  for (const row of INVENTORY_CATALOG) {
     const defaultVendorId = row.defaultVendorName
       ? vendorByName.get(row.defaultVendorName) ?? null
       : null;
@@ -77,23 +89,20 @@ export async function seedInventoryAndVendors(): Promise<SeedInventoryResult> {
       .where(eq(inventoryCatalogItems.skuKey, row.skuKey))
       .limit(1);
 
-    const experienceKeys = [row.experienceKey];
+    const experienceKeys = mergeExperienceKeys(
+      existing?.experienceKeys,
+      row.experienceKeys
+    );
 
     if (existing) {
-      // Do not overwrite purchase_links — Settings / admin edits are source of truth after first seed.
-      // Do not overwrite experience_keys if admin already expanded them.
-      const existingKeys = Array.isArray(existing.experienceKeys)
-        ? existing.experienceKeys
-        : [];
-      const mergedKeys =
-        existingKeys.length > 0
-          ? existingKeys
-          : experienceKeys;
       await db
         .update(inventoryCatalogItems)
         .set({
           name: row.name,
-          experienceKeys: mergedKeys,
+          experienceKeys,
+          section: row.section,
+          parentSkuKey: row.parentSkuKey ?? null,
+          quantityHint: row.quantityHint ?? null,
           defaultVendorId,
           notes: row.notes,
           sortOrder: row.sortOrder,
@@ -105,7 +114,10 @@ export async function seedInventoryAndVendors(): Promise<SeedInventoryResult> {
       await db.insert(inventoryCatalogItems).values({
         skuKey: row.skuKey,
         name: row.name,
-        experienceKeys,
+        experienceKeys: row.experienceKeys,
+        section: row.section,
+        parentSkuKey: row.parentSkuKey ?? null,
+        quantityHint: row.quantityHint ?? null,
         defaultVendorId,
         purchaseLinks: row.purchaseLinks,
         notes: row.notes,
@@ -116,5 +128,15 @@ export async function seedInventoryAndVendors(): Promise<SeedInventoryResult> {
     catalogUpserted += 1;
   }
 
-  return { vendorsUpserted, catalogUpserted };
+  let catalogDeactivated = 0;
+  if (seededSkuKeys.length > 0) {
+    const stale = await db
+      .update(inventoryCatalogItems)
+      .set({ isActive: false, updatedDate: new Date() })
+      .where(notInArray(inventoryCatalogItems.skuKey, seededSkuKeys))
+      .returning({ id: inventoryCatalogItems.id });
+    catalogDeactivated = stale.length;
+  }
+
+  return { vendorsUpserted, catalogUpserted, catalogDeactivated };
 }

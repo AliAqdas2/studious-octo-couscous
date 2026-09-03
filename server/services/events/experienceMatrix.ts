@@ -192,6 +192,33 @@ export const EXPERIENCE_MATRIX: ExperienceMatrixRow[] = [
   },
 ];
 
+/** Every experience in the matrix (for universal Drinks catalog rows). */
+export const ALL_EXPERIENCE_KEYS = EXPERIENCE_MATRIX.map((r) => r.experienceKey);
+
+/** Cooking-class events that share Cooking Supplies + Miscellaneous checklists. */
+export const COOKING_EVENT_EXPERIENCE_KEYS = [
+  "In-Person Cooking",
+  "In-Person Chocolate Making",
+  "In-Person Chocolate & Wine",
+  "In-Person Cheeseboard",
+  "In-Person Gingerbread",
+] as const;
+
+/** Experiences whose BEO uses the food-tour layout (orders, order key, route). */
+export const FOOD_TOUR_EXPERIENCE_KEYS = [
+  "In-Person Private Food Tour",
+  "Flavors of DC",
+  "In-Person Private Monuments",
+] as const;
+
+export function isFoodTourExperience(
+  eventTypeOrKey: string | null | undefined
+): boolean {
+  if (!eventTypeOrKey) return false;
+  const key = experienceKeyForEventType(eventTypeOrKey) ?? eventTypeOrKey;
+  return (FOOD_TOUR_EXPERIENCE_KEYS as readonly string[]).includes(key);
+}
+
 export function getExperienceRow(
   experienceKeyOrEventType: string
 ): ExperienceMatrixRow | undefined {

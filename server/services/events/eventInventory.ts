@@ -97,6 +97,9 @@ export async function getEventInventory(eventId: string) {
       vendorName: vendors.name,
       purchaseLinks: inventoryCatalogItems.purchaseLinks,
       skuKey: inventoryCatalogItems.skuKey,
+      section: inventoryCatalogItems.section,
+      parentSkuKey: inventoryCatalogItems.parentSkuKey,
+      quantityHint: inventoryCatalogItems.quantityHint,
     })
     .from(eventInventoryItems)
     .leftJoin(vendors, eq(eventInventoryItems.vendorId, vendors.id))
@@ -116,6 +119,9 @@ export async function getEventInventory(eventId: string) {
       ...toApiRecord(r.item as unknown as Record<string, unknown>),
       vendor_name: r.vendorName ?? null,
       sku_key: r.skuKey ?? null,
+      section: r.section ?? null,
+      parent_sku_key: r.parentSkuKey ?? null,
+      quantity_hint: r.quantityHint ?? null,
       purchase_links: r.purchaseLinks ?? [],
     })),
     summary: {

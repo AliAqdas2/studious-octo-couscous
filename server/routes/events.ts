@@ -33,6 +33,14 @@ import {
   getBeoDocumentState,
   saveBeoDocument,
 } from "../services/events/beoDocument.js";
+import {
+  addEateryStop,
+  getEventEateryStops,
+  removeEateryStop,
+  updateEateryStop,
+  type AddEateryStopPayload,
+  type UpdateEateryStopPayload,
+} from "../services/events/eateryStops.js";
 import type {
   EventArtifactsPayload,
   RunOfShowPayload,
@@ -345,6 +353,72 @@ router.put(
           ? (req.body as { html: string }).html
           : "";
       const result = await saveBeoDocument(eventId, html, user);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.get(
+  "/events/:id/eatery-stops",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const result = await getEventEateryStops(eventId);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/events/:id/eatery-stops",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const payload = (req.body ?? {}) as AddEateryStopPayload;
+      const result = await addEateryStop(eventId, payload);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  "/events/:id/eatery-stops/:stopId",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      const stopId = req.params.stopId;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      if (!stopId) throw new AppError("stopId is required", 400);
+      const payload = (req.body ?? {}) as UpdateEateryStopPayload;
+      const result = await updateEateryStop(eventId, stopId, payload);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.delete(
+  "/events/:id/eatery-stops/:stopId",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      const stopId = req.params.stopId;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      if (!stopId) throw new AppError("stopId is required", 400);
+      const result = await removeEateryStop(eventId, stopId);
       res.json(result);
     } catch (err) {
       next(err);

@@ -25,7 +25,10 @@ import {
   twilioWebhookLogs,
   users,
   vendors,
+  venueImages,
   venues,
+  instructors,
+  eateries,
 } from "../../db/schema/index.js";
 
 export interface EntityDefinition {
@@ -197,11 +200,32 @@ export const entityRegistry: Record<string, EntityDefinition> = {
     requiredOnCreate: ["name"],
     adminOnlyDelete: true,
   },
+  "venue-images": {
+    table: venueImages,
+    searchable: ["caption", "image_url"],
+    defaultSort: "sort_order",
+    requiredOnCreate: ["venue_id", "image_url"],
+    adminOnlyDelete: true,
+  },
   "inventory-catalog-items": {
     table: inventoryCatalogItems,
-    searchable: ["name", "sku_key", "experience_keys"],
+    searchable: ["name", "sku_key", "experience_keys", "section"],
     defaultSort: "sort_order",
     requiredOnCreate: ["sku_key", "name"],
+  },
+  instructors: {
+    table: instructors,
+    searchable: ["name", "bio"],
+    defaultSort: "sort_order",
+    requiredOnCreate: ["name"],
+    adminOnlyDelete: true,
+  },
+  eateries: {
+    table: eateries,
+    searchable: ["name", "address", "order_key_dishes"],
+    defaultSort: "sort_order",
+    requiredOnCreate: ["name"],
+    adminOnlyDelete: true,
   },
 };
 

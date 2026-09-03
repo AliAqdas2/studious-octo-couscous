@@ -60,6 +60,7 @@ function itemExperienceKeys(item) {
 export default function SettingsInventoryCatalogPanel() {
   const queryClient = useQueryClient();
   const [experienceFilter, setExperienceFilter] = useState('In-Person Cooking');
+  const [sectionFilter, setSectionFilter] = useState('__all__');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -107,11 +108,24 @@ export default function SettingsInventoryCatalogPanel() {
   }, [matrixExperiences]);
 
   const filtered = useMemo(() => {
-    if (!experienceFilter || experienceFilter === '__all__') return items;
-    return items.filter((i) =>
-      itemExperienceKeys(i).includes(experienceFilter)
+    let list = items;
+    if (experienceFilter && experienceFilter !== '__all__') {
+      list = list.filter((i) =>
+        itemExperienceKeys(i).includes(experienceFilter)
+      );
+    }
+    if (sectionFilter && sectionFilter !== '__all__') {
+      list = list.filter((i) => (i.section || '') === sectionFilter);
+    }
+    return list;
+  }, [items, experienceFilter, sectionFilter]);
+
+  const sectionOptions = useMemo(() => {
+    const set = new Set(
+      items.map((i) => i.section).filter(Boolean)
     );
-  }, [items, experienceFilter]);
+    return [...set].sort();
+  }, [items]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['inventory-catalog-all'] });
@@ -231,20 +245,37 @@ export default function SettingsInventoryCatalogPanel() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-2 sm:items-end justify-between">
-          <div className="space-y-1">
-            <Label>Filter by experience</Label>
-            <select
-              className="w-full sm:w-72 px-3 py-2 border border-gray-300 rounded-md text-sm"
-              value={experienceFilter}
-              onChange={(e) => setExperienceFilter(e.target.value)}
-            >
-              <option value="__all__">All experiences</option>
-              {experienceOptions.map((ex) => (
-                <option key={ex.key} value={ex.key}>
-                  {ex.label}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="space-y-1">
+              <Label>Filter by experience</Label>
+              <select
+                className="w-full sm:w-72 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={experienceFilter}
+                onChange={(e) => setExperienceFilter(e.target.value)}
+              >
+                <option value="__all__">All experiences</option>
+                {experienceOptions.map((ex) => (
+                  <option key={ex.key} value={ex.key}>
+                    {ex.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Filter by section</Label>
+              <select
+                className="w-full sm:w-56 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+              >
+                <option value="__all__">All sections</option>
+                {sectionOptions.map((section) => (
+                  <option key={section} value={section}>
+                    {section}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <Button
             className="bg-[#C84B31] hover:bg-[#A03A23]"
@@ -263,6 +294,7 @@ export default function SettingsInventoryCatalogPanel() {
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b bg-[#FFF9F0]">
                   <th className="p-2 font-medium">Name</th>
+                  <th className="p-2 font-medium">Section</th>
                   <th className="p-2 font-medium">Experiences</th>
                   <th className="p-2 font-medium">Links</th>
                   <th className="p-2 font-medium">Status</th>
@@ -276,6 +308,15 @@ export default function SettingsInventoryCatalogPanel() {
                     <tr key={item.id} className="border-b border-slate-50">
                       <td className="p-2 font-medium text-gray-800">
                         {item.name}
+                      </td>
+                      <td className="p-2 text-xs">
+                        {item.section ? (
+                          <Badge variant="outline" className="font-normal">
+                            {item.section}
+                          </Badge>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="p-2 text-xs text-gray-600 max-w-[220px]">
                         {keys.length ? keys.join(', ') : '—'}
@@ -323,7 +364,7 @@ export default function SettingsInventoryCatalogPanel() {
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-4 text-gray-500 text-sm">
+                    <td colSpan={6} className="p-4 text-gray-500 text-sm">
                       No catalog items for this filter. Seed inventory or add
                       one.
                     </td>
