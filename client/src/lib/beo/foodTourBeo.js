@@ -18,7 +18,6 @@ import {
   inventoryChecklistHtml,
   logisticsTable,
   openSection,
-  STRIPE,
   wrapSheet,
 } from './shared.js';
 
@@ -39,7 +38,7 @@ function ordersHtml(stops) {
         .join('');
       const drink = stop.drink_option || stop.drinkOption;
       return `<div style="margin:0 0 14px;">
-        <p style="margin:0 0 2px;font-size:13px;font-weight:800;letter-spacing:0.02em;text-transform:uppercase;">
+        <p style="margin:0 0 2px;font-size:14px;font-family:Georgia,'Times New Roman',serif;color:#134f5c;">
           ${esc(stop.name || '')} — ${esc(time)}
         </p>
         <p style="margin:0 0 6px;font-size:12px;font-weight:700;">
@@ -61,9 +60,9 @@ function ordersHtml(stops) {
 function orderKeyTable(stops) {
   const list = asArray(stops);
   const header = `<tr>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:24%;">Restaurant</th>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};">Dishes</th>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:28%;">Drink (if applicable)</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:24%;">Restaurant</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;">Dishes</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:28%;">Drink (if applicable)</th>
   </tr>`;
   const rows = (list.length ? list : [{ name: '', order_key_dishes: '', drink_option: '' }, { name: '', order_key_dishes: '', drink_option: '' }])
     .map(
@@ -82,10 +81,10 @@ function orderKeyTable(stops) {
 
 function routeScaffold() {
   const header = `<tr>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:16%;">Leg</th>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:28%;">Location</th>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:28%;">Address</th>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};">Instructions</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:16%;">Leg</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:28%;">Location</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:28%;">Address</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;">Instructions</th>
   </tr>`;
   const labels = ['Meet', 'Stop', 'Walk', 'Stop', 'Walk', 'Stop', 'Walk', 'Final stop'];
   const rows = labels
@@ -127,7 +126,7 @@ export function buildFoodTourBeoHtml(input) {
       </tr>
     </table>
     ${openSection(
-      'Client-specific details',
+      'Client-Specific Details',
       core.special ? `<p style="margin:0;">${esc(core.special)}</p>` : '&nbsp;',
       { keep: true }
     )}
@@ -140,8 +139,8 @@ export function buildFoodTourBeoHtml(input) {
       { keep: true }
     )}
     ${openSection('Orders', ordersHtml(stops))}
-    ${openSection('Food stops order key', orderKeyTable(stops))}
-    ${openSection('Tour route', routeScaffold(), { keep: true })}
+    ${openSection('Food Stops Order Key', orderKeyTable(stops))}
+    ${openSection('Tour Route', routeScaffold(), { keep: true })}
     ${
       asArray(input?.inventory).length
         ? openSection('Inventory', inventoryChecklistHtml(input.inventory))

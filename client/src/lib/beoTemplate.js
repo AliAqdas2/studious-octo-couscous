@@ -36,26 +36,27 @@ export function buildBeoHtml(input) {
 export const BEO_PRINT_CSS = `
   body { margin: 0; background: #fff; font-family: Arial, Helvetica, sans-serif; color: #111; }
   .beo-sheet { box-sizing: border-box; }
-  .beo-section { margin: 0 0 12px 0; }
+  .beo-section { margin: 0 0 16px 0; }
   .beo-section-title {
-    padding: 7px 10px;
-    background: #2A9B9F;
-    color: #fff;
-    font-size: 12px;
+    padding: 0 0 6px 0;
+    background: none;
+    color: #134f5c;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 18px;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    border: 1px solid #1F7A7D;
+    letter-spacing: normal;
+    text-transform: none;
+    border: none;
     break-after: avoid;
     page-break-after: avoid;
   }
   .beo-section-body {
-    border: 1px solid #1a1a1a;
-    border-top: none;
-    padding: 10px 12px;
+    border: none;
+    padding: 0 0 2px 0;
     font-size: 12px;
     line-height: 1.5;
   }
+  .beo-grid { border-collapse: collapse; }
   .beo-sheet img { max-width: 100%; height: auto; }
   .beo-keep { break-inside: avoid; page-break-inside: avoid; }
   .beo-print-frame { width: 100%; border: none; border-collapse: collapse; }

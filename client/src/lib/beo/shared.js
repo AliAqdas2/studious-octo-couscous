@@ -3,9 +3,10 @@
  */
 
 export const TEAL = '#2A9B9F';
-export const TEAL_DARK = '#1F7A7D';
-export const BORDER = '#1a1a1a';
+export const TEAL_DARK = '#134f5c';
+export const BORDER = '#000000';
 export const STRIPE = '#f3f7f7';
+export const ACCENT = '#d0e0e3';
 
 /** Same labels as ROS multimedia permissions (stored as snake_case codes). */
 export const MEDIA_PERMISSION_LABELS = {
@@ -60,26 +61,24 @@ export function cell(label, value, opts = {}) {
         ? '&nbsp;'
         : '—'
       : esc(value);
-  const bg = opts.stripe ? `background:${STRIPE};` : '';
+  const bg = opts.accent ? `background:${ACCENT};` : '';
   return `<tr>
-    <td style="width:34%;padding:6px 8px;border:1px solid ${BORDER};font-size:11px;font-weight:700;color:#333;${bg}">${esc(label)}</td>
-    <td style="padding:6px 8px;border:1px solid ${BORDER};font-size:12px;${bg}">${v}</td>
+    <td style="width:34%;padding:6px 8px;border:1px solid ${BORDER};font-size:11px;font-weight:400;color:#222;">${esc(label)}</td>
+    <td style="padding:6px 8px;border:1px solid ${BORDER};font-size:12px;font-weight:700;${bg}">${v}</td>
   </tr>`;
 }
 
 export function sectionBar(title) {
-  return `<tr>
-    <td colspan="2" style="padding:7px 10px;background:${TEAL};color:#fff;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;border:1px solid ${TEAL_DARK};">
-      ${esc(title)}
-    </td>
-  </tr>`;
+  return `<div class="beo-section-title">${esc(title)}</div>`;
 }
 
 export function sectionTable(title, rowsHtml) {
-  return `<table class="beo-keep" style="width:100%;border-collapse:collapse;margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;">
-    ${sectionBar(title)}
+  return `<div class="beo-section beo-keep">
+    <div class="beo-section-title">${esc(title)}</div>
+    <table class="beo-grid" style="width:100%;border-collapse:collapse;margin:0 0 4px 0;font-family:Arial,Helvetica,sans-serif;">
     ${rowsHtml}
-  </table>`;
+    </table>
+  </div>`;
 }
 
 export function openSection(title, innerHtml, opts = {}) {
@@ -277,9 +276,9 @@ export function attendeeTable(participationUrl, attendees = [], rowCount = 12) {
       ? ''
       : `<p style="margin:0 0 8px;font-size:12px;color:#666;">Add attendees on Event Detail (or a participation spreadsheet link on Artifacts). Blank rows below for day-of notes.</p>`;
   const header = `<tr>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:40%;">Name</th>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:35%;">Allergies</th>
-    <th style="border:1px solid ${BORDER};padding:6px 8px;font-size:11px;text-align:left;background:${STRIPE};width:25%;">Phone Number</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:40%;">Name</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:35%;">Allergies</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:25%;">Phone Number</th>
   </tr>`;
   const filled = list.map((row) => {
     const r = row && typeof row === 'object' ? row : {};
@@ -315,8 +314,8 @@ export function headerBlock(logoSrc, printDate) {
         <img src="${esc(logoSrc)}" alt="Mangia DC" width="120" height="auto" style="display:block;width:120px;height:auto;" />
       </td>
       <td style="vertical-align:middle;">
-        <div style="font-size:22px;font-weight:800;letter-spacing:0.02em;color:#1a1a1a;">Banquet Event Order</div>
-        <div style="font-size:13px;color:${TEAL_DARK};font-weight:600;margin-top:2px;">Mangia DC</div>
+        <div style="font-size:22px;font-weight:700;font-family:Georgia,'Times New Roman',serif;color:${TEAL_DARK};">Banquet Event Order</div>
+        <div style="font-size:13px;color:${TEAL_DARK};margin-top:2px;">Mangia DC</div>
       </td>
       <td style="width:140px;vertical-align:top;text-align:right;font-size:11px;color:#444;">
         <div><strong>Print date</strong></div>
@@ -327,8 +326,9 @@ export function headerBlock(logoSrc, printDate) {
 }
 
 export function approvalsBlock() {
-  return `<table class="beo-keep" style="width:100%;border-collapse:collapse;margin-top:8px;font-family:Arial,Helvetica,sans-serif;">
-    ${sectionBar('Approvals')}
+  return `<div class="beo-section beo-keep">
+    <div class="beo-section-title">Approvals</div>
+    <table class="beo-grid" style="width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;">
     <tr>
       <td style="width:50%;border:1px solid ${BORDER};padding:14px 10px;font-size:12px;vertical-align:bottom;">
         Sales / Ops initials: ______________________
@@ -337,11 +337,12 @@ export function approvalsBlock() {
         Client signature: ______________________ &nbsp; Date: __________
       </td>
     </tr>
-  </table>`;
+    </table>
+  </div>`;
 }
 
 export function wrapSheet(inner) {
-  return `<div class="beo-sheet" style="max-width:900px;margin:0 auto;padding:16px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;border:2px solid ${BORDER};box-sizing:border-box;">
+  return `<div class="beo-sheet" style="max-width:900px;margin:0 auto;padding:16px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box;">
   ${inner}
   <p style="margin:10px 0 0;font-size:10px;color:#666;">
     Follow this BEO for layout, inventory, and client details on event day. Generated from Mangia CRM.
@@ -470,12 +471,12 @@ export function eventCoreFields(input) {
 
 export function eventInfoTable(core) {
   return sectionTable(
-    'Event information',
-    cell('Event name', core.name, { stripe: true }) +
+    'Event',
+    cell('Event name', core.name, { accent: true }) +
       cell('Experience', core.type) +
-      cell('Location / venue', core.venueLabel, { stripe: true }) +
+      cell('Location / venue', core.venueLabel) +
       cell('Event date', formatDate(core.eventDate)) +
-      cell('Start time', core.startTime, { stripe: true }) +
+      cell('Start time', core.startTime) +
       cell('Guest count', core.headcount) +
       cell('Staff', core.staff || core.instructorName)
   );
@@ -483,12 +484,12 @@ export function eventInfoTable(core) {
 
 export function contactInfoTable(core) {
   return sectionTable(
-    'Contact info',
-    cell('Organizer', core.pocName, { stripe: true }) +
+    'Contact Info',
+    cell('Organizer', core.pocName) +
       cell('Phone', core.pocPhone) +
-      cell('Email', core.pocEmail, { stripe: true }) +
+      cell('Email', core.pocEmail) +
       cell('Day-of contact', core.dayOf) +
-      cell('Day-of phone', core.dayOfPhone, { stripe: true }) +
+      cell('Day-of phone', core.dayOfPhone) +
       cell('Day-of email', core.dayOfEmail)
   );
 }
@@ -496,7 +497,7 @@ export function contactInfoTable(core) {
 export function logisticsTable(core) {
   return sectionTable(
     'Logistics',
-    cell('Arrival', core.ros.arrivalMethod || '', { stripe: true }) +
+    cell('Arrival', core.ros.arrivalMethod || '') +
       cell('Time change', core.timeChangeLabel) +
       cell(
         'Transport',
@@ -504,8 +505,7 @@ export function logisticsTable(core) {
           ? `Yes${core.transportCompany ? ` — ${core.transportCompany}` : ''}`
           : core.transportNeeded === false
             ? 'No'
-            : '',
-        { stripe: true }
+            : ''
       ) +
       cell(
         'Seating',
@@ -517,7 +517,7 @@ export function logisticsTable(core) {
             }`
           : ''
       ) +
-      cell('Multimedia', core.media, { stripe: true }) +
+      cell('Multimedia', core.media) +
       cell('Venue restrictions', core.venueRestrictions)
   );
 }

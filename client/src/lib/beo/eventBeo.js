@@ -6,7 +6,6 @@ import {
   attendeeTable,
   addonLines,
   approvalsBlock,
-  cell,
   contactInfoTable,
   esc,
   eventCoreFields,
@@ -19,7 +18,6 @@ import {
   inventoryChecklistHtml,
   logisticsTable,
   openSection,
-  sectionTable,
   wrapSheet,
   yn,
 } from './shared.js';
@@ -37,20 +35,34 @@ function menuSection(core, input) {
   const dish = event.dish_configuration || event.dishConfiguration || '';
   const menuText = event.menu || '';
 
-  let rows;
+  let body;
   if (isCooking) {
-    rows =
-      cell('App', menu.app || '', { stripe: true }) +
-      cell('Entree', menu.entree || '') +
-      cell('Dessert', menu.dessert || '', { stripe: true }) +
-      cell('Dish configuration', dish) +
-      cell('Confirmed', menu.confirmed != null ? yn(menu.confirmed) : '');
+    const parts = [];
+    if (menu.app) parts.push(`App: ${menu.app}`);
+    if (menu.entree) parts.push(`Entrée: ${menu.entree}`);
+    if (menu.dessert) parts.push(`Dessert: ${menu.dessert}`);
+    const menuLine = parts.length ? parts.join(' / ') : '';
+    const extra = [];
+    if (dish) extra.push(`Dish configuration: ${dish}`);
+    if (menu.confirmed != null) extra.push(`Confirmed: ${yn(menu.confirmed)}`);
+    body = `<p style="margin:0 0 6px;font-size:12px;line-height:1.5;"><strong>Menu:</strong> ${
+      menuLine ? esc(menuLine) : '—'
+    }</p>${
+      extra.length
+        ? extra.map((t) => `<p style="margin:0 0 4px;font-size:12px;">${esc(t)}</p>`).join('')
+        : ''
+    }`;
   } else {
-    rows =
-      cell(confirmLabel, activity.notes || menuText, { stripe: true }) +
-      cell('Confirmed', activity.confirmed != null ? yn(activity.confirmed) : '');
+    const notes = activity.notes || menuText || '';
+    const confirmed =
+      activity.confirmed != null ? `Confirmed: ${yn(activity.confirmed)}` : '';
+    body = `<p style="margin:0 0 6px;font-size:12px;line-height:1.5;"><strong>${esc(
+      confirmLabel
+    )}:</strong> ${notes ? esc(notes) : '—'}</p>${
+      confirmed ? `<p style="margin:0;font-size:12px;">${esc(confirmed)}</p>` : ''
+    }`;
   }
-  return sectionTable('Details / menu', rows);
+  return openSection('Details', body, { keep: true });
 }
 
 function eventFlowHtml(core) {
@@ -95,22 +107,22 @@ export function buildEventBeoHtml(input) {
     </table>
     ${menuSection(core, input)}
     ${openSection(
-      'Client-specific details',
+      'Client-Specific Details',
       clientBits.length
         ? clientBits.map((t) => `<p style="margin:0 0 8px;">${esc(t)}</p>`).join('')
         : '&nbsp;',
       { keep: true }
     )}
     ${logisticsTable(core)}
-    ${openSection('Event flow', eventFlowHtml(core), { keep: true })}
-    ${openSection('Cooking supplies', inventoryChecklistHtml(input?.inventory))}
-    ${openSection('Floor map', imageBlock(input?.venueImages), { keep: true })}
+    ${openSection('Event Flow', eventFlowHtml(core), { keep: true })}
+    ${openSection('Cooking Supplies', inventoryChecklistHtml(input?.inventory))}
+    ${openSection('Floor Map', imageBlock(input?.venueImages), { keep: true })}
     ${openSection(
-      'Venue guidelines',
+      'Venue Guidelines',
       guidelinesBlock(venueRow.guidelines)
     )}
     ${openSection(
-      'Instructor bio / script',
+      'Instructor Bio / Script',
       instructor.name
         ? `<p style="margin:0 0 8px;font-weight:700;">${esc(instructor.name)}</p>
            <p style="margin:0;white-space:pre-wrap;">${esc(instructor.bio || '')}</p>`
