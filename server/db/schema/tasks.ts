@@ -1,5 +1,6 @@
 import {
   boolean,
+  integer,
   jsonb,
   pgTable,
   real,
@@ -39,6 +40,8 @@ export const tasks = pgTable("tasks", {
   }),
   overriddenBy: uuid("overridden_by").references(() => users.id, { onDelete: "set null" }),
   dueDate: timestamp("due_date", { withTimezone: true }),
+  /** Planning estimate: how long the task is expected to take. */
+  estimatedMinutes: integer("estimated_minutes"),
   order: real("order"),
   progressNotes: text("progress_notes"),
   workflowPhase: workflowPhaseEnum("workflow_phase"),

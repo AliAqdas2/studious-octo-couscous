@@ -214,9 +214,16 @@ export async function createEventFromWonLead(
       | undefined) || "In-Person Mixology";
 
   const company = (lead.company || "").trim();
-  const eventName = company
-    ? `${company} — ${lead.name || lead.email}`
-    : lead.name || `Event for ${lead.email}`;
+  const eventName =
+    company || lead.name || `Event for ${lead.email}`;
+
+  const leadFormat = (lead.eventFormat || "").trim();
+  const eventFormat =
+    leadFormat === "Virtual"
+      ? ("Virtual" as const)
+      : leadFormat === "In-Person" || leadFormat === "Hybrid"
+        ? ("In-Person" as const)
+        : null;
 
   const eventDate = lead.preferredDate
     ? new Date(lead.preferredDate)
@@ -253,6 +260,7 @@ export async function createEventFromWonLead(
         eventDate,
         startTime,
         eventType,
+        eventFormat,
         leadId,
         sourceLeadId: leadId,
         pocName: lead.name,

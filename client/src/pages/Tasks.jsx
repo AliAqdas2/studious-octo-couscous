@@ -13,6 +13,11 @@ import { createPageUrl } from '../utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ThreadView from '@/components/thread/ThreadView';
 import WorkflowTaskExtras, { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
+import TaskAssignControls from '@/components/events/TaskAssignControls';
+import {
+  buildAssignUpdate,
+  buildTeamMemberOptions,
+} from '@/lib/taskTeamMembers';
 
 export default function Tasks() {
   const queryClient = useQueryClient();
@@ -54,6 +59,18 @@ export default function Tasks() {
     queryFn: () => base44.entities.RoleAssignment.filter({ user_id: user.id }),
     enabled: !!user && user.role !== 'admin'
   });
+
+  const { data: allRoleAssignments = [] } = useQuery({
+    queryKey: ['role-assignments-active'],
+    queryFn: async () => {
+      const rows = await base44.entities.RoleAssignment.filter({ is_active: true });
+      return Array.isArray(rows) ? rows : [];
+    },
+  });
+  const teamMembers = React.useMemo(
+    () => buildTeamMemberOptions(allRoleAssignments),
+    [allRoleAssignments]
+  );
 
   const acknowledgeTaskMutation = useMutation({
     mutationFn: async ({ taskId, task }) => {
@@ -159,7 +176,36 @@ export default function Tasks() {
     }
   });
 
+  const assignTaskMutation = useMutation({
+    mutationFn: async ({ taskId, task, nextUserId }) => {
+      if (!user) throw new Error('User not authenticated');
+      const updates = buildAssignUpdate({
+        task,
+        nextUserId,
+        actorUserId: user.id,
+      });
+      return base44.entities.Task.update(taskId, updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['tasks']);
+      toast.success('Assignee updated');
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to assign task');
+    },
+  });
 
+  const updateDurationMutation = useMutation({
+    mutationFn: async ({ taskId, estimated_minutes }) => {
+      return base44.entities.Task.update(taskId, { estimated_minutes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['tasks']);
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to update duration');
+    },
+  });
 
   const userOperationalRole = roleAssignments[0]?.role;
 
@@ -473,22 +519,63 @@ export default function Tasks() {
                                 {isOverdue(task) && <AlertCircle className="w-3 h-3 inline mr-1" />}
                                 Due: {new Date(task.due_date).toLocaleDateString()}
                               </span>
-                              {user?.role === 'admin' && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setEditingDueDate(task.id);
-                                    setDueDateValue(task.due_date.split('T')[0]);
-                                  }}
-                                  className="h-6 px-2"
-                                >
-                                  <CalendarIcon className="w-3 h-3" />
-                                </Button>
-                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingDueDate(task.id);
+                                  setDueDateValue(task.due_date.split('T')[0]);
+                                }}
+                                className="h-6 px-2"
+                              >
+                                <CalendarIcon className="w-3 h-3" />
+                              </Button>
                             </div>
                           )}
+                          {!task.due_date && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingDueDate(task.id);
+                                setDueDateValue('');
+                              }}
+                              className="h-6 px-2 text-xs text-gray-400"
+                            >
+                              <CalendarIcon className="w-3 h-3 mr-1" />
+                              Set due date
+                            </Button>
+                          )}
                         </div>
+
+                        <TaskAssignControls
+                          task={task}
+                          teamMembers={teamMembers}
+                          disabled={
+                            assignTaskMutation.isPending ||
+                            updateDurationMutation.isPending ||
+                            updateDueDateMutation.isPending
+                          }
+                          onAssign={(nextUserId) =>
+                            assignTaskMutation.mutate({
+                              taskId: task.id,
+                              task,
+                              nextUserId,
+                            })
+                          }
+                          onDurationChange={(estimated_minutes) =>
+                            updateDurationMutation.mutate({
+                              taskId: task.id,
+                              estimated_minutes,
+                            })
+                          }
+                          onDueDateChange={(dueDate) =>
+                            updateDueDateMutation.mutate({
+                              taskId: task.id,
+                              dueDate,
+                            })
+                          }
+                        />
 
                         <WorkflowTaskExtras
                           task={task}
@@ -534,8 +621,8 @@ export default function Tasks() {
                       </div>
                     </div>
 
-                    {/* Due Date Editor for Admin */}
-                    {user?.role === 'admin' && editingDueDate === task.id && (
+                    {/* Due Date Editor */}
+                    {editingDueDate === task.id && (
                       <div className="mt-3 border-t pt-3 space-y-2">
                         <label className="text-sm font-medium text-gray-700">Edit Due Date</label>
                         <div className="flex gap-2">

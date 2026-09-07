@@ -81,7 +81,7 @@ function Toolbar({ iframeRef, canEdit }) {
     const iframe = iframeRef.current;
     const doc = iframe?.contentDocument;
     if (!doc || !canEdit) return;
-    doc.body?.focus();
+    (doc.querySelector('.beo-print-inner') || doc.body)?.focus();
     try {
       doc.execCommand(command, false, value);
     } catch {
@@ -135,6 +135,8 @@ function buildBeoDocHtml(html, eventName) {
     safeName,
     doc: wrapBeoDocument(bodyHtml, {
       title: `BEO — ${safeName}`,
+      eventTitle: eventName || 'Banquet Event Order',
+      logoSrc: beoLogoSrc(),
       editable: false,
     }),
   };
@@ -142,17 +144,19 @@ function buildBeoDocHtml(html, eventName) {
 
 /** Open a print window. Destination: printer or Save as PDF (vector, small file). */
 function printBeo(html, eventName, { downloadHint = false } = {}) {
-  const { doc } = buildBeoDocHtml(html, eventName);
   const printWin = window.open('', '_blank');
   if (!printWin) {
     toast.error('Pop-up blocked — allow pop-ups to print or save PDF');
     return;
   }
+  const { doc } = buildBeoDocHtml(html, eventName);
   printWin.document.write(doc);
   printWin.document.close();
   printWin.focus();
   if (downloadHint) {
-    toast.message('In the print dialog, choose Save as PDF');
+    toast.message(
+      'In the print dialog, choose Save as PDF. Turn off Headers and footers so page numbers are not doubled.'
+    );
   }
   setTimeout(() => {
     try {
@@ -209,10 +213,13 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
     setSrcDoc(
       wrapBeoDocument(normalizeSheetHtml(draftHtml), {
         title: 'BEO editor',
+        eventTitle:
+          event?.event_name || event?.eventName || 'Banquet Event Order',
+        logoSrc: beoLogoSrc(),
         editable: canEdit,
       })
     );
-  }, [draftHtml, showSummary, canEdit]);
+  }, [draftHtml, showSummary, canEdit, event]);
 
   const readIframeHtml = () => {
     const doc = iframeRef.current?.contentDocument;

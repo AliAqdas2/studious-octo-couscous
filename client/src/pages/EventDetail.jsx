@@ -23,6 +23,12 @@ import EventArtifactsPanel from '@/components/events/EventArtifactsPanel';
 import PostEventPanel from '@/components/events/PostEventPanel';
 import WorkflowTaskExtras from '@/components/events/WorkflowTaskExtras';
 import { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
+import EventFormDialog from '@/components/events/EventFormDialog';
+import TaskAssignControls from '@/components/events/TaskAssignControls';
+import {
+  buildAssignUpdate,
+  buildTeamMemberOptions,
+} from '@/lib/taskTeamMembers';
 
 export default function EventDetail() {
   const queryClient = useQueryClient();
@@ -33,6 +39,7 @@ export default function EventDetail() {
   const [editingDueDate, setEditingDueDate] = useState(null);
   const [dueDateValue, setDueDateValue] = useState('');
   const [expandedThread, setExpandedThread] = useState(null);
+  const [showEditForm, setShowEditForm] = useState(false);
 
   React.useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -58,6 +65,18 @@ export default function EventDetail() {
     queryFn: () => base44.entities.RoleAssignment.filter({ user_id: user.id }),
     enabled: !!user && user?.role !== 'admin'
   });
+
+  const { data: allRoleAssignments = [] } = useQuery({
+    queryKey: ['role-assignments-active'],
+    queryFn: async () => {
+      const rows = await base44.entities.RoleAssignment.filter({ is_active: true });
+      return Array.isArray(rows) ? rows : [];
+    },
+  });
+  const teamMembers = React.useMemo(
+    () => buildTeamMemberOptions(allRoleAssignments),
+    [allRoleAssignments]
+  );
 
   const { data: opsFeaturesData } = useQuery({
     queryKey: ['event-ops-features'],
@@ -232,6 +251,37 @@ export default function EventDetail() {
     }
   });
 
+  const assignTaskMutation = useMutation({
+    mutationFn: async ({ taskId, task, nextUserId }) => {
+      if (!user) throw new Error('User not authenticated');
+      const updates = buildAssignUpdate({
+        task,
+        nextUserId,
+        actorUserId: user.id,
+      });
+      return base44.entities.Task.update(taskId, updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['event-tasks', eventId]);
+      toast.success('Assignee updated');
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to assign task');
+    },
+  });
+
+  const updateDurationMutation = useMutation({
+    mutationFn: async ({ taskId, estimated_minutes }) => {
+      return base44.entities.Task.update(taskId, { estimated_minutes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['event-tasks', eventId]);
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to update duration');
+    },
+  });
+
   if (isLoading || !event) {
     return <div className="text-center py-12">Loading event...</div>;
   }
@@ -310,6 +360,7 @@ export default function EventDetail() {
     const canAcknowledge = !isAcknowledged || user?.role === 'admin';
     const isOwner = task.assigned_user === user?.id;
     const isEditing = editingNotes[task.id];
+    const assigneeName = teamMembers.find((m) => m.userId === task.assigned_user)?.name;
 
     return (
       <div 
@@ -325,6 +376,11 @@ export default function EventDetail() {
               <Badge variant="outline" className="text-xs">
                 {task.responsible_role}
               </Badge>
+              {assigneeName ? (
+                <Badge variant="outline" className="text-xs border-[#C84B31]/text-[#C84B31]">
+                  {assigneeName}
+                </Badge>
+              ) : null}
               <Badge className={
                 task.status === 'Not Acknowledged' ? 'bg-gray-200 text-gray-700' :
                 task.status === 'Working On It' ? 'bg-blue-100 text-blue-700' :
@@ -342,21 +398,19 @@ export default function EventDetail() {
                   <span className="text-xs text-gray-600">
                     Due: {new Date(task.due_date).toLocaleDateString()}
                   </span>
-                  {user?.role === 'admin' && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setEditingDueDate(task.id);
-                        setDueDateValue(task.due_date.split('T')[0]);
-                      }}
-                      className="h-5 px-1"
-                    >
-                      <Calendar className="w-3 h-3" />
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingDueDate(task.id);
+                      setDueDateValue(task.due_date.split('T')[0]);
+                    }}
+                    className="h-5 px-1"
+                  >
+                    <Calendar className="w-3 h-3" />
+                  </Button>
                 </div>
-              ) : user?.role === 'admin' ? (
+              ) : (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -369,7 +423,7 @@ export default function EventDetail() {
                   <Calendar className="w-3 h-3 mr-1" />
                   Set due date
                 </Button>
-              ) : null}
+              )}
             </div>
           </div>
           
@@ -386,6 +440,25 @@ export default function EventDetail() {
           )}
         </div>
 
+        <TaskAssignControls
+          task={task}
+          teamMembers={teamMembers}
+          disabled={
+            assignTaskMutation.isPending ||
+            updateDurationMutation.isPending ||
+            updateDueDateMutation.isPending
+          }
+          onAssign={(nextUserId) =>
+            assignTaskMutation.mutate({ taskId: task.id, task, nextUserId })
+          }
+          onDurationChange={(estimated_minutes) =>
+            updateDurationMutation.mutate({ taskId: task.id, estimated_minutes })
+          }
+          onDueDateChange={(dueDate) =>
+            updateDueDateMutation.mutate({ taskId: task.id, dueDate })
+          }
+        />
+
         <WorkflowTaskExtras
           task={task}
           canEdit={isOwner || user?.role === 'admin'}
@@ -394,8 +467,8 @@ export default function EventDetail() {
           }
         />
 
-        {/* Due Date Editor for Admin */}
-        {user?.role === 'admin' && editingDueDate === task.id && (
+        {/* Due Date Editor */}
+        {editingDueDate === task.id && (
           <div className="mt-3 border-t pt-3 space-y-2">
             <label className="text-sm font-medium text-gray-700">Edit Due Date</label>
             <div className="flex gap-2">
@@ -591,6 +664,10 @@ export default function EventDetail() {
           )}
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={() => setShowEditForm(true)}>
+            <Edit className="w-4 h-4 mr-2" />
+            Edit Event
+          </Button>
           {preEventTasks.length === 0 && eventDayTasks.length === 0 && postEventTasks.length === 0 && (
             <Button
               onClick={() => generateWorkflowMutation.mutate()}
@@ -621,6 +698,10 @@ export default function EventDetail() {
             )}
         </div>
       </div>
+
+      {showEditForm && (
+        <EventFormDialog event={event} onClose={() => setShowEditForm(false)} />
+      )}
 
       {/* Deposit Intake — Sales meeting capture (plan 02) */}
       <DepositIntakeForm event={event} user={user} />

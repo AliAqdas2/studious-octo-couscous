@@ -878,6 +878,23 @@ async function main(): Promise<void> {
     } else {
       console.log("food-tour event_type values already present");
     }
+
+    const taskDurationCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'tasks'
+        and column_name = 'estimated_minutes'
+    `;
+    if (taskDurationCols.length === 0) {
+      console.log("Applying task estimated_minutes migration (0024)...");
+      await sql.unsafe(
+        `ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "estimated_minutes" integer`
+      );
+      console.log("task estimated_minutes migration applied");
+    } else {
+      console.log("tasks.estimated_minutes already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

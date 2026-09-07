@@ -13,6 +13,7 @@ import {
   Trash2,
   AlertCircle,
   Clock,
+  Edit,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
@@ -27,8 +28,19 @@ import {
 export default function Events() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState(null);
+
+  const handleCloseForm = () => {
+    setShowForm(false);
+    setEditingEvent(null);
+  };
+
+  const handleEdit = (event) => {
+    setEditingEvent(event);
+    setShowForm(true);
+  };
 
   React.useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -69,11 +81,22 @@ export default function Events() {
     },
   });
 
-  const filteredEvents = events.filter(
-    (event) =>
-      event.event_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      event.event_type?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredEvents = events.filter((event) => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return true;
+    return (
+      event.event_name?.toLowerCase().includes(q) ||
+      event.event_type?.toLowerCase().includes(q) ||
+      event.poc_name?.toLowerCase().includes(q) ||
+      event.event_format?.toLowerCase().includes(q)
+    );
+  });
+
+  const formatLabel = (format) => {
+    if (!format) return null;
+    if (format === 'Virtual') return 'Remote';
+    return format;
+  };
 
   const stageColors = {
     'Deposit Received': 'bg-blue-100 text-blue-800 border-blue-200',
@@ -150,13 +173,23 @@ export default function Events() {
                   <Link to={createPageUrl(`EventDetail?id=${event.id}`)}>
                     <div className="space-y-4">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <h3 className="text-xl font-bold text-gray-900 mb-1">
                             {event.event_name}
                           </h3>
-                          {event.event_type && (
+                          {event.poc_name ? (
+                            <p className="text-sm text-gray-700 mb-1">
+                              {event.poc_name}
+                            </p>
+                          ) : null}
+                          {formatLabel(event.event_format) ? (
+                            <p className="text-gray-600">
+                              {formatLabel(event.event_format)}
+                            </p>
+                          ) : null}
+                          {event.event_type ? (
                             <p className="text-gray-600">{event.event_type}</p>
-                          )}
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2 shrink-0 ml-4">
                           <Badge
@@ -164,12 +197,26 @@ export default function Events() {
                           >
                             {event.stage}
                           </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Edit event"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleEdit(event);
+                            }}
+                            className="text-gray-600 hover:text-[#C84B31] hover:bg-orange-50 h-8 w-8"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
                           {user?.role === 'admin' && (
                             <Button
                               variant="ghost"
                               size="icon"
                               onClick={(e) => {
                                 e.preventDefault();
+                                e.stopPropagation();
                                 if (confirm('Delete this event?')) {
                                   deleteMutation.mutate(event.id);
                                 }
@@ -254,7 +301,9 @@ export default function Events() {
         )}
       </div>
 
-      {showForm && <EventFormDialog onClose={() => setShowForm(false)} />}
+      {showForm && (
+        <EventFormDialog event={editingEvent} onClose={handleCloseForm} />
+      )}
     </div>
   );
 }

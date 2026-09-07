@@ -308,7 +308,7 @@ export function attendeeTable(participationUrl, attendees = [], rowCount = 12) {
 }
 
 export function headerBlock(logoSrc, printDate) {
-  return `<table class="beo-keep" style="width:100%;border-collapse:collapse;margin-bottom:14px;">
+  return `<table class="beo-keep beo-doc-masthead" style="width:100%;border-collapse:collapse;margin-bottom:14px;">
     <tr>
       <td style="width:140px;vertical-align:middle;padding:0 12px 0 0;">
         <img src="${esc(logoSrc)}" alt="Mangia DC" width="120" height="auto" style="display:block;width:120px;height:auto;" />
