@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle2, Circle, Clock, AlertCircle, Search, Filter, ExternalLink, HandMetal, MessageCircle, TrendingUp, Calendar as CalendarIcon } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, AlertCircle, Search, Filter, ExternalLink, HandMetal, MessageCircle, TrendingUp, Calendar as CalendarIcon, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
@@ -20,6 +20,11 @@ import {
   enrichTeamMemberOptions,
 } from '@/lib/taskTeamMembers';
 import { isMyAssignedTask } from '@/lib/taskMineHighlight';
+import {
+  buildTasksProgressCsv,
+  downloadTextFile,
+  taskProgressCsvFilename,
+} from '@/lib/tasksProgressCsv';
 
 export default function Tasks() {
   const queryClient = useQueryClient();
@@ -284,6 +289,50 @@ export default function Tasks() {
     return task.status !== 'Done' && new Date(task.due_date) < new Date();
   };
 
+  const assigneeNameFor = (userId) => {
+    if (!userId) return '';
+    const member = teamMembers.find((m) => m.userId === userId);
+    return member?.name || member?.label || String(userId).slice(0, 8);
+  };
+
+  const formatDueDate = (dueRaw) => {
+    if (!dueRaw) return '';
+    const d = new Date(dueRaw);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const handleExportCsv = () => {
+    if (filteredTasks.length === 0) {
+      toast.error('No tasks to export');
+      return;
+    }
+    const rows = filteredTasks.map((task) => {
+      const phaseKey = task.workflow_phase;
+      return {
+        eventName: getEventName(task.event_id),
+        title: task.title || '',
+        status: task.status || '',
+        responsibleRole: task.responsible_role || '',
+        assigneeName: assigneeNameFor(task.assigned_user),
+        dueDate: formatDueDate(task.due_date),
+        overdue: isOverdue(task) ? 'Yes' : 'No',
+        category: task.category || '',
+        phase: phaseKey
+          ? PHASE_LABELS[phaseKey] || phaseKey
+          : '',
+        eventId: task.event_id || '',
+        taskId: task.id || '',
+      };
+    });
+    const csv = buildTasksProgressCsv(rows);
+    downloadTextFile(taskProgressCsvFilename(), csv);
+    toast.success(`Exported ${rows.length} task${rows.length === 1 ? '' : 's'}`);
+  };
+
   const roles = ['Admin', 'Sales', 'Ops', 'Marketing', 'Chef', 'Event Host', 'Finance'];
   const phases = Object.keys(PHASE_LABELS);
   const uniqueEvents = [...new Set(tasks.map(t => t.event_id))].filter(Boolean);
@@ -306,11 +355,21 @@ export default function Tasks() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-4xl font-bold text-[#C84B31] mb-2">Event Tasks</h1>
           <p className="text-gray-600">Central task management across all events</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0 h-9"
+          onClick={handleExportCsv}
+          disabled={filteredTasks.length === 0}
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export CSV
+        </Button>
       </div>
 
       {/* Task Status Counters */}
