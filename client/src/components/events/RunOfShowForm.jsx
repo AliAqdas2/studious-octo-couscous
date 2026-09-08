@@ -24,6 +24,7 @@ import {
 import { ClipboardList, CalendarPlus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 import {
   ROS_CALENDAR_SAVE_HINT,
@@ -1170,6 +1171,11 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
       forceOpen={!rosFullyComplete}
       doneBadge={rosFullyComplete}
       milestoneLabel={rosMilestone}
+      assignment={
+        event?.id ? (
+          <OpsPanelTaskAssignment panelId="ros" eventId={event.id} />
+        ) : null
+      }
     >
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

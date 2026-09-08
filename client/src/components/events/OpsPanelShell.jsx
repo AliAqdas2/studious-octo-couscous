@@ -19,6 +19,7 @@ export default function OpsPanelShell({
   complete = false,
   forceOpen = false,
   doneBadge = false,
+  assignment = null,
   children,
 }) {
   const shouldOpen = forceOpen || !complete;
@@ -51,7 +52,12 @@ export default function OpsPanelShell({
               ) : null}
             </span>
           </AccordionTrigger>
-          <AccordionContent className="px-6 pb-4">{children}</AccordionContent>
+          <AccordionContent className="px-6 pb-4">
+            {assignment ? (
+              <div className="mb-3">{assignment}</div>
+            ) : null}
+            {children}
+          </AccordionContent>
         </AccordionItem>
       </Accordion>
     </Card>

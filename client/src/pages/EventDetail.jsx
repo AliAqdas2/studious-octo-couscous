@@ -24,11 +24,7 @@ import PostEventPanel from '@/components/events/PostEventPanel';
 import WorkflowTaskExtras from '@/components/events/WorkflowTaskExtras';
 import { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
 import EventFormDialog from '@/components/events/EventFormDialog';
-import TaskAssignControls from '@/components/events/TaskAssignControls';
-import {
-  buildAssignUpdate,
-  buildTeamMemberOptions,
-} from '@/lib/taskTeamMembers';
+import { buildTeamMemberOptions } from '@/lib/taskTeamMembers';
 
 export default function EventDetail() {
   const queryClient = useQueryClient();
@@ -251,37 +247,6 @@ export default function EventDetail() {
     }
   });
 
-  const assignTaskMutation = useMutation({
-    mutationFn: async ({ taskId, task, nextUserId }) => {
-      if (!user) throw new Error('User not authenticated');
-      const updates = buildAssignUpdate({
-        task,
-        nextUserId,
-        actorUserId: user.id,
-      });
-      return base44.entities.Task.update(taskId, updates);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['event-tasks', eventId]);
-      toast.success('Assignee updated');
-    },
-    onError: (error) => {
-      toast.error(error.message || 'Failed to assign task');
-    },
-  });
-
-  const updateDurationMutation = useMutation({
-    mutationFn: async ({ taskId, estimated_minutes }) => {
-      return base44.entities.Task.update(taskId, { estimated_minutes });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['event-tasks', eventId]);
-    },
-    onError: (error) => {
-      toast.error(error.message || 'Failed to update duration');
-    },
-  });
-
   if (isLoading || !event) {
     return <div className="text-center py-12">Loading event...</div>;
   }
@@ -439,25 +404,6 @@ export default function EventDetail() {
             </Button>
           )}
         </div>
-
-        <TaskAssignControls
-          task={task}
-          teamMembers={teamMembers}
-          disabled={
-            assignTaskMutation.isPending ||
-            updateDurationMutation.isPending ||
-            updateDueDateMutation.isPending
-          }
-          onAssign={(nextUserId) =>
-            assignTaskMutation.mutate({ taskId: task.id, task, nextUserId })
-          }
-          onDurationChange={(estimated_minutes) =>
-            updateDurationMutation.mutate({ taskId: task.id, estimated_minutes })
-          }
-          onDueDateChange={(dueDate) =>
-            updateDueDateMutation.mutate({ taskId: task.id, dueDate })
-          }
-        />
 
         <WorkflowTaskExtras
           task={task}

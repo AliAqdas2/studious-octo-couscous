@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { ClipboardList, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 const VENDOR_DIRECTORY =
@@ -649,6 +650,11 @@ export default function DepositIntakeForm({ event, user }) {
         complete
         doneBadge
         milestoneLabel={null}
+        assignment={
+          event?.id ? (
+            <OpsPanelTaskAssignment panelId="deposit" eventId={event.id} />
+          ) : null
+        }
       >
         <div className="rounded-lg border border-green-200 bg-green-50/60 p-4 space-y-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -763,6 +769,11 @@ export default function DepositIntakeForm({ event, user }) {
       complete={false}
       forceOpen
       milestoneLabel={depositMilestone}
+      assignment={
+        event?.id ? (
+          <OpsPanelTaskAssignment panelId="deposit" eventId={event.id} />
+        ) : null
+      }
     >
       <div className="space-y-6 rounded-lg border border-orange-200 bg-orange-50/40 p-4">
         <div className="flex flex-wrap items-center gap-2">

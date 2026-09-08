@@ -23,6 +23,7 @@ import {
 } from '@/lib/beoTemplate';
 import { downloadBeoDocx } from '@/lib/beoDocx';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 function authVenueImageUrl(url) {
@@ -387,6 +388,11 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
       forceOpen={!showSummary}
       doneBadge={hasDocument && showSummary}
       milestoneLabel={beoMilestone}
+      assignment={
+        event?.id ? (
+          <OpsPanelTaskAssignment panelId="beo" eventId={event.id} />
+        ) : null
+      }
     >
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

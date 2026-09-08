@@ -14,6 +14,7 @@ import {
 import { ExternalLink, FileText, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 import {
   artifactsComplete,
   getPanelMilestoneLabel,
@@ -174,6 +175,11 @@ export default function EventArtifactsPanel({
       forceOpen={!showSummary}
       doneBadge={showSummary}
       milestoneLabel={milestoneLabel}
+      assignment={
+        event?.id ? (
+          <OpsPanelTaskAssignment panelId="artifacts" eventId={event.id} />
+        ) : null
+      }
     >
       {showSummary ? (
         <div className="rounded-lg border border-green-200 bg-green-50/60 p-4 space-y-3">

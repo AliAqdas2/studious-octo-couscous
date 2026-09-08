@@ -357,9 +357,15 @@ export function eventCoreFields(input) {
   const type = event.event_type || event.eventType || '';
   const venue = event.venue || '';
   const venueMode = event.venue_mode || event.venueMode;
+  const venueModeLabel =
+    venueMode === 'go_to_them'
+      ? 'Go to them'
+      : venueMode === 'house_venue'
+        ? 'House venue'
+        : '';
   const venueLabel = venue
-    ? venueMode
-      ? `${venue} (${venueMode})`
+    ? venueModeLabel
+      ? `${venue} (${venueModeLabel})`
       : venue
     : '';
   const eventDateRaw = event.event_date || event.eventDate;
@@ -488,9 +494,9 @@ export function contactInfoTable(core) {
     cell('Organizer', core.pocName) +
       cell('Phone', core.pocPhone) +
       cell('Email', core.pocEmail) +
-      cell('Day-of contact', core.dayOf) +
-      cell('Day-of phone', core.dayOfPhone) +
-      cell('Day-of email', core.dayOfEmail)
+      cell('Event-day contact', core.dayOf) +
+      cell('Event-day phone', core.dayOfPhone) +
+      cell('Event-day email', core.dayOfEmail)
   );
 }
 
