@@ -34,6 +34,7 @@ import {
   getBeoDocumentState,
   saveBeoDocument,
 } from "../services/events/beoDocument.js";
+import { buildBeoDocxBuffer } from "../services/events/beoDocx.js";
 import {
   addEateryStop,
   getEventEateryStops,
@@ -370,6 +371,58 @@ router.put(
           : "";
       const result = await saveBeoDocument(eventId, html, user);
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/events/:id/beo-docx",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const user = (req as AuthenticatedRequest).user;
+      const body = (req.body ?? {}) as {
+        html?: string;
+        eventName?: string;
+        origin?: string;
+      };
+
+      let html = typeof body.html === "string" ? body.html : "";
+      if (!html.trim()) {
+        const state = await getBeoDocumentState(eventId, user);
+        html = state.html || "";
+      }
+      if (!html.trim()) {
+        throw new AppError("BEO document is empty", 400);
+      }
+
+      const eventName =
+        (typeof body.eventName === "string" && body.eventName.trim()) ||
+        "Banquet Event Order";
+      const origin =
+        (typeof body.origin === "string" && body.origin.trim()) ||
+        `${req.protocol}://${req.get("host") || "localhost"}`;
+
+      const buffer = await buildBeoDocxBuffer(html, {
+        eventName,
+        origin,
+        title: `BEO — ${eventName}`,
+      });
+
+      const safe = eventName.replace(/[^\w\-]+/g, "_").slice(0, 60) || "BEO";
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="BEO_${safe}.docx"`
+      );
+      res.send(buffer);
     } catch (err) {
       next(err);
     }

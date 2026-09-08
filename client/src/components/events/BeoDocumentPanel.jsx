@@ -21,6 +21,7 @@ import {
   buildBeoHtml,
   wrapBeoDocument,
 } from '@/lib/beoTemplate';
+import { downloadBeoDocx } from '@/lib/beoDocx';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
@@ -178,6 +179,7 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
   const [draftHtml, setDraftHtml] = useState(null);
   const [srcDoc, setSrcDoc] = useState('');
   const [iframeReady, setIframeReady] = useState(false);
+  const [docxBusy, setDocxBusy] = useState(false);
 
   const { data: state, isLoading } = useQuery({
     queryKey: ['beo-document', eventId],
@@ -319,6 +321,31 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
     printBeo(html, eventName, { downloadHint: true });
   };
 
+  const handleDownloadWord = async () => {
+    const html = currentBeoHtml();
+    if (!html?.trim()) {
+      toast.error('BEO document is empty');
+      return;
+    }
+    if (!eventId) {
+      toast.error('Event is missing');
+      return;
+    }
+    setDocxBusy(true);
+    try {
+      await downloadBeoDocx({
+        eventId,
+        html: normalizeSheetHtml(html),
+        eventName,
+      });
+      toast.success('Word download started (from print layout)');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to download Word file');
+    } finally {
+      setDocxBusy(false);
+    }
+  };
+
   const exportButtons = (
     <>
       <Button
@@ -338,6 +365,16 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
       >
         <Download className="w-4 h-4 mr-1" />
         Download PDF
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={handleDownloadWord}
+        disabled={docxBusy}
+      >
+        <FileText className="w-4 h-4 mr-1" />
+        {docxBusy ? 'Preparing Word…' : 'Download Word'}
       </Button>
     </>
   );

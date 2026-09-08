@@ -96,21 +96,36 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=5000
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ curl \
+  && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    make \
+    g++ \
+    curl \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
+  && npx playwright install --with-deps chromium \
   && npm cache clean --force
+
+COPY requirements-beo.txt ./
+RUN python3 -m venv /app/.venv-beo \
+  && /app/.venv-beo/bin/pip install --no-cache-dir -r requirements-beo.txt
 
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 COPY venueimages ./venueimages
 COPY scripts/data ./scripts/data
+COPY scripts/pdf_to_docx.py ./scripts/pdf_to_docx.py
+COPY client/public/mangiadc-logo.png ./client/public/mangiadc-logo.png
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+  && chmod +x /app/scripts/pdf_to_docx.py
 
 EXPOSE 5000
 

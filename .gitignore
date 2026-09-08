@@ -3,6 +3,7 @@ dist
 .env
 .DS_Store
 .env.example
+.venv-beo/
 data/uploads/*
 !data/uploads/.gitkeep
 videos/

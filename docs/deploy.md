@@ -65,6 +65,24 @@ chmod +x scripts/deploy.sh docker/entrypoint.sh
 curl -s http://127.0.0.1:5000/api/health
 ```
 
+### BEO Word download (Playwright PDF → pdf2docx)
+
+Download Word renders the BEO as a **US Letter PDF** (Chromium) then converts with **pdf2docx**. The production image already includes:
+
+- Playwright Chromium (`PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`)
+- Python venv at `/app/.venv-beo` with `pdf2docx`
+- `scripts/pdf_to_docx.py` and the Mangia logo under `client/public/`
+
+**Local development** (outside Docker):
+
+```bash
+npx playwright install chromium
+python3 -m venv .venv-beo
+.venv-beo/bin/pip install -r requirements-beo.txt
+```
+
+Optional override: `BEO_PYTHON=/path/to/python` if the venv is elsewhere.
+
 ---
 
 ## 2. GitHub Actions auto-deploy (push → SSH)
