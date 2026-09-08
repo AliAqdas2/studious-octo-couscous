@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,9 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Mail, Save, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
+import OpsPanelShell from '@/components/events/OpsPanelShell';
 
 /**
  * During / post-event capture: staff hours, thank-you V1/V2, EMAIL 2, lead (plan 06).
@@ -115,17 +114,9 @@ export default function PostEventPanel({ event, canEdit = false }) {
 
   if (!eventId || isLoading || !form) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Mail className="w-4 h-4" />
-            During & post-event
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-24 animate-pulse bg-slate-100 rounded" />
-        </CardContent>
-      </Card>
+      <OpsPanelShell title="During & post-event" icon={Mail} forceOpen>
+        <div className="h-24 animate-pulse bg-slate-100 rounded" />
+      </OpsPanelShell>
     );
   }
 
@@ -133,28 +124,22 @@ export default function PostEventPanel({ event, canEdit = false }) {
   const experienceName = data?.state?.experienceName || event.event_type;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Mail className="w-4 h-4" />
-              During & post-event
-            </CardTitle>
-            <p className="text-xs text-gray-500 mt-1">
-              Experience name for thank-you templates:{' '}
-              <span className="font-medium text-gray-700">{experienceName}</span>
-              {' '}(never hardcodes Paint & Sip).
-            </p>
-          </div>
-          {form.thankYouVariant && (
-            <Badge variant="outline" className="text-xs uppercase">
-              Thank-you {form.thankYouVariant}
-            </Badge>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <OpsPanelShell
+      title="During & post-event"
+      icon={Mail}
+      forceOpen
+      milestoneLabel={
+        form.thankYouVariant
+          ? `Thank-you ${String(form.thankYouVariant).toUpperCase()}`
+          : null
+      }
+    >
+      <div className="space-y-5">
+        <p className="text-xs text-gray-500">
+          Experience name for thank-you templates:{' '}
+          <span className="font-medium text-gray-700">{experienceName}</span>
+          {' '}(never hardcodes Paint & Sip).
+        </p>
         <section className="space-y-2">
           <Label className="text-sm font-semibold">Admin morning-after</Label>
           <div>
@@ -390,7 +375,7 @@ export default function PostEventPanel({ event, canEdit = false }) {
               )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </OpsPanelShell>
   );
 }

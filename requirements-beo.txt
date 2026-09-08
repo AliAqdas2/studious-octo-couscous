@@ -1,2 +1,4 @@
 # BEO Word export (PDF → DOCX). Install: pip3 install -r requirements-beo.txt
+# Pin numpy<2: NumPy 2.x manylinux wheels require X86_V2 and crash in Docker Desktop / qemu.
+numpy>=1.26.0,<2
 pdf2docx>=0.5.8,<0.6

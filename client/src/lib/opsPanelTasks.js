@@ -2,7 +2,7 @@
  * Map ops panels → primary workflow task (by title / trace id).
  */
 
-/** @typedef {'deposit' | 'ros' | 'inventory' | 'beo' | 'artifacts' | 'food_tour_stops' | 'attendees'} OpsPanelId */
+/** @typedef {'deposit' | 'ros' | 'inventory' | 'beo' | 'artifacts' | 'food_tour_stops' | 'attendees' | 'post_event'} OpsPanelId */
 
 /**
  * @type {Record<OpsPanelId, { titles: RegExp[], traceIds?: string[] }>}
@@ -59,6 +59,16 @@ export const OPS_PANEL_TASK_MATCHERS = {
       /Confirm number of attendees/i,
     ],
     traceIds: ['C032'],
+  },
+  post_event: {
+    titles: [
+      /^Capture staff hours \+ additional event details/i,
+      /^Capture staff hours of the event/i,
+      /^Send thank-you email/i,
+      /post-event survey/i,
+      /^EMAIL 2/i,
+    ],
+    traceIds: ['P107', 'D105', 'P106'],
   },
 };
 

@@ -132,6 +132,27 @@ export function wrapBeoHtmlForPrint(
 }
 
 /**
+ * Extract venue image filename from a src URL.
+ * Handles relative, absolute http(s)/file://, and ?access_token=… / #hash.
+ */
+export function venueImageFilenameFromSrc(src: string): string | null {
+  const raw = String(src || "").trim();
+  if (!raw) return null;
+  const pathOnly = raw.split(/[?#]/, 1)[0] || "";
+  const marker = "/venueimages/";
+  const idx = pathOnly.toLowerCase().lastIndexOf(marker);
+  if (idx < 0) return null;
+  let file = pathOnly.slice(idx + marker.length);
+  try {
+    file = decodeURIComponent(file);
+  } catch {
+    /* keep undecoded */
+  }
+  const safe = path.basename(file);
+  return safe && safe !== "." && safe !== ".." ? safe : null;
+}
+
+/**
  * Rewrite relative asset URLs so Chromium can load them during PDF render.
  * Prefer data URLs (base64) — file:// fails under page.setContent (about:blank).
  */
@@ -165,13 +186,21 @@ export function absolutizeBeoAssetUrls(
   if (opts.venueImagesDirUrl) {
     const base = opts.venueImagesDirUrl.replace(/\/$/, "");
     out = out.replace(
-      /src=(["'])\/venueimages\/([^"']+)\1/gi,
-      (_m, q: string, file: string) => `src=${q}${base}/${file}${q}`
+      /src=(["'])([^"']*\/venueimages\/[^"']+)\1/gi,
+      (_m, q: string, url: string) => {
+        const file = venueImageFilenameFromSrc(url);
+        return file ? `src=${q}${base}/${file}${q}` : _m;
+      }
     );
   } else if (origin) {
     out = out.replace(
-      /src=(["'])\/(venueimages\/[^"']+)\1/gi,
-      `src=$1${origin}/$2$1`
+      /src=(["'])(\/venueimages\/[^"']+)\1/gi,
+      (_m, q: string, url: string) => {
+        const file = venueImageFilenameFromSrc(url);
+        return file
+          ? `src=${q}${origin}/venueimages/${file}${q}`
+          : _m;
+      }
     );
   }
 
@@ -200,6 +229,7 @@ export function fileToDataUrl(filePath: string): string | null {
 
 /**
  * Embed /venueimages/* and mangiadc-logo.png as data URLs from disk.
+ * Matches relative, absolute http(s), and file:// srcs, including ?access_token=.
  */
 export function embedLocalBeoImagesAsDataUrls(
   html: string,
@@ -209,11 +239,11 @@ export function embedLocalBeoImagesAsDataUrls(
 
   if (opts.logoDataUrl) {
     out = out.replace(
-      /src=(["'])(?:file:\/\/[^"']*\/)?\/?mangiadc-logo\.png\1/gi,
+      /src=(["'])(?:file:\/\/[^"']*\/)?\/?mangiadc-logo\.png(?:\?[^"']*)?\1/gi,
       `src=$1${opts.logoDataUrl}$1`
     );
     out = out.replace(
-      /src=(["'])[^"']*\/mangiadc-logo\.png\1/gi,
+      /src=(["'])[^"']*\/mangiadc-logo\.png(?:\?[^"']*)?\1/gi,
       `src=$1${opts.logoDataUrl}$1`
     );
   }
@@ -221,9 +251,10 @@ export function embedLocalBeoImagesAsDataUrls(
   const venueDir = opts.venueImagesDir;
   if (venueDir && fs.existsSync(venueDir)) {
     out = out.replace(
-      /src=(["'])(?:file:\/\/[^"']*\/venueimages\/|\/venueimages\/)([^"']+)\1/gi,
-      (_m, q: string, file: string) => {
-        const safe = path.basename(file);
+      /src=(["'])([^"']*\/venueimages\/[^"']+)\1/gi,
+      (_m, q: string, url: string) => {
+        const safe = venueImageFilenameFromSrc(url);
+        if (!safe) return _m;
         const dataUrl = fileToDataUrl(path.join(venueDir, safe));
         return dataUrl ? `src=${q}${dataUrl}${q}` : _m;
       }

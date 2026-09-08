@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
-import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 import {
   formatOrderLine,
   normalizeOrderLines,
@@ -201,14 +200,6 @@ export default function EventFoodTourStopsPanel({
         stops.length
           ? `${stops.length} stop${stops.length === 1 ? '' : 's'}`
           : 'Select restaurants for this tour'
-      }
-      assignment={
-        eventId || event?.id ? (
-          <OpsPanelTaskAssignment
-            panelId="food_tour_stops"
-            eventId={eventId || event?.id}
-          />
-        ) : null
       }
     >
       <div className="space-y-4">

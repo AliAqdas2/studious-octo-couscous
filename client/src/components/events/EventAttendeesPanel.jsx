@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Plus, Trash2, Upload, Users, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
-import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 
 /**
  * Instructor + guest list for the BEO (manual, Excel/CSV, Google Sheet).
@@ -185,14 +184,6 @@ export default function EventAttendeesPanel({
           : instructorId
             ? 'Guests pending'
             : null
-      }
-      assignment={
-        eventId || event?.id ? (
-          <OpsPanelTaskAssignment
-            panelId="attendees"
-            eventId={eventId || event?.id}
-          />
-        ) : null
       }
     >
       <div className="space-y-4">

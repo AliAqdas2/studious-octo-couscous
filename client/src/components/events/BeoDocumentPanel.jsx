@@ -23,7 +23,6 @@ import {
 } from '@/lib/beoTemplate';
 import { downloadBeoDocx } from '@/lib/beoDocx';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
-import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 function authVenueImageUrl(url) {
@@ -65,10 +64,16 @@ function buildFromState(state, event) {
 
 function normalizeSheetHtml(html) {
   if (!html) return '';
-  return String(html).replace(
+  let out = String(html).replace(
     /src="\/mangiadc-logo\.png"/g,
     `src="${beoLogoSrc()}"`
   );
+  // Drop auth query from venue floor maps (server embeds from disk for Word/PDF).
+  out = out.replace(
+    /src=(["'])([^"']*\/venueimages\/[^"'?#]+)(?:\?[^"']*)?(?:#[^"']*)?\1/gi,
+    (_m, q, pathOnly) => `src=${q}${pathOnly}${q}`
+  );
+  return out;
 }
 
 function extractSheetHtml(doc) {
@@ -388,11 +393,6 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
       forceOpen={!showSummary}
       doneBadge={hasDocument && showSummary}
       milestoneLabel={beoMilestone}
-      assignment={
-        event?.id ? (
-          <OpsPanelTaskAssignment panelId="beo" eventId={event.id} />
-        ) : null
-      }
     >
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

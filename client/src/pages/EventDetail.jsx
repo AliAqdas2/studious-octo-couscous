@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner';
 import ThreadView from '@/components/thread/ThreadView';
 import DepositIntakeForm from '@/components/events/DepositIntakeForm';
+import EventStaffingPanel from '@/components/events/EventStaffingPanel';
 import EventInventoryChecklist from '@/components/events/EventInventoryChecklist';
 import EventFoodTourStopsPanel from '@/components/events/EventFoodTourStopsPanel';
 import EventAttendeesPanel from '@/components/events/EventAttendeesPanel';
@@ -651,6 +652,13 @@ export default function EventDetail() {
 
       {/* Deposit Intake — Sales meeting capture (plan 02) */}
       <DepositIntakeForm event={event} user={user} />
+
+      <EventStaffingPanel
+        eventId={eventId}
+        event={event}
+        onGenerate={() => generateWorkflowMutation.mutate()}
+        generatePending={generateWorkflowMutation.isPending}
+      />
 
       {/* Inventory checklist — any experience with matching catalog experience_keys */}
       {event?.event_type && (

@@ -4,10 +4,10 @@ import type { AuthUser } from "../auth/authService.js";
 
 /** Deposit notify blast — Dave, Zach, Monica, Eileen (plan 02/03). Slack is not used. */
 export const DEPOSIT_NOTIFY_DEFAULT_EMAILS = [
-  "dave@mangiadc.com",
-  "zach@mangiadc.com",
-  "monica@mangiadc.com",
-  "eileen@mangiadc.com",
+  "Info@mangiadc.com",
+  "Operations@mangiadc.com",
+  "Admin2@mangiadc.com",
+  "Marketing@mangiadc.com",
 ] as const;
 
 export function depositNotifyRecipients(): string[] {

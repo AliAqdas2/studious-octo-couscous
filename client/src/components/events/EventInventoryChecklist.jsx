@@ -15,7 +15,6 @@ import {
 import { ExternalLink, Package, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
-import OpsPanelTaskAssignment from '@/components/events/OpsPanelTaskAssignment';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 function cloneItems(items) {
@@ -309,11 +308,6 @@ export default function EventInventoryChecklist({
       forceOpen={isEditing || !hasInventory}
       doneBadge={inventoryComplete}
       milestoneLabel={inventoryMilestone}
-      assignment={
-        event?.id ? (
-          <OpsPanelTaskAssignment panelId="inventory" eventId={event.id} />
-        ) : null
-      }
     >
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">

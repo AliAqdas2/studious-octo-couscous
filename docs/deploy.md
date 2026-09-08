@@ -70,8 +70,10 @@ curl -s http://127.0.0.1:5000/api/health
 Download Word renders the BEO as a **US Letter PDF** (Chromium) then converts with **pdf2docx**. The production image already includes:
 
 - Playwright Chromium (`PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`)
-- Python venv at `/app/.venv-beo` with `pdf2docx`
+- Python venv at `/app/.venv-beo` with `pdf2docx` (and `numpy<2` for Docker Desktop / qemu compatibility)
 - `scripts/pdf_to_docx.py` and the Mangia logo under `client/public/`
+
+After changing [`requirements-beo.txt`](../requirements-beo.txt), **rebuild the app image** so `/app/.venv-beo` is recreated (`docker compose build` then restart).
 
 **Local development** (outside Docker):
 
