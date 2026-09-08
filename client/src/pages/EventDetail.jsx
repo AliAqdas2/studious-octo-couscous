@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +18,7 @@ import EventArtifactsPanel from '@/components/events/EventArtifactsPanel';
 import PostEventPanel from '@/components/events/PostEventPanel';
 import EventFormDialog from '@/components/events/EventFormDialog';
 import EventTasksPanel from '@/components/events/EventTasksPanel';
+import EventDetailSectionNav from '@/components/events/EventDetailSectionNav';
 
 function readTabFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -84,6 +85,7 @@ export default function EventDetail() {
   const needsZach =
     Boolean(experienceInfo?.needsZachReview) && !zachTaskDone;
   const hasRos = Boolean(event?.event_type);
+  const showFoodTour = isFoodTourExperience(event?.event_type);
 
   const canEditOps =
     user?.role === 'admin' ||
@@ -97,6 +99,29 @@ export default function EventDetail() {
     roleAssignments.some((r) =>
       ['Ops', 'Ops Manager', 'Admin'].includes(r.role)
     );
+
+  const sectionNavItems = useMemo(() => {
+    /** @type {Array<{ id: string, label: string }>} */
+    const items = [{ id: 'section-deposit', label: 'Deposit' }];
+    if (event?.event_type) {
+      items.push({ id: 'section-inventory', label: 'Inventory' });
+    }
+    if (showFoodTour) {
+      items.push({ id: 'section-food-tour', label: 'Food tour' });
+    }
+    items.push(
+      { id: 'section-attendees', label: 'Attendees' },
+      { id: 'section-artifacts', label: 'Artifacts' }
+    );
+    if (hasRos) {
+      items.push({ id: 'section-ros', label: 'Run of Show' });
+    }
+    items.push(
+      { id: 'section-beo', label: 'BEO' },
+      { id: 'section-post-event', label: 'Post-event' }
+    );
+    return items;
+  }, [event?.event_type, showFoodTour, hasRos]);
 
   const generateWorkflowMutation = useMutation({
     mutationFn: () =>
@@ -163,6 +188,9 @@ export default function EventDetail() {
               </Badge>
             )}
           </div>
+          <p className="text-sm text-gray-600 mt-2 max-w-2xl">
+            Details = fill panels. Tasks = assign and complete work.
+          </p>
           {needsZach && experience?.flagNote && (
             <p className="text-xs text-amber-800 mt-2 max-w-xl">
               {experience.flagNote}
@@ -200,61 +228,80 @@ export default function EventDetail() {
         </TabsList>
 
         <TabsContent value="details" className="mt-6 space-y-6">
-          <EventStaffingPanel
-            eventId={eventId}
-            event={event}
-            onGenerate={() => generateWorkflowMutation.mutate()}
-            generatePending={generateWorkflowMutation.isPending}
-          />
+          <EventDetailSectionNav items={sectionNavItems} />
 
-          <DepositIntakeForm event={event} user={user} />
+          <div id="section-deposit" className="scroll-mt-24">
+            <DepositIntakeForm event={event} user={user} />
+          </div>
 
-          {event?.event_type && (
-            <EventInventoryChecklist
-              eventId={eventId}
-              event={event}
-              experienceKey={event.event_type}
-              canEdit={
-                user?.role === 'admin' ||
-                roleAssignments.some((r) =>
-                  ['Ops', 'Ops Manager', 'Intern'].includes(r.role)
-                )
-              }
-            />
-          )}
+          {event?.event_type ? (
+            <div id="section-inventory" className="scroll-mt-24">
+              <EventInventoryChecklist
+                eventId={eventId}
+                event={event}
+                experienceKey={event.event_type}
+                canEdit={
+                  user?.role === 'admin' ||
+                  roleAssignments.some((r) =>
+                    ['Ops', 'Ops Manager', 'Intern'].includes(r.role)
+                  )
+                }
+              />
+            </div>
+          ) : null}
 
-          {isFoodTourExperience(event?.event_type) && (
-            <EventFoodTourStopsPanel
+          {showFoodTour ? (
+            <div id="section-food-tour" className="scroll-mt-24">
+              <EventFoodTourStopsPanel
+                eventId={eventId}
+                event={event}
+                canEdit={canEditOps}
+              />
+            </div>
+          ) : null}
+
+          <div id="section-attendees" className="scroll-mt-24">
+            <EventAttendeesPanel
               eventId={eventId}
               event={event}
               canEdit={canEditOps}
             />
-          )}
+          </div>
 
-          <EventAttendeesPanel
-            eventId={eventId}
-            event={event}
-            canEdit={canEditOps}
-          />
-
-          <EventArtifactsPanel
-            event={event}
-            canEditAdmin={
-              user?.role === 'admin' ||
-              roleAssignments.some((r) => r.role === 'Admin')
-            }
-            canEditOps={
-              user?.role === 'admin' ||
-              roleAssignments.some((r) =>
-                ['Ops', 'Ops Manager', 'Admin'].includes(r.role)
-              )
-            }
-          />
-
-          {hasRos && (
-            <RunOfShowForm
+          <div id="section-artifacts" className="scroll-mt-24">
+            <EventArtifactsPanel
               event={event}
-              user={user}
+              canEditAdmin={
+                user?.role === 'admin' ||
+                roleAssignments.some((r) => r.role === 'Admin')
+              }
+              canEditOps={
+                user?.role === 'admin' ||
+                roleAssignments.some((r) =>
+                  ['Ops', 'Ops Manager', 'Admin'].includes(r.role)
+                )
+              }
+            />
+          </div>
+
+          {hasRos ? (
+            <div id="section-ros" className="scroll-mt-24">
+              <RunOfShowForm
+                event={event}
+                user={user}
+                canEdit={
+                  user?.role === 'admin' ||
+                  roleAssignments.some((r) =>
+                    ['Ops', 'Ops Manager', 'Sales', 'Admin'].includes(r.role)
+                  )
+                }
+              />
+            </div>
+          ) : null}
+
+          <div id="section-beo" className="scroll-mt-24">
+            <BeoDocumentPanel
+              event={event}
               canEdit={
                 user?.role === 'admin' ||
                 roleAssignments.some((r) =>
@@ -262,36 +309,37 @@ export default function EventDetail() {
                 )
               }
             />
-          )}
+          </div>
 
-          <BeoDocumentPanel
-            event={event}
-            canEdit={
-              user?.role === 'admin' ||
-              roleAssignments.some((r) =>
-                ['Ops', 'Ops Manager', 'Sales', 'Admin'].includes(r.role)
-              )
-            }
-          />
-
-          <PostEventPanel
-            event={event}
-            canEdit={
-              user?.role === 'admin' ||
-              roleAssignments.some((r) =>
-                [
-                  'Ops',
-                  'Ops Manager',
-                  'Sales',
-                  'Admin',
-                  'Event Host',
-                ].includes(r.role)
-              )
-            }
-          />
+          <div id="section-post-event" className="scroll-mt-24">
+            <PostEventPanel
+              event={event}
+              canEdit={
+                user?.role === 'admin' ||
+                roleAssignments.some((r) =>
+                  [
+                    'Ops',
+                    'Ops Manager',
+                    'Sales',
+                    'Admin',
+                    'Event Host',
+                  ].includes(r.role)
+                )
+              }
+            />
+          </div>
         </TabsContent>
 
-        <TabsContent value="tasks" className="mt-6">
+        <TabsContent value="tasks" className="mt-6 space-y-6">
+          <p className="text-sm text-gray-600">
+            Staffing = panel owners. List below = every workflow task.
+          </p>
+          <EventStaffingPanel
+            eventId={eventId}
+            event={event}
+            onGenerate={() => generateWorkflowMutation.mutate()}
+            generatePending={generateWorkflowMutation.isPending}
+          />
           <EventTasksPanel
             eventId={eventId}
             user={user}
