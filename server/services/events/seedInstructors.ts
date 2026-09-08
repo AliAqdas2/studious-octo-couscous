@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
@@ -7,10 +7,22 @@ import { getDb } from "../../db/index.js";
 import { instructors } from "../../db/schema/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_MARKDOWN_PATH = join(
-  __dirname,
-  "../../../data/instructors-and-bios.md"
-);
+
+/** Resolve markdown for tsx (server/…), bundled dist/, and Docker cwd /app. */
+export function resolveInstructorsMarkdownPath(): string {
+  const candidates = [
+    join(process.cwd(), "data", "instructors-and-bios.md"),
+    join(__dirname, "data", "instructors-and-bios.md"),
+    join(__dirname, "../data", "instructors-and-bios.md"),
+    join(__dirname, "../../../data", "instructors-and-bios.md"),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  throw new Error(
+    `[seed-instructors] instructors-and-bios.md not found. Tried:\n  ${candidates.join("\n  ")}`
+  );
+}
 
 export interface InstructorSeedRow {
   name: string;
@@ -68,9 +80,10 @@ export function parseInstructorsMarkdown(content: string): InstructorSeedRow[] {
 }
 
 export function loadInstructorSeedRows(
-  markdownPath = DEFAULT_MARKDOWN_PATH
+  markdownPath?: string
 ): InstructorSeedRow[] {
-  const content = readFileSync(markdownPath, "utf8");
+  const path = markdownPath || resolveInstructorsMarkdownPath();
+  const content = readFileSync(path, "utf8");
   return parseInstructorsMarkdown(content);
 }
 
@@ -82,7 +95,7 @@ function requireDb() {
 
 /** Seed instructor bios from bundled markdown. Idempotent. */
 export async function seedInstructors(
-  markdownPath = DEFAULT_MARKDOWN_PATH
+  markdownPath?: string
 ): Promise<{ upserted: number }> {
   const db = requireDb();
   const rows = loadInstructorSeedRows(markdownPath);

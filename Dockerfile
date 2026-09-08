@@ -120,6 +120,7 @@ RUN python3 -m venv /app/.venv-beo \
 COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 COPY venueimages ./venueimages
+COPY data/instructors-and-bios.md ./data/instructors-and-bios.md
 COPY scripts/data ./scripts/data
 COPY scripts/pdf_to_docx.py ./scripts/pdf_to_docx.py
 COPY client/public/mangiadc-logo.png ./client/public/mangiadc-logo.png
