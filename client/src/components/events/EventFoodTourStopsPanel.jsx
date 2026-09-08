@@ -21,6 +21,7 @@ import {
   ORDER_MODES,
   TIME_LABELS,
 } from '@/lib/eateryOrders';
+import { foodTourStopsComplete } from '@/lib/opsPanelCompletion';
 
 function defaultGuestCount(event) {
   return (
@@ -195,7 +196,7 @@ export default function EventFoodTourStopsPanel({
     <OpsPanelShell
       title="Food tour stops"
       icon={MapPinned}
-      complete={stops.length > 0}
+      complete={foodTourStopsComplete({ stopCount: stops.length })}
       milestoneLabel={
         stops.length
           ? `${stops.length} stop${stops.length === 1 ? '' : 's'}`

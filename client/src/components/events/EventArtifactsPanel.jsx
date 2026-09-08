@@ -46,7 +46,7 @@ function linkRows(form) {
       href: form.participationListUrl,
     },
     { label: 'Post-event survey', value: form.postEventSurveyUrl },
-    { label: 'CRM workflow link', value: form.workflowCrmUrl },
+    { label: 'Event workflow link', value: form.workflowCrmUrl },
     { label: 'BEO Shell URL', value: form.beoShellUrl },
     { label: 'FareHarbor item', value: form.fareharborLink },
   ];

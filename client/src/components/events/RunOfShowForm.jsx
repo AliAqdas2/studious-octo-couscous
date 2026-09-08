@@ -25,6 +25,7 @@ import { ClipboardList, CalendarPlus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
+import { rosComplete } from '@/lib/opsPanelCompletion';
 import {
   ROS_CALENDAR_SAVE_HINT,
   fromDatetimeLocalValue,
@@ -531,7 +532,16 @@ export default function RunOfShowForm({ event, user, canEdit = false }) {
   const showScheduleSummary = isScheduled && !editingSchedule;
   const showDetailsSummary = completed && !editingDetails;
   const rosFullyComplete =
-    isScheduled && completed && !editingSchedule && !editingDetails;
+    rosComplete({
+      run_of_show: {
+        scheduledAt: state?.scheduledAt,
+        completedAt: state?.completed
+          ? state?.runOfShow?.completedAt || state?.completedAt || true
+          : null,
+      },
+    }) &&
+    !editingSchedule &&
+    !editingDetails;
   const rosMilestone = getPanelMilestoneLabel('ros', event || state?.event);
 
   const scheduleForm = (

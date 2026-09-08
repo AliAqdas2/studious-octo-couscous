@@ -67,6 +67,7 @@ import {
   updateEventOpsFeatures,
 } from "../services/events/eventOpsSettings.js";
 import type { EventOpsFeatures } from "../services/events/eventOpsFeatures.js";
+import { getOpsPanelSideFlags } from "../services/events/opsPanelSideFlags.js";
 
 function requireDb() {
   const db = getDb();
@@ -80,6 +81,21 @@ const attendeeUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
+
+/** Bulk inventory / attendee / stop counts for Event Progress. */
+router.get(
+  "/events/ops-panel-side-flags",
+  requireAuth,
+  requireAdmin,
+  async (_req, res, next) => {
+    try {
+      const byEventId = await getOpsPanelSideFlags();
+      res.json({ byEventId });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 router.post(
   "/events/:id/generate-workflow",

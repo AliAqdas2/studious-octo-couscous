@@ -5,6 +5,25 @@
 /** @typedef {'deposit' | 'ros' | 'inventory' | 'beo' | 'artifacts' | 'food_tour_stops' | 'attendees' | 'post_event'} OpsPanelId */
 
 /**
+ * Shared Event Detail / staffing / Event Progress milestone list.
+ * @type {Array<{ panelId: OpsPanelId, label: string, foodTourOnly?: boolean }>}
+ */
+export const OPS_PANEL_MILESTONES = [
+  { panelId: 'deposit', label: 'Deposit Intake' },
+  { panelId: 'ros', label: 'Run of Show' },
+  { panelId: 'inventory', label: 'Inventory' },
+  { panelId: 'beo', label: 'BEO document' },
+  { panelId: 'artifacts', label: 'BEO & artifact links' },
+  {
+    panelId: 'food_tour_stops',
+    label: 'Food tour stops',
+    foodTourOnly: true,
+  },
+  { panelId: 'attendees', label: 'Instructor & attendees' },
+  { panelId: 'post_event', label: 'During & post-event' },
+];
+
+/**
  * @type {Record<OpsPanelId, { titles: RegExp[], traceIds?: string[] }>}
  */
 export const OPS_PANEL_TASK_MATCHERS = {

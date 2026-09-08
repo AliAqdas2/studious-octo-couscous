@@ -16,6 +16,7 @@ import {
 import { Mail, Save, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import { postEventComplete } from '@/lib/opsPanelCompletion';
 
 /**
  * During / post-event capture: staff hours, thank-you V1/V2, EMAIL 2, lead (plan 06).
@@ -122,12 +123,27 @@ export default function PostEventPanel({ event, canEdit = false }) {
 
   const features = data?.features || {};
   const experienceName = data?.state?.experienceName || event.event_type;
+  const panelComplete = postEventComplete({
+    ...event,
+    staff_hours_notes: form.staffHoursNotes,
+    staffHoursNotes: form.staffHoursNotes,
+    post_event: {
+      thankYouSent: form.thankYouSent,
+      thankYouVariant: form.thankYouVariant,
+    },
+    postEvent: {
+      thankYouSent: form.thankYouSent,
+      thankYouVariant: form.thankYouVariant,
+    },
+  });
 
   return (
     <OpsPanelShell
       title="During & post-event"
       icon={Mail}
-      forceOpen
+      complete={panelComplete}
+      doneBadge={panelComplete}
+      forceOpen={!panelComplete}
       milestoneLabel={
         form.thankYouVariant
           ? `Thank-you ${String(form.thankYouVariant).toUpperCase()}`

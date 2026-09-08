@@ -3,6 +3,16 @@
  * Offsets are days before event_date.
  */
 
+import {
+  artifactsComplete,
+  beoSaved,
+  depositComplete,
+  hasDeposit,
+  parseRos,
+} from '@/lib/opsPanelCompletion';
+
+export { artifactsComplete } from '@/lib/opsPanelCompletion';
+
 export const MILESTONE_OFFSETS = {
   deposit: null, // always until done once deposit exists
   ros_schedule: 18, // ~2.5 weeks
@@ -56,54 +66,6 @@ export function formatMilestoneCountdown(daysLeft) {
   if (daysLeft === 0) return 'Due today';
   if (daysLeft === -1) return 'Overdue by 1 day';
   return `Overdue by ${Math.abs(daysLeft)} days`;
-}
-
-function parseRos(event) {
-  const raw = event?.run_of_show ?? event?.runOfShow;
-  if (!raw) return {};
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw) || {};
-    } catch {
-      return {};
-    }
-  }
-  return raw;
-}
-
-function hasDeposit(event) {
-  return Boolean(
-    event?.deposit_received ||
-      event?.depositReceived ||
-      event?.deposit_received_at ||
-      event?.depositReceivedAt
-  );
-}
-
-function depositComplete(event) {
-  return Boolean(
-    event?.deposit_intake_completed_at || event?.depositIntakeCompletedAt
-  );
-}
-
-function beoSaved(event) {
-  return Boolean(
-    event?.beo_document_updated_at ||
-      event?.beoDocumentUpdatedAt ||
-      event?.beo_document_html ||
-      event?.beoDocumentHtml
-  );
-}
-
-/** Ops day-of essentials: BEO Shell + FareHarbor embed. */
-export function artifactsComplete(event) {
-  const shell = String(
-    event?.beo_shell_url || event?.beoShellUrl || ''
-  ).trim();
-  const fh = String(
-    event?.fareharbor_link || event?.fareharborLink || ''
-  ).trim();
-  return Boolean(shell) && Boolean(fh);
 }
 
 /**

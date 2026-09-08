@@ -7,28 +7,15 @@ import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import TaskAssignControls from '@/components/events/TaskAssignControls';
 import { isFoodTourExperience } from '@/lib/foodTourExperiences';
-import { findOpsPanelTask } from '@/lib/opsPanelTasks';
+import {
+  findOpsPanelTask,
+  OPS_PANEL_MILESTONES,
+} from '@/lib/opsPanelTasks';
 import {
   buildAssignUpdate,
   buildTeamMemberOptions,
   enrichTeamMemberOptions,
 } from '@/lib/taskTeamMembers';
-
-/** @type {Array<{ panelId: import('@/lib/opsPanelTasks').OpsPanelId, label: string, foodTourOnly?: boolean }>} */
-const MILESTONES = [
-  { panelId: 'deposit', label: 'Deposit Intake' },
-  { panelId: 'ros', label: 'Run of Show' },
-  { panelId: 'inventory', label: 'Inventory' },
-  { panelId: 'beo', label: 'BEO document' },
-  { panelId: 'artifacts', label: 'BEO & artifact links' },
-  {
-    panelId: 'food_tour_stops',
-    label: 'Food tour stops',
-    foodTourOnly: true,
-  },
-  { panelId: 'attendees', label: 'Instructor & attendees' },
-  { panelId: 'post_event', label: 'During & post-event' },
-];
 
 /**
  * Compact Who / Duration / Due for each ops-panel milestone (not all workflow tasks).
@@ -53,7 +40,7 @@ const EventStaffingPanel = ({
 
   const milestones = useMemo(
     () =>
-      MILESTONES.filter((m) => !m.foodTourOnly || showFoodTour),
+      OPS_PANEL_MILESTONES.filter((m) => !m.foodTourOnly || showFoodTour),
     [showFoodTour]
   );
 

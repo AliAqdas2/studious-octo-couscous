@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Plus, Trash2, Upload, Users, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import { attendeesComplete } from '@/lib/opsPanelCompletion';
 
 /**
  * Instructor + guest list for the BEO (manual, Excel/CSV, Google Sheet).
@@ -54,6 +55,10 @@ export default function EventAttendeesPanel({
     () => (Array.isArray(data?.attendees) ? data.attendees : []),
     [data]
   );
+
+  const panelComplete = attendeesComplete(event, {
+    attendeeCount: attendees.length,
+  });
 
   const instructorId = event?.instructor_id || '';
 
@@ -176,8 +181,8 @@ export default function EventAttendeesPanel({
     <OpsPanelShell
       title="Instructor & attendees"
       icon={Users}
-      complete={Boolean(instructorId) && attendees.length > 0}
-      doneBadge={Boolean(instructorId) && attendees.length > 0}
+      complete={panelComplete}
+      doneBadge={panelComplete}
       milestoneLabel={
         attendees.length
           ? `${attendees.length} guest${attendees.length === 1 ? '' : 's'}`

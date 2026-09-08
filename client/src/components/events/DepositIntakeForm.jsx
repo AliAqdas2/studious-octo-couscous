@@ -18,6 +18,7 @@ import { ClipboardList, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
+import { depositComplete } from '@/lib/opsPanelCompletion';
 
 const VENDOR_DIRECTORY =
   'https://docs.google.com/document/d/1HHU1nfh-3a0UdJVzgWqRqUFxBpfeC3Y_GQT-2Serbv4/edit';
@@ -441,8 +442,7 @@ export default function DepositIntakeForm({ event, user }) {
     event?.can_view_deposit_amount === true;
 
   const completed =
-    Boolean(event?.deposit_intake_completed_at) ||
-    Boolean(intakeState?.completed);
+    depositComplete(event) || Boolean(intakeState?.completed);
 
   const sourceEvent = intakeState?.event || event;
 

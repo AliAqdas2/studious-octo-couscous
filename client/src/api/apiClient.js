@@ -490,6 +490,13 @@ export const base44 = {
         return { data: body };
       }
 
+      if (name === "getOpsPanelSideFlags") {
+        const body = await request(`/api/events/ops-panel-side-flags`, {
+          method: "GET",
+        });
+        return { data: body };
+      }
+
       if (name === "generateEventWorkflow") {
         const eventId = payload.eventId || payload.id;
         if (!eventId) {

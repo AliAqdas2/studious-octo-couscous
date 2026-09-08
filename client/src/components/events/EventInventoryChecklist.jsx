@@ -16,6 +16,7 @@ import { ExternalLink, Package, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-r
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
+import { inventoryComplete as inventoryRowsComplete } from '@/lib/opsPanelCompletion';
 
 function cloneItems(items) {
   return (items || []).map((i) => ({ ...i }));
@@ -283,7 +284,8 @@ export default function EventInventoryChecklist({
     [displayRows]
   );
   const hasInventory = (summary?.total ?? items.length) > 0;
-  const inventoryComplete = hasInventory && !isEditing;
+  const inventoryComplete =
+    inventoryRowsComplete({ hasInventory }) && !isEditing;
   const inventoryMilestone = getPanelMilestoneLabel('inventory', event || {}, {
     hasInventory,
   });
