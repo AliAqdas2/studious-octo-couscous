@@ -25,7 +25,7 @@ import PostEventPanel from '@/components/events/PostEventPanel';
 import WorkflowTaskExtras from '@/components/events/WorkflowTaskExtras';
 import { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
 import EventFormDialog from '@/components/events/EventFormDialog';
-import { buildTeamMemberOptions } from '@/lib/taskTeamMembers';
+import { buildTeamMemberOptions, enrichTeamMemberOptions } from '@/lib/taskTeamMembers';
 import {
   isFullEventTaskViewer,
   isMyAssignedTask,
@@ -75,9 +75,18 @@ export default function EventDetail() {
       return Array.isArray(rows) ? rows : [];
     },
   });
+  const { data: users = [] } = useQuery({
+    queryKey: ['users-list-assign'],
+    queryFn: () => base44.entities.User.list('-created_date', 200),
+    staleTime: 60_000,
+  });
   const teamMembers = React.useMemo(
-    () => buildTeamMemberOptions(allRoleAssignments),
-    [allRoleAssignments]
+    () =>
+      enrichTeamMemberOptions(
+        buildTeamMemberOptions(allRoleAssignments),
+        users
+      ),
+    [allRoleAssignments, users]
   );
 
   const { data: opsFeaturesData } = useQuery({
@@ -698,15 +707,15 @@ export default function EventDetail() {
         <EventFormDialog event={event} onClose={() => setShowEditForm(false)} />
       )}
 
-      {/* Deposit Intake — Sales meeting capture (plan 02) */}
-      <DepositIntakeForm event={event} user={user} />
-
       <EventStaffingPanel
         eventId={eventId}
         event={event}
         onGenerate={() => generateWorkflowMutation.mutate()}
         generatePending={generateWorkflowMutation.isPending}
       />
+
+      {/* Deposit Intake — Sales meeting capture (plan 02) */}
+      <DepositIntakeForm event={event} user={user} />
 
       {/* Inventory checklist — any experience with matching catalog experience_keys */}
       {event?.event_type && (

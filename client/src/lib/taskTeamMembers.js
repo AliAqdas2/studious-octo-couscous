@@ -13,6 +13,31 @@
  */
 
 /**
+ * @param {unknown} user
+ * @returns {{ id: string, name: string, email: string } | null}
+ */
+function normalizeUserRow(user) {
+  if (!user || typeof user !== 'object') return null;
+  const row = /** @type {Record<string, unknown>} */ (user);
+  const id = String(row.id || '');
+  if (!id) return null;
+  const name = String(
+    row.full_name || row.fullName || row.name || ''
+  ).trim();
+  const email = String(row.email || '').trim();
+  return { id, name, email };
+}
+
+/**
+ * Prefer a human name over placeholder / email-only.
+ * @param {string} name
+ */
+function isWeakName(name) {
+  const n = String(name || '').trim();
+  return !n || n === 'Team member' || n.length < 2;
+}
+
+/**
  * @param {unknown[]} assignments
  * @returns {TeamMemberOption[]}
  */
@@ -50,10 +75,43 @@ export function buildTeamMemberOptions(assignments) {
   }
 
   return [...byUser.values()].sort((a, b) => {
-    const roleCmp = a.role.localeCompare(b.role);
-    if (roleCmp !== 0) return roleCmp;
-    return a.name.localeCompare(b.name);
+    const nameCmp = a.name.localeCompare(b.name);
+    if (nameCmp !== 0) return nameCmp;
+    return a.role.localeCompare(b.role);
   });
+}
+
+/**
+ * Fill blank / weak RoleAssignment names from User rows (full_name / email).
+ * @param {TeamMemberOption[]} members
+ * @param {unknown[]} users
+ * @returns {TeamMemberOption[]}
+ */
+export function enrichTeamMemberOptions(members, users) {
+  const list = Array.isArray(members) ? members : [];
+  const byId = new Map();
+  for (const raw of Array.isArray(users) ? users : []) {
+    const u = normalizeUserRow(raw);
+    if (u) byId.set(u.id, u);
+  }
+
+  return list
+    .map((m) => {
+      if (!isWeakName(m.name)) return m;
+      const u = byId.get(m.userId);
+      if (!u) return m;
+      const name = u.name || u.email || m.name;
+      return {
+        ...m,
+        name,
+        label: `${name} — ${m.role}`,
+      };
+    })
+    .sort((a, b) => {
+      const nameCmp = a.name.localeCompare(b.name);
+      if (nameCmp !== 0) return nameCmp;
+      return a.role.localeCompare(b.role);
+    });
 }
 
 /**

@@ -11,6 +11,7 @@ import { findOpsPanelTask } from '@/lib/opsPanelTasks';
 import {
   buildAssignUpdate,
   buildTeamMemberOptions,
+  enrichTeamMemberOptions,
 } from '@/lib/taskTeamMembers';
 
 /** @type {Array<{ panelId: import('@/lib/opsPanelTasks').OpsPanelId, label: string, foodTourOnly?: boolean }>} */
@@ -78,9 +79,19 @@ const EventStaffingPanel = ({
     },
   });
 
+  const { data: users = [] } = useQuery({
+    queryKey: ['users-list-assign'],
+    queryFn: () => base44.entities.User.list('-created_date', 200),
+    staleTime: 60_000,
+  });
+
   const teamMembers = useMemo(
-    () => buildTeamMemberOptions(allRoleAssignments),
-    [allRoleAssignments]
+    () =>
+      enrichTeamMemberOptions(
+        buildTeamMemberOptions(allRoleAssignments),
+        users
+      ),
+    [allRoleAssignments, users]
   );
 
   const rows = useMemo(

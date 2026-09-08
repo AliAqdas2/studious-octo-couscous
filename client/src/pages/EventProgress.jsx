@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Activity, ExternalLink, Search } from 'lucide-react';
-import { buildTeamMemberOptions } from '@/lib/taskTeamMembers';
+import { buildTeamMemberOptions, enrichTeamMemberOptions } from '@/lib/taskTeamMembers';
 
 function daysDeltaLabel(dueRaw) {
   if (!dueRaw) return { text: 'No due date', kind: 'none' };
@@ -76,9 +76,16 @@ export default function EventProgress() {
     },
   });
 
+  const { data: users = [] } = useQuery({
+    queryKey: ['users-list-assign'],
+    queryFn: () => base44.entities.User.list('-created_date', 200),
+    staleTime: 60_000,
+  });
+
   const teamMembers = useMemo(
-    () => buildTeamMemberOptions(roleAssignments),
-    [roleAssignments]
+    () =>
+      enrichTeamMemberOptions(buildTeamMemberOptions(roleAssignments), users),
+    [roleAssignments, users]
   );
 
   const nameFor = (userId) => {

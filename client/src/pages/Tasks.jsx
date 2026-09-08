@@ -17,6 +17,7 @@ import TaskAssignControls from '@/components/events/TaskAssignControls';
 import {
   buildAssignUpdate,
   buildTeamMemberOptions,
+  enrichTeamMemberOptions,
 } from '@/lib/taskTeamMembers';
 import { isMyAssignedTask } from '@/lib/taskMineHighlight';
 
@@ -68,9 +69,18 @@ export default function Tasks() {
       return Array.isArray(rows) ? rows : [];
     },
   });
+  const { data: users = [] } = useQuery({
+    queryKey: ['users-list-assign'],
+    queryFn: () => base44.entities.User.list('-created_date', 200),
+    staleTime: 60_000,
+  });
   const teamMembers = React.useMemo(
-    () => buildTeamMemberOptions(allRoleAssignments),
-    [allRoleAssignments]
+    () =>
+      enrichTeamMemberOptions(
+        buildTeamMemberOptions(allRoleAssignments),
+        users
+      ),
+    [allRoleAssignments, users]
   );
 
   const acknowledgeTaskMutation = useMutation({

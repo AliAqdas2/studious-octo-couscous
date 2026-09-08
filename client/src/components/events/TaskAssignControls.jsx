@@ -2,18 +2,27 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Minus, Plus } from 'lucide-react';
 import {
   DURATION_STEP_MINUTES,
   formatEstimatedMinutes,
 } from '@/lib/taskTeamMembers';
 
+const UNASSIGNED = '__unassigned__';
+
 /**
  * Who / duration / due-date controls for a workflow task card.
  *
  * @param {{
  *   task: Record<string, unknown>,
- *   teamMembers: Array<{ userId: string, label: string }>,
+ *   teamMembers: Array<{ userId: string, label: string, name?: string, role?: string }>,
  *   disabled?: boolean,
  *   onAssign: (userId: string | null) => void,
  *   onDurationChange: (minutes: number) => void,
@@ -28,7 +37,7 @@ const TaskAssignControls = ({
   onDurationChange,
   onDueDateChange,
 }) => {
-  const assignedId = task.assigned_user || task.assignedUser || '';
+  const assignedId = String(task.assigned_user || task.assignedUser || '');
   const minutes =
     task.estimated_minutes != null
       ? Number(task.estimated_minutes)
@@ -37,7 +46,14 @@ const TaskAssignControls = ({
         : 0;
   const dueRaw = task.due_date || task.dueDate || '';
   const dueValue = dueRaw ? String(dueRaw).slice(0, 10) : '';
-  const assigneeLabel = teamMembers.find((m) => m.userId === assignedId)?.label;
+  const selected = teamMembers.find((m) => m.userId === assignedId);
+  const sortedMembers = React.useMemo(
+    () =>
+      [...teamMembers].sort((a, b) =>
+        String(a.name || a.label).localeCompare(String(b.name || b.label))
+      ),
+    [teamMembers]
+  );
 
   const bumpDuration = (delta) => {
     const next = Math.max(0, (Number.isFinite(minutes) ? minutes : 0) + delta);
@@ -47,34 +63,57 @@ const TaskAssignControls = ({
   return (
     <div className="mt-3 border-t pt-3 space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="space-y-1">
-          <Label className="text-xs text-gray-600">Who is going to do this?</Label>
-          <select
-            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-white"
-            value={assignedId}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-gray-600">Assignee</Label>
+          <Select
+            value={assignedId || UNASSIGNED}
             disabled={disabled}
-            onChange={(e) => onAssign(e.target.value || null)}
+            onValueChange={(value) =>
+              onAssign(value === UNASSIGNED ? null : value)
+            }
           >
-            <option value="">Unassigned</option>
-            {teamMembers.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          {assigneeLabel ? (
-            <p className="text-[11px] text-gray-500 truncate">Assigned: {assigneeLabel}</p>
-          ) : null}
+            <SelectTrigger className="h-9 w-full bg-white">
+              <SelectValue placeholder="Choose teammate…">
+                {selected ? (
+                  <span className="truncate text-left">
+                    <span className="font-medium">{selected.name || selected.label}</span>
+                    {selected.role ? (
+                      <span className="text-muted-foreground"> · {selected.role}</span>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">Choose teammate…</span>
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+              {sortedMembers.map((m) => (
+                <SelectItem key={m.userId} value={m.userId}>
+                  <span className="flex flex-col items-start gap-0.5 py-0.5">
+                    <span className="font-medium leading-tight">
+                      {m.name || m.label}
+                    </span>
+                    {m.role ? (
+                      <span className="text-[11px] text-muted-foreground leading-tight">
+                        {m.role}
+                      </span>
+                    ) : null}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-xs text-gray-600">How long will it take?</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-gray-600">Duration</Label>
           <div className="flex items-center gap-1">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              className="h-8 w-8 p-0"
+              className="h-9 w-9 p-0"
               disabled={disabled || minutes <= 0}
               onClick={() => bumpDuration(-DURATION_STEP_MINUTES)}
               title={`−${DURATION_STEP_MINUTES} min`}
@@ -88,7 +127,7 @@ const TaskAssignControls = ({
               type="button"
               size="sm"
               variant="outline"
-              className="h-8 w-8 p-0"
+              className="h-9 w-9 p-0"
               disabled={disabled}
               onClick={() => bumpDuration(DURATION_STEP_MINUTES)}
               title={`+${DURATION_STEP_MINUTES} min`}
@@ -98,11 +137,11 @@ const TaskAssignControls = ({
           </div>
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-xs text-gray-600">Will do this by when?</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-gray-600">Due date</Label>
           <Input
             type="date"
-            className="h-8 text-sm"
+            className="h-9 text-sm bg-white"
             value={dueValue}
             disabled={disabled}
             onChange={(e) => onDueDateChange(e.target.value || null)}
