@@ -15,22 +15,35 @@ import { AlertCircle } from 'lucide-react';
  *     daysOverdue: number,
  *   }>,
  *   nameFor: (id: unknown) => string|null,
+ *   title?: string,
+ *   subtitle?: string,
+ *   emptyText?: string,
+ *   columnLabel?: string,
+ *   eventTab?: 'details' | 'tasks',
  * }} props
  */
-const OverdueQueue = ({ items, nameFor }) => {
+const OverdueQueue = ({
+  items,
+  nameFor,
+  title = 'Overdue queue',
+  subtitle = 'Open panels past their due date',
+  emptyText = 'No overdue panels — nice work.',
+  columnLabel = 'Panel',
+  eventTab = 'details',
+}) => {
   return (
     <Card className="bg-white/90 border-orange-100 h-full">
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-bold text-gray-900 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-600" />
-          Overdue queue
+          {title}
         </CardTitle>
-        <p className="text-xs text-gray-500">Open panels past their due date</p>
+        <p className="text-xs text-gray-500">{subtitle}</p>
       </CardHeader>
       <CardContent className="p-0">
         {items.length === 0 ? (
           <p className="px-4 py-8 text-sm text-center text-gray-500">
-            No overdue panels — nice work.
+            {emptyText}
           </p>
         ) : (
           <div className="overflow-x-auto max-h-80 overflow-y-auto">
@@ -38,7 +51,7 @@ const OverdueQueue = ({ items, nameFor }) => {
               <thead className="sticky top-0 bg-slate-50">
                 <tr className="border-b text-left text-xs text-gray-500 uppercase tracking-wide">
                   <th className="px-4 py-2 font-medium">Event</th>
-                  <th className="px-4 py-2 font-medium">Panel</th>
+                  <th className="px-4 py-2 font-medium">{columnLabel}</th>
                   <th className="px-4 py-2 font-medium">Assignee</th>
                   <th className="px-4 py-2 font-medium text-right">Overdue</th>
                 </tr>
@@ -52,14 +65,19 @@ const OverdueQueue = ({ items, nameFor }) => {
                     <td className="px-4 py-2.5">
                       <Link
                         to={
-                          createPageUrl('EventDetail') + `?id=${row.eventId}`
+                          createPageUrl('EventDetail') +
+                          `?id=${row.eventId}${
+                            eventTab === 'tasks' ? '&tab=tasks' : ''
+                          }`
                         }
                         className="text-[#C84B31] hover:underline font-medium"
                       >
                         {row.eventName}
                       </Link>
                     </td>
-                    <td className="px-4 py-2.5 text-gray-800">{row.label}</td>
+                    <td className="px-4 py-2.5 text-gray-800 max-w-[14rem] truncate" title={row.label}>
+                      {row.label}
+                    </td>
                     <td className="px-4 py-2.5 text-gray-600">
                       {nameFor(row.assigneeId) || (
                         <span className="text-gray-400">Unassigned</span>

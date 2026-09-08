@@ -14,9 +14,16 @@ import { Users } from 'lucide-react';
  *     pct: number,
  *   }>,
  *   onSelectAssignee?: (userId: string) => void,
+ *   subtitle?: string,
+ *   emptyText?: string,
  * }} props
  */
-const TeamWorkloadTable = ({ rows, onSelectAssignee }) => {
+const TeamWorkloadTable = ({
+  rows,
+  onSelectAssignee,
+  subtitle = 'Workload on ops-panel assignments',
+  emptyText = 'No panel assignments yet.',
+}) => {
   return (
     <Card className="bg-white/90 border-orange-100 h-full">
       <CardHeader className="pb-2">
@@ -24,14 +31,12 @@ const TeamWorkloadTable = ({ rows, onSelectAssignee }) => {
           <Users className="w-4 h-4 text-[#C84B31]" />
           Team performance
         </CardTitle>
-        <p className="text-xs text-gray-500">
-          Workload on ops-panel assignments
-        </p>
+        <p className="text-xs text-gray-500">{subtitle}</p>
       </CardHeader>
       <CardContent className="p-0">
         {rows.length === 0 ? (
           <p className="px-4 py-8 text-sm text-center text-gray-500">
-            No panel assignments yet.
+            {emptyText}
           </p>
         ) : (
           <div className="overflow-x-auto max-h-80 overflow-y-auto">

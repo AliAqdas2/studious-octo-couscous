@@ -102,7 +102,8 @@ export default function EventDetail() {
 
   const sectionNavItems = useMemo(() => {
     /** @type {Array<{ id: string, label: string }>} */
-    const items = [{ id: 'section-deposit', label: 'Deposit' }];
+    const items = [{ id: 'section-staffing', label: 'Staffing' }];
+    items.push({ id: 'section-deposit', label: 'Deposit' });
     if (event?.event_type) {
       items.push({ id: 'section-inventory', label: 'Inventory' });
     }
@@ -189,7 +190,7 @@ export default function EventDetail() {
             )}
           </div>
           <p className="text-sm text-gray-600 mt-2 max-w-2xl">
-            Details = fill panels. Tasks = assign and complete work.
+            Details = panels + who owns them. Tasks = full workflow checklist.
           </p>
           {needsZach && experience?.flagNote && (
             <p className="text-xs text-amber-800 mt-2 max-w-xl">
@@ -221,14 +222,38 @@ export default function EventDetail() {
         <EventFormDialog event={event} onClose={() => setShowEditForm(false)} />
       )}
 
-      <Tabs value={tab} onValueChange={handleTabChange}>
-        <TabsList className="bg-white/80 border border-orange-100">
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+      <Tabs value={tab} onValueChange={handleTabChange} className="space-y-2">
+        <TabsList className="h-11 w-full sm:w-auto gap-1 rounded-xl border-2 border-[#C84B31]/30 bg-white p-1.5 shadow-sm">
+          <TabsTrigger
+            value="details"
+            className="flex-1 sm:flex-none min-w-[7.5rem] rounded-lg px-5 py-2 text-sm font-semibold text-gray-500 hover:bg-orange-50 hover:text-[#C84B31] data-[state=active]:bg-[#C84B31] data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:hover:bg-[#C84B31] data-[state=active]:hover:text-white"
+          >
+            Details
+          </TabsTrigger>
+          <TabsTrigger
+            value="tasks"
+            className="flex-1 sm:flex-none min-w-[7.5rem] rounded-lg px-5 py-2 text-sm font-semibold text-gray-500 hover:bg-orange-50 hover:text-[#C84B31] data-[state=active]:bg-[#C84B31] data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:hover:bg-[#C84B31] data-[state=active]:hover:text-white"
+          >
+            Tasks
+          </TabsTrigger>
         </TabsList>
+        <p className="text-xs text-gray-500">
+          {tab === 'details'
+            ? 'Assign panel owners, then fill Deposit, Inventory, ROS, and the rest.'
+            : 'Full workflow and checklist — assignee, duration, and due date per task.'}
+        </p>
 
-        <TabsContent value="details" className="mt-6 space-y-6">
+        <TabsContent value="details" className="mt-4 space-y-6">
           <EventDetailSectionNav items={sectionNavItems} />
+
+          <div id="section-staffing" className="scroll-mt-24">
+            <EventStaffingPanel
+              eventId={eventId}
+              event={event}
+              onGenerate={() => generateWorkflowMutation.mutate()}
+              generatePending={generateWorkflowMutation.isPending}
+            />
+          </div>
 
           <div id="section-deposit" className="scroll-mt-24">
             <DepositIntakeForm event={event} user={user} />
@@ -330,16 +355,7 @@ export default function EventDetail() {
           </div>
         </TabsContent>
 
-        <TabsContent value="tasks" className="mt-6 space-y-6">
-          <p className="text-sm text-gray-600">
-            Staffing = panel owners. List below = every workflow task.
-          </p>
-          <EventStaffingPanel
-            eventId={eventId}
-            event={event}
-            onGenerate={() => generateWorkflowMutation.mutate()}
-            generatePending={generateWorkflowMutation.isPending}
-          />
+        <TabsContent value="tasks" className="mt-4 space-y-6">
           <EventTasksPanel
             eventId={eventId}
             user={user}

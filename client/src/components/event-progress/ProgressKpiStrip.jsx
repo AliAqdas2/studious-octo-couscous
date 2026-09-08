@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
+  CheckSquare,
   Clock,
   Percent,
   UserX,
@@ -23,9 +24,16 @@ import {
  *   },
  *   activeFilter?: string,
  *   onSelect?: (key: string) => void,
+ *   variant?: 'panels' | 'tasks',
  * }} props
  */
-const ProgressKpiStrip = ({ kpis, activeFilter = 'all', onSelect }) => {
+const ProgressKpiStrip = ({
+  kpis,
+  activeFilter = 'all',
+  onSelect,
+  variant = 'panels',
+}) => {
+  const isTasks = variant === 'tasks';
   const items = [
     {
       key: 'all',
@@ -38,16 +46,16 @@ const ProgressKpiStrip = ({ kpis, activeFilter = 'all', onSelect }) => {
     },
     {
       key: 'done',
-      label: 'Panels complete',
+      label: isTasks ? 'Tasks complete' : 'Panels complete',
       value: `${kpis.panelsCompletePct}%`,
       hint: `${kpis.panelDone}/${kpis.panelTotal}`,
-      icon: Percent,
+      icon: isTasks ? CheckSquare : Percent,
       tone: 'text-green-700',
       bg: 'bg-green-50',
     },
     {
       key: 'overdue',
-      label: 'Overdue panels',
+      label: isTasks ? 'Overdue tasks' : 'Overdue panels',
       value: kpis.overduePanels,
       hint: 'Past due date',
       icon: Clock,
