@@ -27,7 +27,7 @@ export default function Tasks() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
-  const [viewMode, setViewMode] = useState('mine'); // mine | role | phase
+  const [viewMode, setViewMode] = useState('role'); // mine | role | phase
   const [phaseFilter, setPhaseFilter] = useState('all');
   const [eventFilter, setEventFilter] = useState('all');
   const [expandedThread, setExpandedThread] = useState(null);
@@ -234,19 +234,10 @@ export default function Tasks() {
       const assignedToMe = task.assigned_user === user.id;
       const unassignedInMyRole =
         !task.assigned_user &&
-        task.responsible_role ===
-          (user.role === 'admin' ? task.responsible_role : userOperationalRole) &&
-        (user.role !== 'admin' || activeTab === 'all' || task.responsible_role === activeTab);
+        user.role !== 'admin' &&
+        task.responsible_role === userOperationalRole;
       if (user.role === 'admin') {
-        // Admin "My": assigned to me; if a role tab is selected, also unassigned in that role
-        if (activeTab === 'all') {
-          if (!assignedToMe) return false;
-        } else if (
-          !assignedToMe &&
-          !( !task.assigned_user && task.responsible_role === activeTab)
-        ) {
-          return false;
-        }
+        if (!assignedToMe) return false;
       } else if (!assignedToMe && !unassignedInMyRole) {
         return false;
       }
@@ -254,8 +245,6 @@ export default function Tasks() {
       if (activeTab !== 'all' && task.responsible_role !== activeTab) return false;
     } else if (viewMode === 'phase') {
       if (phaseFilter !== 'all' && task.workflow_phase !== phaseFilter) return false;
-    } else if (activeTab !== 'all' && task.responsible_role !== activeTab) {
-      return false;
     }
     
     // Status filter
@@ -319,7 +308,7 @@ export default function Tasks() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-[#C84B31] mb-2">Event Tasks – Operations</h1>
+          <h1 className="text-4xl font-bold text-[#C84B31] mb-2">Event Tasks</h1>
           <p className="text-gray-600">Central task management across all events</p>
         </div>
       </div>
@@ -441,8 +430,8 @@ export default function Tasks() {
         </CardContent>
       </Card>
 
-      {/* Role Tabs - admin or role inbox */}
-      {(user?.role === 'admin' || viewMode === 'role') && viewMode !== 'phase' && (
+      {/* Role tabs — Role inbox only */}
+      {viewMode === 'role' && (
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-4 md:grid-cols-8 bg-white/80 backdrop-blur-sm overflow-x-auto">
             <TabsTrigger value="all">All</TabsTrigger>
@@ -457,16 +446,10 @@ export default function Tasks() {
         </Tabs>
       )}
 
-      {/* Phase / My view without nested role tabs */}
-      {(viewMode === 'phase' || (viewMode === 'mine' && user?.role !== 'admin')) && (
+      {/* My Tasks / By phase — no role tabs */}
+      {(viewMode === 'phase' || viewMode === 'mine') && (
         <div className="mt-6">
           {renderTaskList()}
-        </div>
-      )}
-
-      {viewMode === 'mine' && user?.role === 'admin' && (
-        <div className="mt-2 text-sm text-gray-500">
-          Showing tasks assigned to you{activeTab !== 'all' ? ` (plus unassigned ${activeTab})` : ''}.
         </div>
       )}
     </div>
