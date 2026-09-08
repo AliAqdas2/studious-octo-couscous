@@ -100,6 +100,7 @@ export interface WrapBeoPrintOptions {
 
 /**
  * Full HTML document for Playwright PDF (print media, US Letter).
+ * Repeating thead run-bar for pages 2+; page 1 header is removed later via PyMuPDF redact.
  */
 export function wrapBeoHtmlForPrint(
   beoHtml: string,
