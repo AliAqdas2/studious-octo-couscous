@@ -49,30 +49,21 @@ const DEFAULT_CHECKLIST = [
   { title: "Participation List - Link", order: 4 },
   { title: "Add Ons: Logo'd aprons, glassware and Cheese board", order: 5 },
   { title: "Did we send it to supplier?", order: 6 },
-  {
-    title:
-      "Interest in consumption on-site Y or N (Includes: drink tickets)",
-    order: 7,
-  },
-  {
-    title: "If Yes, How many drink tickets / beverages per person?",
-    order: 8,
-  },
-  { title: "BEO?", order: 9 },
-  { title: "Final HC", order: 10 },
-  { title: "Did we send an event flow reminder email?", order: 11 },
-  { title: "Remaining Balance Invoice Number", order: 12 },
-  { title: "Remaining Balance and Headcount DUE", order: 13 },
-  { title: "CC form", order: 14 },
+  { title: "BEO?", order: 7 },
+  { title: "Final HC", order: 8 },
+  { title: "Did we send an event flow reminder email?", order: 9 },
+  { title: "Remaining Balance Invoice Number", order: 10 },
+  { title: "Remaining Balance and Headcount DUE", order: 11 },
+  { title: "CC form", order: 12 },
   {
     title:
       "Did we schedule an Internal BEO discussion with the instructor and Event Team Lead?",
-    order: 15,
+    order: 13,
   },
   {
     title:
       "Has Operation Support confirmed when they are planning on meeting the location and time they are meeting (This can be done preferably by SMS or Email)",
-    order: 16,
+    order: 14,
   },
 ];
 

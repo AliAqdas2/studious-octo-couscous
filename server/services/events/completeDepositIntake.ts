@@ -11,7 +11,7 @@ import {
   type DepositIntakePayload,
 } from "./depositIntakeTypes.js";
 import { sendDepositNotifyEmail } from "./depositNotifyEmail.js";
-import { generateEventWorkflow } from "./generateWorkflow.js";
+import { generateEventWorkflow, reconcileEventWorkflowTasks } from "./generateWorkflow.js";
 import { listActiveHouseVenueNames } from "./venuesService.js";
 import { syncLeadEventVenue } from "./syncLeadEventVenue.js";
 
@@ -216,9 +216,11 @@ export async function completeDepositIntake(
     );
   }
 
-  // Instantiate workflow if not already generated (first complete or late update)
-  let workflowResult: Awaited<ReturnType<typeof generateEventWorkflow>> | null =
-    null;
+  // Instantiate workflow if not already generated; otherwise reconcile new conditionals
+  let workflowResult:
+    | Awaited<ReturnType<typeof generateEventWorkflow>>
+    | Awaited<ReturnType<typeof reconcileEventWorkflowTasks>>
+    | null = null;
   const existingWorkflow = await db
     .select({ id: tasks.id })
     .from(tasks)
@@ -231,6 +233,15 @@ export async function completeDepositIntake(
     } catch (err) {
       console.warn(
         "[completeDepositIntake] generateEventWorkflow failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  } else {
+    try {
+      workflowResult = await reconcileEventWorkflowTasks(eventId, user);
+    } catch (err) {
+      console.warn(
+        "[completeDepositIntake] reconcileEventWorkflowTasks failed:",
         err instanceof Error ? err.message : err
       );
     }

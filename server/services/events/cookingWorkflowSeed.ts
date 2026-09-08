@@ -214,7 +214,20 @@ export const COOKING_TASK_DEFS: CookingTaskDefSeed[] = [
     dueOffsetDays: 17,
     dueAnchor: "event_date",
     sortOrder: 310,
+    conditional: { if: "alcohol_included" },
     traceId: "C046",
+  },
+  {
+    phase: "upon_deposit",
+    title: "Confirm drink tickets / beverages per person",
+    description:
+      "Ticketed bar — capture how many drink tickets or beverages per person.",
+    role: "Ops",
+    dueOffsetDays: 0,
+    dueAnchor: "immediate",
+    sortOrder: 315,
+    conditional: { if: "bar_ticketed" },
+    traceId: "C046T",
   },
   {
     phase: "ros",
@@ -421,6 +434,7 @@ export const COOKING_TASK_DEFS: CookingTaskDefSeed[] = [
     dueOffsetDays: 7,
     dueAnchor: "event_date",
     sortOrder: 590,
+    conditional: { if: "alcohol_included" },
     traceId: "C066",
   },
   {
@@ -605,6 +619,7 @@ export const COOKING_TASK_DEFS: CookingTaskDefSeed[] = [
     dueOffsetDays: 0,
     dueAnchor: "event_date",
     sortOrder: 980,
+    conditional: { if: "alcohol_included" },
     traceId: "C103",
   },
   {
@@ -667,6 +682,7 @@ export const COOKING_TASK_DEFS: CookingTaskDefSeed[] = [
     dueOffsetDays: 1,
     dueAnchor: "event_date",
     sortOrder: 1130,
+    conditional: { if: "alcohol_included" },
     traceId: "C109",
   },
   {

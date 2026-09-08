@@ -217,7 +217,20 @@ function sharedRosCadence(confirmLabel: string): ExperienceTaskDefSeed[] {
       dueOffsetDays: 17,
       dueAnchor: "event_date",
       sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
       traceId: "C046",
+    },
+    {
+      phase: "upon_deposit",
+      title: "Confirm drink tickets / beverages per person",
+      description:
+        "Ticketed bar — capture how many drink tickets or beverages per person.",
+      role: "Ops",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      conditional: { if: "bar_ticketed" },
+      traceId: "C046T",
     },
     {
       phase: "ros",
@@ -316,6 +329,7 @@ function sharedRosCadence(confirmLabel: string): ExperienceTaskDefSeed[] {
       dueAnchor: "event_date",
       sortOrder: nextSort(),
       resourceLinks: [R.vendorDirectory],
+      conditional: { if: "transportation_needed" },
       traceId: "C055",
     },
   ];
@@ -750,6 +764,7 @@ function tourDeltas(kind: "monuments" | "food" | "flavors"): ExperienceTaskDefSe
       dueOffsetDays: 14,
       dueAnchor: "event_date",
       sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
       traceId: "TO080",
     });
   }

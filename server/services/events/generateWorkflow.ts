@@ -234,7 +234,6 @@ function getHardcodedWorkflow(
     },
   };
 
-  void event.alcoholIncluded;
   void event.shippingRequired;
 
   const commonPreEventTasks: WorkflowTaskDef[] = [
@@ -262,7 +261,11 @@ function getHardcodedWorkflow(
   const dayOfTasks: WorkflowTaskDef[] = [
     { title: "Host manages flow of event", role: "Event Host" },
     { title: "Instructor/Guide executes content", role: "Event Host" },
-    { title: "Track drinks/food consumption", role: "Ops" },
+    {
+      title: "Track drinks/food consumption",
+      role: "Ops",
+      conditional: "alcohol_included",
+    },
     { title: "Take photos and upload to digital database", role: "Ops" },
     { title: "Ensure all materials and supplies are ready", role: "Ops" },
   ];
@@ -499,6 +502,18 @@ function conditionMet(
   if (jsonIf === "transportation_needed") {
     return Boolean(event.transportationNeeded);
   }
+  if (jsonIf === "alcohol_included" || jsonIf === "alcoholIncluded") {
+    return Boolean(event.alcoholIncluded);
+  }
+  if (jsonIf === "bar_ticketed") {
+    if (!event.alcoholIncluded) return false;
+    const bar = event.barDetails;
+    const details =
+      bar && typeof bar === "object" && !Array.isArray(bar)
+        ? (bar as Record<string, unknown>)
+        : {};
+    return String(details.paymentMode || details.payment_mode || "") === "Ticketed";
+  }
 
   if (!conditional) {
     return true;
@@ -714,6 +729,148 @@ export async function generateEventWorkflow(
     fromDbTemplate: Boolean(workflow.fromDbTemplate),
     workflowTemplateId: workflow.templateId ?? null,
     experience: getExperienceRow(event.eventType) || null,
+    tasks: createdRows.map((r) => toApiRecord(r as Record<string, unknown>)),
+  };
+}
+
+/**
+ * Insert workflow tasks whose conditions are newly true (e.g. alcohol turned on
+ * after first generate). Never deletes existing tasks.
+ */
+export async function reconcileEventWorkflowTasks(
+  eventId: string,
+  user?: AuthUser | null
+) {
+  if (!eventId) throw new AppError("eventId is required", 400);
+
+  const db = requireDb();
+  const [event] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+  if (!event) throw new AppError("Event not found", 404);
+
+  const existing = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.eventId, eventId), ne(tasks.category, "Checklist")));
+
+  if (existing.length === 0) {
+    return generateEventWorkflow(eventId, user);
+  }
+
+  const existingTrace = new Set(
+    existing.map((t) => t.traceId).filter(Boolean).map(String)
+  );
+  const existingTitles = new Set(
+    existing.map((t) => String(t.title || "").trim().toLowerCase())
+  );
+
+  const [adminAssignment] = await db
+    .select()
+    .from(roleAssignments)
+    .where(
+      and(
+        eq(roleAssignments.role, "Admin"),
+        eq(roleAssignments.userEmail, "admin2@mangiadc.com"),
+        eq(roleAssignments.isActive, true)
+      )
+    )
+    .limit(1);
+  const defaultAdminUserId = adminAssignment?.userId || null;
+
+  const workflow = await resolveWorkflow(event);
+  const { features: opsFeatures } = await getEventOpsFeatures();
+  const createdRows: (typeof tasks.$inferSelect)[] = [];
+
+  const insertIfMissing = async (
+    def: WorkflowTaskDef,
+    category: TaskCategory,
+    dueDate: Date
+  ) => {
+    if (!conditionMet(def, event, opsFeatures)) return;
+    if (def.traceId && existingTrace.has(String(def.traceId))) return;
+    const titleKey = String(def.title || "").trim().toLowerCase();
+    if (!def.traceId && titleKey && existingTitles.has(titleKey)) return;
+
+    const role = mapRole(def.role);
+    const isAdminTask = role === "Admin";
+    const [row] = await db
+      .insert(tasks)
+      .values({
+        eventId,
+        title: def.title,
+        description: def.description || null,
+        category: mapCategory(def.category, category),
+        responsibleRole: role,
+        dueDate,
+        order: def.sortOrder ?? null,
+        workflowPhase: def.phase ?? null,
+        workflowTaskDefId: def.taskDefId ?? null,
+        traceId: def.traceId ?? null,
+        resourceLinks: def.resourceLinks ?? [],
+        workflowMeta:
+          def.conditionalJson && Object.keys(def.conditionalJson).length > 0
+            ? {
+                ...(Array.isArray(def.conditionalJson.assigneeOptions)
+                  ? { assigneeOptions: def.conditionalJson.assigneeOptions }
+                  : {}),
+                ...(Array.isArray(def.conditionalJson.supplyPickupMethods)
+                  ? {
+                      supplyPickupMethods:
+                        def.conditionalJson.supplyPickupMethods,
+                    }
+                  : {}),
+              }
+            : {},
+        status:
+          isAdminTask && defaultAdminUserId
+            ? "Working On It"
+            : "Not Acknowledged",
+        ...(isAdminTask && defaultAdminUserId
+          ? {
+              assignedUser: defaultAdminUserId,
+              acknowledgedTimestamp: new Date(),
+            }
+          : {}),
+      })
+      .returning();
+    if (row) {
+      createdRows.push(row);
+      if (row.traceId) existingTrace.add(String(row.traceId));
+      existingTitles.add(String(row.title || "").trim().toLowerCase());
+    }
+  };
+
+  for (const task of workflow.preEvent) {
+    await insertIfMissing(task, "Pre-Event", computeDueDate(task, event, "pre"));
+  }
+  for (const task of workflow.dayOf) {
+    await insertIfMissing(task, "Event-Day", computeDueDate(task, event, "day"));
+  }
+  for (const task of workflow.postEvent) {
+    await insertIfMissing(task, "Post-Event", computeDueDate(task, event, "post"));
+  }
+
+  if (createdRows.length > 0) {
+    await db.insert(activityLogs).values({
+      entityType: "Event",
+      entityId: eventId,
+      action: "Workflow Reconciled",
+      details: {
+        event_type: event.eventType,
+        tasks_added: createdRows.length,
+      },
+      userId: user?.id || null,
+      userName: user?.full_name || "System",
+      timestamp: new Date(),
+    });
+  }
+
+  return {
+    success: true,
+    tasksAdded: createdRows.length,
     tasks: createdRows.map((r) => toApiRecord(r as Record<string, unknown>)),
   };
 }
