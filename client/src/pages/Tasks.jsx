@@ -18,6 +18,7 @@ import {
   buildAssignUpdate,
   buildTeamMemberOptions,
 } from '@/lib/taskTeamMembers';
+import { isMyAssignedTask } from '@/lib/taskMineHighlight';
 
 export default function Tasks() {
   const queryClient = useQueryClient();
@@ -129,7 +130,8 @@ export default function Tasks() {
     mutationFn: async (taskId) => {
       return base44.entities.Task.update(taskId, {
         status: 'Done',
-        completion_timestamp: new Date().toISOString()
+        completion_timestamp: new Date().toISOString(),
+        completed_by: user?.id || null,
       });
     },
     onSuccess: async (_, taskId) => {
@@ -472,11 +474,17 @@ export default function Tasks() {
             </CardContent>
           </Card>
         ) : (
-          filteredTasks.map((task) => (
+          filteredTasks.map((task) => {
+            const isMine = isMyAssignedTask(task, user?.id);
+            return (
             <Card
               key={task.id}
               className={`bg-white/80 backdrop-blur-sm border-orange-100 ${
                 isOverdue(task) ? 'border-red-300 bg-red-50/50' : ''
+              } ${
+                isMine
+                  ? 'border-[#C84B31] border-l-4 bg-orange-50/50 ring-1 ring-[#C84B31]/15'
+                  : ''
               }`}
             >
               <CardContent className="p-4 md:p-6">
@@ -484,7 +492,12 @@ export default function Tasks() {
                   <div className="flex-1 w-full">
                     <div className="flex flex-col md:flex-row items-start md:justify-between mb-3 gap-3">
                       <div className="flex-1 w-full">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          {isMine ? (
+                            <Badge className="bg-[#C84B31] text-white text-xs">
+                              Yours
+                            </Badge>
+                          ) : null}
                           <h3 className={`text-lg font-bold ${
                             task.status === 'Done' ? 'line-through text-gray-400' : 'text-gray-900'
                           }`}>
@@ -691,7 +704,8 @@ export default function Tasks() {
                        </div>
                        </CardContent>
             </Card>
-          ))
+            );
+          })
         )}
       </div>
     );

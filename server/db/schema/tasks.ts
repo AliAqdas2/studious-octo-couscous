@@ -33,6 +33,8 @@ export const tasks = pgTable("tasks", {
   status: taskStatusEnum("status").default("Not Acknowledged"),
   acknowledgedTimestamp: timestamp("acknowledged_timestamp", { withTimezone: true }),
   completionTimestamp: timestamp("completion_timestamp", { withTimezone: true }),
+  /** User who marked the task Done (may differ from assignee after override). */
+  completedBy: uuid("completed_by").references(() => users.id, { onDelete: "set null" }),
   overrideFlag: boolean("override_flag").default(false),
   overrideTimestamp: timestamp("override_timestamp", { withTimezone: true }),
   previousAssignee: uuid("previous_assignee").references(() => users.id, {

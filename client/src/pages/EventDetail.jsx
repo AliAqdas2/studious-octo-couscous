@@ -26,6 +26,11 @@ import WorkflowTaskExtras from '@/components/events/WorkflowTaskExtras';
 import { PHASE_LABELS } from '@/components/events/WorkflowTaskExtras';
 import EventFormDialog from '@/components/events/EventFormDialog';
 import { buildTeamMemberOptions } from '@/lib/taskTeamMembers';
+import {
+  isFullEventTaskViewer,
+  isMyAssignedTask,
+  sortTasksMineFirst,
+} from '@/lib/taskMineHighlight';
 
 export default function EventDetail() {
   const queryClient = useQueryClient();
@@ -200,6 +205,10 @@ export default function EventDetail() {
       const updates = { status: newStatus };
       if (newStatus === 'Done') {
         updates.completion_timestamp = new Date().toISOString();
+        if (user?.id) updates.completed_by = user.id;
+      } else {
+        updates.completion_timestamp = null;
+        updates.completed_by = null;
       }
       return base44.entities.Task.update(taskId, updates);
     },
@@ -271,21 +280,37 @@ export default function EventDetail() {
     return false;
   };
   
-  const visibleTasks = (user?.role === 'admin' ? tasks : tasks.filter(task => {
-    const matchesRole = task.responsible_role === userOperationalRole;
-    const assignedToUser = task.assigned_user === user?.id;
-    return matchesRole || assignedToUser;
-  })).filter((t) => !featureHidden(t));
+  // Admin + Ops see all tasks; others see role match or assigned to them.
+  const seesAllTasks = isFullEventTaskViewer(user, roleAssignments);
 
-  const checklistTasks = visibleTasks.filter(t => t.category === 'Checklist').sort((a, b) => 
-    (a.order || 0) - (b.order || 0)
+  const visibleTasks = (seesAllTasks
+    ? tasks
+    : tasks.filter((task) => {
+        const matchesRole = task.responsible_role === userOperationalRole;
+        const assignedToUser = task.assigned_user === user?.id;
+        return matchesRole || assignedToUser;
+      })
+  ).filter((t) => !featureHidden(t));
+
+  const sortGroup = (list) => sortTasksMineFirst(list, user?.id);
+
+  const checklistTasks = sortGroup(
+    visibleTasks.filter((t) => t.category === 'Checklist').sort((a, b) =>
+      (a.order || 0) - (b.order || 0)
+    )
   );
-  const preEventTasks = visibleTasks.filter(t => t.category === 'Pre-Event').sort((a, b) => 
-    new Date(a.due_date) - new Date(b.due_date)
+  const preEventTasks = sortGroup(
+    visibleTasks.filter((t) => t.category === 'Pre-Event').sort((a, b) =>
+      new Date(a.due_date) - new Date(b.due_date)
+    )
   );
-  const eventDayTasks = visibleTasks.filter(t => t.category === 'Event-Day');
-  const postEventTasks = visibleTasks.filter(t => t.category === 'Post-Event').sort((a, b) => 
-    new Date(a.due_date) - new Date(b.due_date)
+  const eventDayTasks = sortGroup(
+    visibleTasks.filter((t) => t.category === 'Event-Day')
+  );
+  const postEventTasks = sortGroup(
+    visibleTasks.filter((t) => t.category === 'Post-Event').sort((a, b) =>
+      new Date(a.due_date) - new Date(b.due_date)
+    )
   );
 
   const checklistCompleted = checklistTasks.filter(t => t.status === 'Done').length;
@@ -315,23 +340,43 @@ export default function EventDetail() {
   const tasksByPhase = PHASE_ORDER.map((phase) => ({
     phase,
     label: PHASE_LABELS[phase] || phase,
-    tasks: workflowTasks
-      .filter((t) => t.workflow_phase === phase)
-      .sort((a, b) => (a.order || 0) - (b.order || 0) || new Date(a.due_date || 0) - new Date(b.due_date || 0)),
+    tasks: sortGroup(
+      workflowTasks
+        .filter((t) => t.workflow_phase === phase)
+        .sort(
+          (a, b) =>
+            (a.order || 0) - (b.order || 0) ||
+            new Date(a.due_date || 0) - new Date(b.due_date || 0)
+        )
+    ),
   })).filter((g) => g.tasks.length > 0);
-  const unphasedWorkflow = workflowTasks.filter((t) => !t.workflow_phase);
+  const unphasedWorkflow = sortGroup(
+    workflowTasks.filter((t) => !t.workflow_phase)
+  );
+
+  const myOpenTasks = visibleTasks.filter(
+    (t) =>
+      isMyAssignedTask(t, user?.id) &&
+      t.status !== 'Done' &&
+      t.status !== 'Completed'
+  );
 
   const renderTaskCard = (task) => {
     const isAcknowledged = !!task.assigned_user;
     const canAcknowledge = !isAcknowledged || user?.role === 'admin';
     const isOwner = task.assigned_user === user?.id;
+    const isMine = isMyAssignedTask(task, user?.id);
     const isEditing = editingNotes[task.id];
     const assigneeName = teamMembers.find((m) => m.userId === task.assigned_user)?.name;
 
     return (
       <div 
         key={task.id}
-        className="p-4 bg-white rounded-lg border hover:shadow-md transition-all"
+        className={`p-4 bg-white rounded-lg border hover:shadow-md transition-all ${
+          isMine
+            ? 'border-[#C84B31] border-l-4 bg-orange-50/60 ring-1 ring-[#C84B31]/20'
+            : ''
+        }`}
       >
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
@@ -339,6 +384,9 @@ export default function EventDetail() {
               {task.title}
             </p>
             <div className="flex items-center gap-2 flex-wrap">
+              {isMine ? (
+                <Badge className="bg-[#C84B31] text-white text-xs">Yours</Badge>
+              ) : null}
               <Badge variant="outline" className="text-xs">
                 {task.responsible_role}
               </Badge>
@@ -740,7 +788,7 @@ export default function EventDetail() {
 
       {/* Progress Bar */}
       {visibleTasks.length > 0 && (
-        <Card className="hidden bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+        <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-bold text-gray-900">Workflow Progress</h3>
@@ -759,10 +807,17 @@ export default function EventDetail() {
         </Card>
       )}
 
-      <div className="hidden">
+      {myOpenTasks.length > 0 && (
+        <div className="rounded-lg border border-[#C84B31]/bg-orange-50 px-4 py-3 text-sm text-[#A03A23]">
+          You have <span className="font-semibold">{myOpenTasks.length}</span> open
+          task{myOpenTasks.length === 1 ? '' : 's'} on this event
+          {seesAllTasks ? ' — highlighted below as Yours' : ''}.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Event Details */}
-        <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
+        <Card className="hidden bg-white/80 backdrop-blur-sm border-orange-100">
           <CardHeader>
             <CardTitle>Event Overview</CardTitle>
           </CardHeader>
@@ -863,7 +918,8 @@ export default function EventDetail() {
         </Card>
 
         {/* Tasks Workflow */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
+          <h2 className="text-xl font-bold text-gray-900">Tasks Workflow</h2>
           {/* Default Checklist */}
           {checklistTasks.length > 0 && (
             <Card className="bg-orange-50 border-orange-200">
@@ -989,7 +1045,6 @@ export default function EventDetail() {
             </Card>
           )}
         </div>
-      </div>
       </div>
     </div>
   );

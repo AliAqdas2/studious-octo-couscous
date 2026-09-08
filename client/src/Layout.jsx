@@ -20,7 +20,8 @@ import {
   Phone,
   Bot,
   SlidersHorizontal,
-  UserPlus } from
+  UserPlus,
+  ListChecks } from
 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NotificationBell from '@/components/notifications/NotificationBell';
@@ -239,6 +240,7 @@ export default function Layout({ children, currentPageName }) {
       : [];
 
   const adminItems = [
+  { name: 'Event Progress', icon: ListChecks, page: 'EventProgress' },
   { name: 'Role Assignment', icon: SlidersHorizontal, page: 'RoleAssignment' },
   { name: 'Users', icon: Users, page: 'Users' },
   { name: 'Email Automations', icon: Mail, page: 'PipelineEmailAutomations' },

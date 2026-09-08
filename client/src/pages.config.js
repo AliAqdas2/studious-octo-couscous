@@ -72,6 +72,7 @@ import Settings from './pages/Settings';
 import SpamEmails from './pages/SpamEmails';
 import TaskSyncAdmin from './pages/TaskSyncAdmin';
 import Tasks from './pages/Tasks';
+import EventProgress from './pages/EventProgress';
 import Users from './pages/Users';
 import Recruitment from './pages/Recruitment';
 import CandidateDetail from './pages/CandidateDetail';
@@ -93,6 +94,7 @@ export const PAGES = {
     "Dashboard": Dashboard,
     "Email": Email,
     "EventDetail": EventDetail,
+    "EventProgress": EventProgress,
     "EventTemplates": EventTemplates,
     "Events": Events,
     "Home": Home,

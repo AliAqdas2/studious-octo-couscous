@@ -895,6 +895,23 @@ async function main(): Promise<void> {
     } else {
       console.log("tasks.estimated_minutes already present");
     }
+
+    const completedByCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'tasks'
+        and column_name = 'completed_by'
+    `;
+    if (completedByCols.length === 0) {
+      console.log("Applying task completed_by migration (0025)...");
+      await sql.unsafe(
+        `ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "completed_by" uuid REFERENCES "users"("id") ON DELETE SET NULL`
+      );
+      console.log("task completed_by migration applied");
+    } else {
+      console.log("tasks.completed_by already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }
