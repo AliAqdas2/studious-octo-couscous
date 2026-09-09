@@ -68,6 +68,14 @@ export const WORKFLOW_RESOURCES = {
     label: "Georgetown Olive Oil",
     url: "https://georgetownoliveoil.com",
   },
+  flavorsOrderingProcedures: {
+    label: "Flavors of DC Ordering Procedures",
+    url: "https://docs.google.com/document/d/131XHpMJ9zskEaExwi_yCfnnCPfOF7aXPw85AqWT9PkA/edit",
+  },
+  beosFolder: {
+    label: "BEOs folder",
+    url: "https://drive.google.com/drive/folders/1iewTAp1f-f_SPPPcvKOcjv4jy3kFmDqL",
+  },
 } as const satisfies Record<string, WorkflowResourceLink>;
 
 export const ALL_WORKFLOW_RESOURCE_LINKS: WorkflowResourceLink[] = Object.values(

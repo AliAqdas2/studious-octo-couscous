@@ -24,6 +24,7 @@
     "db:seed-eateries": "tsx scripts/seed-eateries.ts",
     "db:seed-venue-guidelines": "tsx scripts/seed-venue-guidelines.ts",
     "db:seed-beo-demo-events": "tsx scripts/seed-beo-demo-events.ts",
+    "db:seed-demo-events-by-type": "tsx scripts/seed-demo-events-by-type.ts",
     "db:seed-inventory:prod": "node dist/seed-inventory.js",
     "db:seed-venues:prod": "node dist/seed-venues.js",
     "db:seed-venue-images:prod": "node dist/seed-venue-images.js",

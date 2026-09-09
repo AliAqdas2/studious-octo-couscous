@@ -607,7 +607,8 @@ function zachFlagTask(row: ExperienceMatrixRow): ExperienceTaskDefSeed {
   };
 }
 
-function paintDeltas(): ExperienceTaskDefSeed[] {
+/** Frozen thin Paint-clone for Pottery until Pottery has its own playbook. */
+function potteryPaintCloneDeltas(): ExperienceTaskDefSeed[] {
   return [
     {
       phase: "upon_deposit",
@@ -645,19 +646,386 @@ function paintDeltas(): ExperienceTaskDefSeed[] {
   ];
 }
 
-function terrariumDeltas(): ExperienceTaskDefSeed[] {
+/** In-Person Paint & Sip — Family B playbook (Updated January 2024). */
+function paintDeltas(): ExperienceTaskDefSeed[] {
+  const paintInventoryChecklist =
+    "8x10 canvases (Michaels — out-of-town / carry-on; optional bubble wrap); 11x14 canvases (Michaels — in-town); easels — 5 Below (large) or JMARK Direct (small); brush sets (Michaels / 5 Below). Contact Jude to coordinate scissors / large easels pickup if not in office.";
+  const eventwareChecklist =
+    "Bubble wrap if out of town; paper towels; plastic tall cups (Amazon or CVS); plastic water cups; paper plates; plastic tablecloth rolls (Party City, neutral colors preferred); masking tape; trash bags; dinner napkins.";
+
   return [
+    // —— upon deposit ——
+    {
+      phase: "upon_deposit",
+      title: "Confirm venue / on-premise + loading dock",
+      description:
+        "House venues (Launch, Mr. Smith's, City Tavern, Whittemore House, Wharf Penthouse, Wingo's, 99 M St SE, Foundry, 1015 15th) or On Premise. Contact venue; reserve loading dock when applicable. See Vendor Directory.",
+      role: "Sales",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      traceId: "PA000",
+    },
+    {
+      phase: "upon_deposit",
+      title: "Capture out-of-town Y/N → canvas size (8x10+bubble vs 11x14)",
+      description:
+        "Yes (out of town): 8x10 + optional bubble wrap. No: 11x14. Add scissors + large easels to BEO equipment list.",
+      role: "Sales",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      traceId: "PA001",
+    },
+    {
+      phase: "upon_deposit",
+      title: "BEO Shell — add scissors + large easel(s) to equipment list",
+      role: "Ops",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      resourceLinks: [R.beoShellHowTo],
+      traceId: "PA002",
+    },
+
+    // —— three weeks ——
     {
       phase: "three_weeks",
-      title: "Order terrarium kit supplies (containers, soil, rocks, sand, plants)",
+      title: "Order Paint & Sip inventory (canvases / easels / brushes)",
+      description: `${paintInventoryChecklist} Cite Inventory Links / Vendor Directory — do not invent cooking catalog SKUs.`,
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory],
+      traceId: "PA067",
+    },
+    {
+      phase: "three_weeks",
+      title: "Order Paint & Sip eventware supplies",
+      description: `Ensure supplies purchased/ordered: ${eventwareChecklist}`,
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory],
+      traceId: "PA068",
+    },
+    {
+      phase: "three_weeks",
+      title: "Plan add-on supplies (nosh / warm meal / beverages / ice)",
       description:
-        "Use URLs from Terrarium workflow doc. Cite Vendor Directory for experience vendors — do not add to cooking inventory catalog.",
+        "If selected: nosh items, warm meal supplies, alcohol/NA beverages, glassware, ice bucket; acquire ice if venue does not supply.",
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.inventoryLinks],
+      traceId: "PA069",
+    },
+    {
+      phase: "three_weeks",
+      title: "Custom aprons sent to Basecamp for printing",
+      description:
+        "Custom-ordered aprons sent to Basecamp to be printed. See Vendor Directory.",
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "PA070",
+    },
+
+    // —— one week ——
+    {
+      phase: "one_week_before",
+      title: "Confirm add-on purchase sources (Vendor Directory)",
+      description: "If add-ons — where are you buying? Confirm vendors.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      traceId: "PA071",
+    },
+    {
+      phase: "one_week_before",
+      title: "Logo’d / custom aprons ready for Basecamp pickup",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "PA075",
+    },
+    {
+      phase: "one_week_before",
+      title: "Triple-check Paint & Sip inventory + rush remaining supplies",
+      description:
+        "Any remaining needed supplies via in-person shopping, curbside, or rush shipping.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "PA076",
+    },
+
+    // —— during ——
+    {
+      phase: "during",
+      title: "Track client drink consumption (+ WhatsApp media)",
+      description:
+        "Event host tracks the client's drink consumption; gather WhatsApp / photo media as needed.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "PA100",
+    },
+    {
+      phase: "during",
+      title: "Team debrief — what went well / improve → Post Event Survey",
+      description:
+        "Event team lead checks in: “What did we do well? What do we need to improve?” Add to Post Event Survey.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.postEventSurvey],
+      traceId: "PA105",
+    },
+
+    // —— post ——
+    {
+      phase: "post",
+      title: "Prepare consumption invoice (if applicable)",
+      role: "Admin",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "PA108",
+    },
+    {
+      phase: "post",
+      title: "Document EVENT REPORT (labor / venue / supplies)",
+      description:
+        "Note labor hours, venue fees, and supplies purchased for the event.",
+      role: "Admin",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "PA109",
+    },
+  ];
+}
+
+/** In-Person Lend a Hand for Good — Family B playbook (not Paint clone). */
+function lendAHandDeltas(): ExperienceTaskDefSeed[] {
+  const eventwareChecklist =
+    "Paper towels; paper plates; plastic tablecloth rolls (neutral colors preferred); masking tape; trash bags; dinner napkins.";
+
+  return [
+    // —— upon deposit ——
+    {
+      phase: "upon_deposit",
+      title: "Confirm venue / on-premise + loading dock",
+      description:
+        "House venues (Launch, Mr. Smith's, City Tavern, Whittemore House, Wharf Penthouse, Wingo's, 99 M St SE, Foundry, 1015 15th) or On Premise. Contact venue; reserve loading dock when applicable. See Vendor Directory.",
+      role: "Sales",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      traceId: "LH001",
+    },
+
+    // —— three weeks ——
+    {
+      phase: "three_weeks",
+      title: "Capture / order Lend a Hand project materials",
+      description:
+        "Charity / project materials are event-specific — capture the partner list on the BEO. Do not invent catalog SKUs.",
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory],
+      traceId: "LH066",
+    },
+    {
+      phase: "three_weeks",
+      title: "Order Lend a Hand eventware supplies",
+      description: `Ensure supplies purchased/ordered: ${eventwareChecklist}`,
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory],
+      traceId: "LH067",
+    },
+    {
+      phase: "three_weeks",
+      title: "Plan add-on supplies (nosh / warm meal / beverages / ice)",
+      description:
+        "If selected: nosh items, warm meal supplies, alcohol/NA beverages, glassware, ice bucket; acquire ice if venue does not supply.",
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.inventoryLinks],
+      traceId: "LH068",
+    },
+    {
+      phase: "three_weeks",
+      title: "Custom aprons sent to Basecamp for printing",
+      description:
+        "Custom-ordered aprons sent to Basecamp to be printed. See Vendor Directory.",
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "LH069",
+    },
+
+    // —— one week ——
+    {
+      phase: "one_week_before",
+      title: "Confirm add-on purchase sources (Vendor Directory)",
+      description: "If add-ons — where are you buying? Confirm vendors.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      traceId: "LH070",
+    },
+    {
+      phase: "one_week_before",
+      title: "Logo’d / custom aprons ready for Basecamp pickup",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "LH075",
+    },
+    {
+      phase: "one_week_before",
+      title: "Triple-check Lend a Hand inventory + rush remaining supplies",
+      description:
+        "Any remaining needed supplies via in-person shopping, curbside, or rush shipping.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "LH076",
+    },
+
+    // —— during ——
+    {
+      phase: "during",
+      title: "Track client drink consumption (+ WhatsApp media)",
+      description:
+        "Event host tracks the client's drink consumption; gather WhatsApp / photo media as needed.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "LH100",
+    },
+    {
+      phase: "during",
+      title: "Team debrief — what went well / improve → Post Event Survey",
+      description:
+        "Event team lead checks in: “What did we do well? What do we need to improve?” Add to Post Event Survey.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.postEventSurvey],
+      traceId: "LH105",
+    },
+
+    // —— post ——
+    {
+      phase: "post",
+      title: "Prepare consumption invoice (if applicable)",
+      role: "Admin",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "LH108",
+    },
+    {
+      phase: "post",
+      title: "Document EVENT REPORT (labor / venue / supplies)",
+      description:
+        "Note labor hours, venue fees, and supplies purchased for the event.",
+      role: "Admin",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "LH109",
+    },
+  ];
+}
+
+function terrariumDeltas(): ExperienceTaskDefSeed[] {
+  const kitChecklist =
+    "Glass terrarium container; 2-inch succulents; potting soil 9.6 oz/kit; washable creek rocks 14.4 oz/kit; sand bag (beach texture) 7.4 oz/kit; dried moss (dark or light green) 0.4 oz/kit; mini spray bottles; plastic bags; charcoal bag 2.4 oz/kit; decorative ducks; logo’d apron; chopsticks or fork & knife.";
+
+  return [
+    // —— three weeks ——
+    {
+      phase: "three_weeks",
+      title: "Check office inventory for terrarium function",
+      description:
+        "Ops checks office inventory to firm needed supplies for the function.",
+      role: "Ops",
+      dueOffsetDays: 21,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory],
+      traceId: "TE066",
+    },
+    {
+      phase: "three_weeks",
+      title: "Order terrarium kit supplies",
+      description: `Order supplemental supplies if needed. Per-kit checklist: ${kitChecklist} Cite Vendor Directory / Inventory Links — do not invent cooking catalog SKUs.`,
       role: "Ops",
       dueOffsetDays: 21,
       dueAnchor: "event_date",
       sortOrder: nextSort(),
       resourceLinks: [R.vendorDirectory, R.inventoryLinks],
       traceId: "TE067",
+    },
+
+    // —— two weeks ——
+    {
+      phase: "two_weeks",
+      title: "Final participant headcount",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "TE058",
+    },
+    {
+      phase: "two_weeks",
+      title: "Document add-on allergies",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "TE059",
     },
     {
       phase: "two_weeks",
@@ -670,17 +1038,98 @@ function terrariumDeltas(): ExperienceTaskDefSeed[] {
     },
     {
       phase: "two_weeks",
+      title: "Get final terrarium supplies needed",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory],
+      traceId: "TE062",
+    },
+    {
+      phase: "two_weeks",
       title: "Kit ship QA (if shipping kits)",
+      description: "If kits ship to the client/venue — QA packaging and contents before ship.",
       role: "Ops",
       dueOffsetDays: 14,
       dueAnchor: "event_date",
       sortOrder: nextSort(),
       traceId: "TE061",
     },
+
+    // —— one week ——
+    {
+      phase: "one_week_before",
+      title: "Print marketing material and BEO with supplies",
+      description:
+        "Print marketing material and BEO to leave with supplies for the event.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.beosFolder],
+      traceId: "TE070",
+    },
+    {
+      phase: "one_week_before",
+      title: "Pick up logo’d add-ons",
+      description: "Logo’d aprons / custom add-ons picked up from vendors.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "TE071",
+    },
+
+    // —— 24h ——
+    {
+      phase: "twenty_four_h",
+      title: "24h — triple-check terrarium inventory in-office",
+      role: "Ops",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "TE090",
+    },
+    {
+      phase: "twenty_four_h",
+      title: "24h — acquire ice (Y/N)",
+      description: "Operations Manager or Intern — acquire ice if needed.",
+      role: "Ops",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "TE091",
+    },
+
+    // —— post ——
+    {
+      phase: "post",
+      title: "Prepare consumption invoice (if applicable)",
+      role: "Admin",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "TE108",
+    },
+    {
+      phase: "post",
+      title: "Document EVENT REPORT (labor / venue / supplies)",
+      description:
+        "Note labor hours, venue fees, and supplies purchased for the event.",
+      role: "Admin",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "TE109",
+    },
   ];
 }
 
-function tourDeltas(kind: "monuments" | "food" | "flavors"): ExperienceTaskDefSeed[] {
+function tourDeltas(kind: "monuments" | "food"): ExperienceTaskDefSeed[] {
   const tasks: ExperienceTaskDefSeed[] = [
     {
       phase: "two_weeks",
@@ -732,29 +1181,27 @@ function tourDeltas(kind: "monuments" | "food" | "flavors"): ExperienceTaskDefSe
     },
   ];
 
-  if (kind === "monuments" || kind === "food") {
-    tasks.unshift({
-      phase: "upon_deposit",
-      title: "Capture Dine Around Y/N + pickup/dropoff addresses",
-      role: "Sales",
-      dueOffsetDays: 0,
-      dueAnchor: "immediate",
-      sortOrder: nextSort(),
-      conditional: { if: "transportation_needed" },
-      traceId: "TO010",
-    });
-    tasks.push({
-      phase: "three_weeks",
-      title: "Prepare tour kit (water, ponchos, sanitizer, hand warmers, sheets…)",
-      description: "Tour kit items from Monuments/Food Tour doc — not cooking SKUs.",
-      role: "Ops",
-      dueOffsetDays: 21,
-      dueAnchor: "event_date",
-      sortOrder: nextSort(),
-      resourceLinks: [R.inventoryLinks],
-      traceId: "TO067",
-    });
-  }
+  tasks.unshift({
+    phase: "upon_deposit",
+    title: "Capture Dine Around Y/N + pickup/dropoff addresses",
+    role: "Sales",
+    dueOffsetDays: 0,
+    dueAnchor: "immediate",
+    sortOrder: nextSort(),
+    conditional: { if: "transportation_needed" },
+    traceId: "TO010",
+  });
+  tasks.push({
+    phase: "three_weeks",
+    title: "Prepare tour kit (water, ponchos, sanitizer, hand warmers, sheets…)",
+    description: "Tour kit items from Monuments/Food Tour doc — not cooking SKUs.",
+    role: "Ops",
+    dueOffsetDays: 21,
+    dueAnchor: "event_date",
+    sortOrder: nextSort(),
+    resourceLinks: [R.inventoryLinks],
+    traceId: "TO067",
+  });
 
   if (kind === "food") {
     tasks.push({
@@ -769,53 +1216,875 @@ function tourDeltas(kind: "monuments" | "food" | "flavors"): ExperienceTaskDefSe
     });
   }
 
-  if (kind === "flavors") {
-    tasks.unshift(
-      {
-        phase: "upon_deposit",
-        title: "Send early participant list to client + embed in FareHarbor",
-        role: "Admin",
-        dueOffsetDays: 0,
-        dueAnchor: "immediate",
-        sortOrder: nextSort(),
-        traceId: "FO001",
-      },
-      {
-        phase: "upon_deposit",
-        title: "Olive oil mini gift interest Y/N",
-        role: "Sales",
-        dueOffsetDays: 0,
-        dueAnchor: "immediate",
-        sortOrder: nextSort(),
-        resourceLinks: [R.georgetownOliveOil, R.vendorDirectory],
-        traceId: "FO002",
-      }
-    );
-    tasks.push({
+  return tasks;
+}
+
+/** Sept 2026 In-Person Flavors of DC playbook — not a walking-tour overlay. */
+function flavorsDeltas(): ExperienceTaskDefSeed[] {
+  const inventoryChecklist =
+    "Trays, wire frames, aluminum trays, sternos, lighter, metal bowls, tongs, large/small spoons, knives, to-go boxes, small plates, dinner napkins, trash bags, ingredients, toothpicks, ramekins, plastic cups, cutting boards, poster boards, easels, menu tents.";
+
+  return [
+    // —— upon_deposit ——
+    {
+      phase: "upon_deposit",
+      title: "Secure Event Team Lead immediately",
+      description:
+        "As soon as deposit is received — lock an Event Team Lead for this Flavors of DC event.",
+      role: "Ops",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      traceId: "FO000",
+    },
+    {
+      phase: "upon_deposit",
+      title: "Send early participant list to client + embed in FareHarbor",
+      description:
+        "Admin sends participant list form (allergies) to client, then embeds into the FareHarbor date.",
+      role: "Admin",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      traceId: "FO001",
+    },
+    {
+      phase: "upon_deposit",
+      title: "Capture custom add-on interest (FoDC)",
+      description:
+        "Custom engraved glassware; custom cheeseboard (25 unit min); olive oil mini gift to take home; eatery kits.",
+      role: "Sales",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      resourceLinks: [R.georgetownOliveOil, R.vendorDirectory, R.qualityGlassEngraving],
+      traceId: "FO002",
+    },
+
+    // —— ROS ——
+    {
+      phase: "ros",
+      title: "ROS — confirm how many eateries and which eateries",
+      description: "How many eateries? What are the eateries?",
+      role: "Ops",
+      dueOffsetDays: 17,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "FO045",
+    },
+    {
+      phase: "ros",
+      title: "ROS — opening talk preference",
+      description:
+        "Explain the event at the start, jump straight in, or email copy for distribution ahead of time?",
+      role: "Ops",
+      dueOffsetDays: 17,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "FO046",
+    },
+    {
+      phase: "ros",
+      title: "ROS — wheelchair accessibility needs",
+      description:
+        "Any participants needing wheelchair accessibility assistance?",
+      role: "Ops",
+      dueOffsetDays: 17,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "FO047",
+    },
+    {
+      phase: "ros",
+      title: "ROS — transport company (Alberto or DC Nation Tours)",
+      description: "If transportation requested — which company? See Vendor Directory.",
+      role: "Ops",
+      dueOffsetDays: 17,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      conditional: { if: "transportation_needed" },
+      traceId: "FO055",
+    },
+    {
+      phase: "ros",
+      title: "ROS — FoDC custom add-ons progress",
+      description:
+        "Glassware, cheeseboard, olive oil mini gift, eatery kits — status and vendors.",
+      role: "Ops",
+      dueOffsetDays: 17,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [
+        R.vendorDirectory,
+        R.georgetownOliveOil,
+        R.qualityGlassEngraving,
+      ],
+      traceId: "FO054",
+    },
+
+    // —— two weeks ——
+    {
+      phase: "two_weeks",
+      title: "Confirm customer locations + place eatery orders",
+      description:
+        "Locations confirmed by customer? Contact eateries to place delivery/pickup orders per Flavors ordering procedures.",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.flavorsOrderingProcedures, R.vendorDirectory],
+      traceId: "FO060",
+    },
+    {
+      phase: "two_weeks",
+      title: "Assign pickup owner per dish + delivery plan",
+      description:
+        "Who picks up which dish? Delivery plan and start times — dishes should arrive ~1 hour before event start.",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.flavorsOrderingProcedures],
+      traceId: "FO061",
+    },
+    {
+      phase: "two_weeks",
+      title: "Confirm headcount (has it changed?)",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "FO062",
+    },
+    {
+      phase: "two_weeks",
+      title: "Confirm ticketed beverages included (if ticketed bar)",
+      description: "How many beverages are included when the bar is ticketed?",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "bar_ticketed" },
+      traceId: "FO063",
+    },
+    {
+      phase: "two_weeks",
+      title: "Remind transport + capture driver / pickup & dropoff",
+      description:
+        "Remind transportation they are working with us; capture driver; pickup and dropoff addresses and times.",
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      conditional: { if: "transportation_needed" },
+      traceId: "FO064",
+    },
+    {
+      phase: "two_weeks",
+      title: "Order / revise FoDC inventory",
+      description: `Order supplemental supplies and revise inventory. Checklist: ${inventoryChecklist}`,
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory],
+      traceId: "FO067",
+    },
+    {
+      phase: "two_weeks",
+      title: "Double-check FoDC inventory list on BEO",
+      description: inventoryChecklist,
+      role: "Ops",
+      dueOffsetDays: 14,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "FO068",
+    },
+
+    // —— one week / 72–48h / 24h ——
+    {
+      phase: "one_week_before",
+      title: "Print BEO and store with Event Team Lead equipment",
+      description:
+        "BEO is printed and stored with equipment for the Event Team Lead responsible for the event.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.beosFolder],
+      traceId: "FO070",
+    },
+    {
+      phase: "one_week_before",
+      title: "Triple-check FoDC inventory in-office + rush remaining supplies",
+      description:
+        "Any remaining needed supplies via in-person shopping, curbside, or rush shipping.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "FO071",
+    },
+    {
+      phase: "staff_checkin_72_48h",
+      title: "Guide & Support phone check-in (72–48h)",
+      description:
+        "Contact Guide and Support via phone to discuss questions, concerns, and BEO details. Spot gaps vs leadership instructions.",
+      role: "Ops",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.companyHandbook, R.beosFolder],
+      traceId: "FO089",
+    },
+    {
+      phase: "staff_checkin_72_48h",
+      title: "72h reconfirm eatery reservations are in their system",
+      role: "Ops",
+      dueOffsetDays: 3,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.flavorsOrderingProcedures],
+      traceId: "FO072",
+    },
+    {
+      phase: "twenty_four_h",
+      title: "24h — triple-check FoDC inventory in-office",
+      role: "Ops",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "FO090",
+    },
+    {
+      phase: "twenty_four_h",
+      title: "24h — acquire ice (Y/N)",
+      description: "Operations Manager or Intern — acquire ice if needed.",
+      role: "Ops",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "FO091",
+    },
+
+    // —— during ——
+    {
       phase: "during",
-      title: "Day-of FOH / multi-stop delivery coordination",
+      title: "Day-of FOH — food presentation & service setup",
+      description:
+        "Trays spread evenly; each dish has correct utensil (spoons/tongs/ladles); salad mixed (olive oil ~3× balsamic); dish/establishment info posters presented.",
       role: "Event Host",
       dueOffsetDays: 0,
       dueAnchor: "event_date",
       sortOrder: nextSort(),
       traceId: "FO095",
-    });
-  }
+    },
+    {
+      phase: "during",
+      title: "Event Lead — stay with day-of POC + photos",
+      description:
+        "Remain in contact with client POC; ensure guest speakers speak; take photos of the experience.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.companyHandbook, R.eventPhotosDrive],
+      traceId: "FO096",
+    },
 
-  return tasks;
+    // —— post ——
+    {
+      phase: "post",
+      title: "Prepare consumption invoice (if applicable)",
+      role: "Admin",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "FO108",
+    },
+    {
+      phase: "post",
+      title: "Document EVENT REPORT (labor / venue / supplies)",
+      description:
+        "Note labor hours, venue fees, and supplies purchased for the event.",
+      role: "Admin",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "FO109",
+    },
+  ];
 }
 
-function mixologyVenueDelta(): ExperienceTaskDefSeed[] {
+/** Family B shared tasks Flavors of DC should not inherit. */
+const FLAVORS_OMIT_TRACE_IDS = new Set(["B067", "B089", "B090"]);
+
+/** Family B shared tasks Terrarium should not inherit (inventory ordered @3w). */
+const TERRARIUM_OMIT_TRACE_IDS = new Set(["B067"]);
+
+/** Family B shared tasks Lend a Hand should not inherit (inventory ordered @3w). */
+const LEND_A_HAND_OMIT_TRACE_IDS = new Set(["B067"]);
+
+/** Family B shared tasks Paint & Sip should not inherit (inventory ordered @3w). */
+const PAINT_OMIT_TRACE_IDS = new Set(["B067"]);
+
+/** Family C shared tasks Cheeseboard should not inherit (replace stub C067). */
+const CHEESEBOARD_OMIT_TRACE_IDS = new Set(["C067"]);
+
+/** Family C shared tasks Chocolate Making should not inherit (replace stub C067). */
+const CHOCOLATE_MAKING_OMIT_TRACE_IDS = new Set(["C067"]);
+
+/** Family C shared tasks Mixology should not inherit (replace stub C067). */
+const MIXOLOGY_OMIT_TRACE_IDS = new Set(["C067"]);
+
+/** In-Person Cheeseboard Making — Family C playbook (Jan 2024 HTML). */
+function cheeseboardDeltas(): ExperienceTaskDefSeed[] {
+  const supplyChecklist =
+    "Cheese types; paper towels; dish soap; plastic or ceramic plates; plastic tablecloth roll (white preferred); trash bags; dinner napkins; cocktail napkins; 3rd-party furniture; sterno fuel; aluminum trays (two per tray); parchment paper; to-go containers; plastic gloves; butane cartridges / burners; olive oil (Georgetown Olive Oil); fig or strawberry balsamic; salt and pepper; aluminum foil. Also run inventory cost / purchase-source analysis.";
+
   return [
+    // —— one week ——
+    {
+      phase: "one_week_before",
+      title: "Order Cheeseboard inventory / supplemental supplies",
+      description: `Collapsed 1w timeline. Ensure supplies purchased/ordered: ${supplyChecklist}`,
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory, R.georgetownOliveOil],
+      traceId: "CB067",
+    },
+    {
+      phase: "one_week_before",
+      title: "Reconfirm custom aprons sent to Basecamp",
+      description:
+        "If custom-ordered aprons — confirm sent to Basecamp for printing. See Vendor Directory.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "CB068",
+    },
+    {
+      phase: "one_week_before",
+      title: "Cheese selection verified by chef for this function",
+      description: "Was the cheese selection verified by the chef for THIS function?",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "CB069",
+    },
+    {
+      phase: "one_week_before",
+      title: "Confirm specialty paper stock + FedEx print job",
+      description:
+        "Do we have the appropriate paper in stock? Was printing sent to FedEx if needed?",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "CB070",
+    },
+    {
+      phase: "one_week_before",
+      title: "Marketing materials printed",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "CB071",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code created",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "CB072",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code on website",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "CB073",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code printed",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "CB074",
+    },
+    {
+      phase: "one_week_before",
+      title: "Logo’d aprons / add-ons ready for Basecamp pickup",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "CB075",
+    },
+    {
+      phase: "one_week_before",
+      title: "Company aprons cleaned and ready",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      traceId: "CB090",
+    },
+    {
+      phase: "one_week_before",
+      title: "Triple-check Cheeseboard inventory + rush remaining supplies",
+      description:
+        "Any remaining needed supplies via in-person shopping, curbside, or rush shipping.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "CB076",
+    },
+
+    // —— during ——
+    {
+      phase: "during",
+      title: "Track client drink consumption (+ WhatsApp media)",
+      description:
+        "Event host tracks the client's drink consumption; gather WhatsApp / photo media as needed.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "CB100",
+    },
+    {
+      phase: "during",
+      title: "Team debrief — what went well / improve → Post Event Survey",
+      description:
+        "Event team lead checks in: “What did we do well? What do we need to improve?” Add to Post Event Survey.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.postEventSurvey],
+      traceId: "CB105",
+    },
+
+    // —— post ——
+    {
+      phase: "post",
+      title: "Prepare consumption invoice (if applicable)",
+      role: "Admin",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "CB108",
+    },
+    {
+      phase: "post",
+      title: "Document EVENT REPORT (labor / venue / supplies)",
+      description:
+        "Note labor hours, venue fees, and supplies purchased for the event.",
+      role: "Admin",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "CB109",
+    },
+  ];
+}
+
+/** In-Person Chocolate Making — Family C playbook (Jan 2024 HTML). */
+function chocolateMakingDeltas(): ExperienceTaskDefSeed[] {
+  const supplyChecklist =
+    "Chocolate chunks; coarse salt; cacao beans & nibs; cashews; dried mangos; dried cherries; clementines; strawberries; coconut shavings; leaf dishes; ramekins; paper towels; dish soap; plastic or ceramic plates; plastic tablecloth roll (white preferred); trash bags; dinner napkins; cocktail napkins; 3rd-party furniture; sterno fuel; aluminum trays (two per tray); parchment paper; to-go containers; plastic gloves; butane cartridges / burners; olive oil (Georgetown Olive Oil); fig or strawberry balsamic; salt and pepper; aluminum foil. Also run inventory cost / purchase-source analysis.";
+
+  return [
+    // —— one week ——
+    {
+      phase: "one_week_before",
+      title: "Order Chocolate Making inventory / supplemental supplies",
+      description: `Collapsed 1w timeline. Ensure supplies purchased/ordered: ${supplyChecklist}`,
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory, R.georgetownOliveOil],
+      traceId: "CM067",
+    },
+    {
+      phase: "one_week_before",
+      title: "Reconfirm custom aprons sent to Basecamp",
+      description:
+        "If custom-ordered aprons — confirm sent to Basecamp for printing. See Vendor Directory.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "CM068",
+    },
+    {
+      phase: "one_week_before",
+      title: "Menu verified by chef for this function",
+      description: "Was the menu verified by the chef for THIS function?",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "CM069",
+    },
+    {
+      phase: "one_week_before",
+      title: "Confirm specialty paper stock + FedEx print job",
+      description:
+        "Do we have the appropriate paper in stock? Was printing sent to FedEx if needed?",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "CM070",
+    },
+    {
+      phase: "one_week_before",
+      title: "Marketing materials printed (recipe cards)",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.recipeCardsHowTo],
+      traceId: "CM071",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code created",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "CM072",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code on website",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "CM073",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code printed",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "CM074",
+    },
+    {
+      phase: "one_week_before",
+      title: "Logo’d aprons ready for Basecamp pickup",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "CM075",
+    },
+    {
+      phase: "one_week_before",
+      title: "Company aprons cleaned and ready",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      traceId: "CM090",
+    },
+    {
+      phase: "one_week_before",
+      title: "Triple-check Chocolate Making inventory + rush remaining supplies",
+      description:
+        "Any remaining needed supplies via in-person shopping, curbside, or rush shipping.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "CM076",
+    },
+
+    // —— during ——
+    {
+      phase: "during",
+      title: "Track client drink consumption (+ WhatsApp media)",
+      description:
+        "Event host tracks the client's drink consumption; gather WhatsApp / photo media as needed.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "CM100",
+    },
+    {
+      phase: "during",
+      title: "Team debrief — what went well / improve → Post Event Survey",
+      description:
+        "Event team lead checks in: “What did we do well? What do we need to improve?” Add to Post Event Survey.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.postEventSurvey],
+      traceId: "CM105",
+    },
+
+    // —— post ——
+    {
+      phase: "post",
+      title: "Prepare consumption invoice (if applicable)",
+      role: "Admin",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "CM108",
+    },
+    {
+      phase: "post",
+      title: "Document EVENT REPORT (labor / venue / supplies)",
+      description:
+        "Note labor hours, venue fees, and supplies purchased for the event.",
+      role: "Admin",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "CM109",
+    },
+  ];
+}
+
+function mixologyDeltas(): ExperienceTaskDefSeed[] {
+  const supplyChecklist =
+    "Paper towels; dish soap; plastic or ceramic plates; plastic tablecloth roll (white preferred); trash bags; dinner napkins; cocktail napkins; 3rd-party furniture; sterno fuel; aluminum trays (two per tray); parchment paper; to-go containers; plastic gloves; butane cartridges / burners; olive oil (Georgetown Olive Oil); fig or strawberry balsamic; salt and pepper; aluminum foil. Also run inventory cost / purchase-source analysis. Spirit/mixer picks follow the confirmed cocktail menu + Inventory Links — do not invent liquor SKUs.";
+
+  return [
+    // —— upon deposit ——
     {
       phase: "upon_deposit",
-      title: "Confirm venue — 2001 K ST NW (on premise) when applicable",
-      description: "Mixology doc venue note. Inventory remains stub — flag Zach.",
+      title: "Confirm venue / on-premise + loading dock",
+      description:
+        "House venues (Launch, Mr. Smith's, City Tavern, Whittemore House, Wharf Penthouse, Wingo's, 99 M St SE, Foundry, 1015 15th) or On Premise / going to them. Contact venue; reserve loading dock when applicable. See Vendor Directory.",
       role: "Sales",
       dueOffsetDays: 0,
       dueAnchor: "immediate",
       sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
       traceId: "MX001",
+    },
+    {
+      phase: "upon_deposit",
+      title: "Capture how many cocktails selected (1 / 2 / 3)",
+      role: "Sales",
+      dueOffsetDays: 0,
+      dueAnchor: "immediate",
+      sortOrder: nextSort(),
+      traceId: "MX002",
+    },
+
+    // —— one week ——
+    {
+      phase: "one_week_before",
+      title: "Order Mixology eventware / supplemental supplies",
+      description: `Collapsed 1w timeline. Ensure supplies purchased/ordered: ${supplyChecklist}`,
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks, R.vendorDirectory, R.georgetownOliveOil],
+      traceId: "MX067",
+    },
+    {
+      phase: "one_week_before",
+      title: "Reconfirm custom aprons sent to Basecamp",
+      description:
+        "If custom-ordered aprons — confirm sent to Basecamp for printing. See Vendor Directory.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "MX068",
+    },
+    {
+      phase: "one_week_before",
+      title: "Menu verified by chef for this function",
+      description: "Was the menu verified by the chef for THIS function?",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "MX069",
+    },
+    {
+      phase: "one_week_before",
+      title: "Confirm specialty paper stock + FedEx print job",
+      description:
+        "Do we have the appropriate paper in stock? Was printing sent to FedEx if needed?",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "MX070",
+    },
+    {
+      phase: "one_week_before",
+      title: "Menu / marketing materials printed (recipe cards)",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.recipeCardsHowTo],
+      traceId: "MX071",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code created",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "MX072",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code on website",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "MX073",
+    },
+    {
+      phase: "one_week_before",
+      title: "QR code printed",
+      role: "Marketing",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.qrCodesFolder],
+      traceId: "MX074",
+    },
+    {
+      phase: "one_week_before",
+      title: "Logo’d aprons ready for Basecamp pickup",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory, R.basecampDc],
+      traceId: "MX075",
+    },
+    {
+      phase: "one_week_before",
+      title: "Company aprons cleaned and ready",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.vendorDirectory],
+      traceId: "MX090",
+    },
+    {
+      phase: "one_week_before",
+      title: "Triple-check Mixology inventory + rush remaining supplies",
+      description:
+        "Any remaining needed supplies via in-person shopping, curbside, or rush shipping.",
+      role: "Ops",
+      dueOffsetDays: 7,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.inventoryLinks],
+      traceId: "MX076",
+    },
+
+    // —— during ——
+    {
+      phase: "during",
+      title: "Track client drink consumption (+ WhatsApp media)",
+      description:
+        "Event host tracks the client's drink consumption; gather WhatsApp / photo media as needed.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "MX100",
+    },
+    {
+      phase: "during",
+      title: "Team debrief — what went well / improve → Post Event Survey",
+      description:
+        "Event team lead checks in: “What did we do well? What do we need to improve?” Add to Post Event Survey.",
+      role: "Event Host",
+      dueOffsetDays: 0,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      resourceLinks: [R.postEventSurvey],
+      traceId: "MX105",
+    },
+
+    // —— post ——
+    {
+      phase: "post",
+      title: "Prepare consumption invoice (if applicable)",
+      role: "Admin",
+      dueOffsetDays: 1,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      conditional: { if: "alcohol_included" },
+      traceId: "MX108",
+    },
+    {
+      phase: "post",
+      title: "Document EVENT REPORT (labor / venue / supplies)",
+      description:
+        "Note labor hours, venue fees, and supplies purchased for the event.",
+      role: "Admin",
+      dueOffsetDays: 2,
+      dueAnchor: "event_date",
+      sortOrder: nextSort(),
+      traceId: "MX109",
     },
   ];
 }
@@ -853,17 +2122,19 @@ export function buildExperienceTaskDefs(
       out.push(...paintDeltas());
       break;
     case "In-Person Pottery":
-    case "In-Person Lend a Hand":
-      out.push(...paintDeltas().map((t) => ({
+      out.push(...potteryPaintCloneDeltas().map((t) => ({
         ...t,
         description: `${t.description || ""} (Paint-clone baseline per doc — ${row.flagNote || "incomplete"}).`,
       })));
+      break;
+    case "In-Person Lend a Hand":
+      out.push(...lendAHandDeltas());
       break;
     case "In-Person Terrarium":
       out.push(...terrariumDeltas());
       break;
     case "Flavors of DC":
-      out.push(...tourDeltas("flavors"));
+      out.push(...flavorsDeltas());
       break;
     case "In-Person Private Monuments":
       out.push(...tourDeltas("monuments"));
@@ -877,13 +2148,48 @@ export function buildExperienceTaskDefs(
       out.push(...tourDeltas("food"));
       break;
     case "In-Person Mixology":
-      out.push(...mixologyVenueDelta());
+      out.push(...mixologyDeltas());
+      break;
+    case "In-Person Cheeseboard":
+      out.push(...cheeseboardDeltas());
+      break;
+    case "In-Person Chocolate Making":
+      out.push(...chocolateMakingDeltas());
       break;
     default:
       break;
   }
 
   out.push(...sharedDuringPost());
+
+  if (row.experienceKey === "Flavors of DC") {
+    return out.filter((t) => !FLAVORS_OMIT_TRACE_IDS.has(t.traceId));
+  }
+
+  if (row.experienceKey === "In-Person Terrarium") {
+    return out.filter((t) => !TERRARIUM_OMIT_TRACE_IDS.has(t.traceId));
+  }
+
+  if (row.experienceKey === "In-Person Lend a Hand") {
+    return out.filter((t) => !LEND_A_HAND_OMIT_TRACE_IDS.has(t.traceId));
+  }
+
+  if (row.experienceKey === "In-Person Paint & Sip") {
+    return out.filter((t) => !PAINT_OMIT_TRACE_IDS.has(t.traceId));
+  }
+
+  if (row.experienceKey === "In-Person Cheeseboard") {
+    return out.filter((t) => !CHEESEBOARD_OMIT_TRACE_IDS.has(t.traceId));
+  }
+
+  if (row.experienceKey === "In-Person Chocolate Making") {
+    return out.filter((t) => !CHOCOLATE_MAKING_OMIT_TRACE_IDS.has(t.traceId));
+  }
+
+  if (row.experienceKey === "In-Person Mixology") {
+    return out.filter((t) => !MIXOLOGY_OMIT_TRACE_IDS.has(t.traceId));
+  }
+
   return out;
 }
 
