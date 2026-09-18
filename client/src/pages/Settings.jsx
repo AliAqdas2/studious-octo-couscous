@@ -23,6 +23,7 @@ import {
 import SettingsVenuesPanel from '@/components/settings/SettingsVenuesPanel';
 import SettingsInventoryCatalogPanel from '@/components/settings/SettingsInventoryCatalogPanel';
 import SettingsInstructorsPanel from '@/components/settings/SettingsInstructorsPanel';
+import SettingsBeoScriptPanel from '@/components/settings/SettingsBeoScriptPanel';
 import SettingsEateriesPanel from '@/components/settings/SettingsEateriesPanel';
 import {
   canAccessOpsSettings,
@@ -308,6 +309,7 @@ export default function Settings() {
           <SettingsVenuesPanel />
           <SettingsInventoryCatalogPanel />
           <SettingsInstructorsPanel />
+          <SettingsBeoScriptPanel />
           <SettingsEateriesPanel />
         </>
       )}

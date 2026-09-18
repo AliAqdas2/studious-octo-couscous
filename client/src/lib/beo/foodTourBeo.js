@@ -20,6 +20,10 @@ import {
   openSection,
   wrapSheet,
 } from './shared.js';
+import {
+  buildHostScriptVars,
+  hostScriptSectionHtml,
+} from './hostScript.js';
 
 function ordersHtml(stops) {
   const list = asArray(stops);
@@ -109,6 +113,21 @@ export function buildFoodTourBeoHtml(input) {
   const logoSrc = input?.logoSrc || '/mangiadc-logo.png';
   const printDate = formatDate(new Date().toISOString());
   const stops = asArray(input?.eateryStops);
+  const instructor = asRecord(input?.instructor);
+  const hostTemplate =
+    asRecord(input?.hostScriptTemplate).body ||
+    asRecord(input?.host_script_template).body ||
+    '';
+  const scriptHtml = hostScriptSectionHtml(
+    hostTemplate,
+    buildHostScriptVars({
+      event: core.event,
+      instructor,
+      client: input?.client,
+      runOfShow: core.ros,
+    }),
+    { missingInstructor: !instructor.name }
+  );
 
   const detailBits = [];
   if (core.ros.notes) detailBits.push(core.ros.notes);
@@ -146,6 +165,7 @@ export function buildFoodTourBeoHtml(input) {
         ? openSection('Inventory', inventoryChecklistHtml(input.inventory))
         : ''
     }
+    ${openSection('Instructor Bio / Script', scriptHtml, { keep: true })}
     ${openSection('Attendees', attendeeTable(core.participationUrl, input?.attendees))}
     ${approvalsBlock()}
   `;

@@ -21,6 +21,10 @@ import {
   wrapSheet,
   yn,
 } from './shared.js';
+import {
+  buildHostScriptVars,
+  hostScriptSectionHtml,
+} from './hostScript.js';
 
 function menuSection(core, input) {
   const event = core.event;
@@ -89,6 +93,19 @@ export function buildEventBeoHtml(input) {
   const addons = addonLines(core.event.custom_addons || core.event.customAddons);
   const venueRow = asRecord(input?.venue);
   const instructor = asRecord(input?.instructor);
+  const hostTemplate =
+    asRecord(input?.hostScriptTemplate).body ||
+    asRecord(input?.host_script_template).body ||
+    '';
+  const scriptVars = buildHostScriptVars({
+    event: core.event,
+    instructor,
+    client: input?.client,
+    runOfShow: core.ros,
+  });
+  const scriptHtml = hostScriptSectionHtml(hostTemplate, scriptVars, {
+    missingInstructor: !instructor.name,
+  });
 
   const clientBits = [];
   if (core.isCompetition) clientBits.push('Cooking competition: YES');
@@ -121,13 +138,7 @@ export function buildEventBeoHtml(input) {
       'Venue Guidelines',
       guidelinesBlock(venueRow.guidelines)
     )}
-    ${openSection(
-      'Instructor Bio / Script',
-      instructor.name
-        ? `<p style="margin:0 0 8px;font-weight:700;">${esc(instructor.name)}</p>
-           <p style="margin:0;white-space:pre-wrap;">${esc(instructor.bio || '')}</p>`
-        : '<p style="margin:0;font-size:12px;color:#666;">Select an instructor on Event Detail to pull their bio.</p>'
-    )}
+    ${openSection('Instructor Bio / Script', scriptHtml, { keep: true })}
     ${openSection('Attendees', attendeeTable(core.participationUrl, input?.attendees))}
     ${approvalsBlock()}
   `;

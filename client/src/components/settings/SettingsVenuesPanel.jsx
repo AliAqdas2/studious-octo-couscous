@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { getAccessToken } from '@/api/apiClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,14 +16,6 @@ import {
   Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-function authVenueImageUrl(url) {
-  const token = getAccessToken();
-  if (!token || !url) return url;
-  if (!url.startsWith('/venueimages/')) return url;
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}access_token=${encodeURIComponent(token)}`;
-}
 
 function groupImagesByVenue(images) {
   const map = new Map();
@@ -413,7 +404,7 @@ export default function SettingsVenuesPanel() {
                             >
                               <div className="aspect-[4/3] bg-gray-100">
                                 <img
-                                  src={authVenueImageUrl(img.image_url)}
+                                  src={img.image_url}
                                   alt={img.caption || v.name}
                                   className="w-full h-full object-cover"
                                 />

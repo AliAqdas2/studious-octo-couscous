@@ -16,6 +16,8 @@ import { isFoodTourExperience } from './foodTourExperiences.js';
  *   venue?: Record<string, unknown> | null,
  *   venueImages?: unknown[],
  *   instructor?: { name?: string, bio?: string } | null,
+ *   client?: { name?: string, company?: string } | null,
+ *   hostScriptTemplate?: { slug?: string, title?: string, body?: string } | null,
  *   inventory?: unknown[],
  *   eateryStops?: unknown[],
  *   attendees?: unknown[],

@@ -15,7 +15,6 @@ import {
   Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getAccessToken } from '@/api/apiClient';
 import {
   beoHtmlPreview,
   buildBeoHtml,
@@ -24,22 +23,6 @@ import {
 import { downloadBeoDocx } from '@/lib/beoDocx';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
-
-function authVenueImageUrl(url) {
-  const token = getAccessToken();
-  if (!token || !url) return url;
-  if (!String(url).startsWith('/venueimages/')) return url;
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}access_token=${encodeURIComponent(token)}`;
-}
-
-function withAuthImages(images) {
-  if (!Array.isArray(images)) return [];
-  return images.map((img) => ({
-    ...img,
-    image_url: authVenueImageUrl(img.image_url || img.imageUrl),
-  }));
-}
 
 function beoLogoSrc() {
   if (typeof window === 'undefined') return '/mangiadc-logo.png';
@@ -54,8 +37,11 @@ function buildFromState(state, event) {
     logoSrc: beoLogoSrc(),
     isFoodTour: state?.isFoodTour,
     venue: state?.venue,
-    venueImages: withAuthImages(state?.venueImages),
+    venueImages: Array.isArray(state?.venueImages) ? state.venueImages : [],
     instructor: state?.instructor,
+    client: state?.client,
+    hostScriptTemplate:
+      state?.hostScriptTemplate || state?.host_script_template || null,
     inventory: state?.inventory,
     eateryStops: state?.eateryStops,
     attendees: state?.attendees,

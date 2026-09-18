@@ -201,6 +201,7 @@ const ENTITY_MAP = {
   VenueImage: "venue-images",
   InventoryCatalogItem: "inventory-catalog-items",
   Instructor: "instructors",
+  BeoScriptTemplate: "beo-script-templates",
   Eatery: "eateries",
 };
 

@@ -110,9 +110,9 @@ export async function getEventInventory(eventId: string) {
     .where(eq(eventInventoryItems.eventId, eventId))
     .orderBy(asc(eventInventoryItems.sortOrder));
 
-  const needed = rows.filter((r) => r.item.needed).length;
-  const inOffice = rows.filter((r) => r.item.needed && r.item.inOffice).length;
-  const tripleCheckReady = needed > 0 && needed === inOffice;
+  const total = rows.length;
+  const inOffice = rows.filter((r) => r.item.inOffice).length;
+  const tripleCheckReady = total > 0 && inOffice === total;
 
   return {
     items: rows.map((r) => ({
@@ -125,8 +125,9 @@ export async function getEventInventory(eventId: string) {
       purchase_links: r.purchaseLinks ?? [],
     })),
     summary: {
-      total: rows.length,
-      needed,
+      total,
+      /** API key kept as `needed` for clients; equals total checklist rows. */
+      needed: total,
       in_office: inOffice,
       triple_check_ready: tripleCheckReady,
     },

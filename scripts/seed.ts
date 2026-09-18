@@ -134,6 +134,19 @@ async function seed(): Promise<void> {
       `[seed] Event workflow seed skipped (run migrations first if tables missing): ${message}`
     );
   }
+
+  try {
+    const { seedBeoScriptTemplates } = await import(
+      "../server/services/events/beoScriptTemplates.js"
+    );
+    const result = await seedBeoScriptTemplates();
+    console.log(`[seed] BEO script templates upserted=${result.upserted}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[seed] BEO script seed skipped (run migrations first if tables missing): ${message}`
+    );
+  }
 }
 
 seed()

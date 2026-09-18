@@ -11,6 +11,7 @@ export * from "./vendors.js";
 export * from "./venues.js";
 export * from "./venue-images.js";
 export * from "./instructors.js";
+export * from "./beo-script-templates.js";
 export * from "./eateries.js";
 export * from "./event-eatery-stops.js";
 export * from "./event-attendees.js";

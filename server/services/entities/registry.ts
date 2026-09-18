@@ -28,6 +28,7 @@ import {
   venueImages,
   venues,
   instructors,
+  beoScriptTemplates,
   eateries,
 } from "../../db/schema/index.js";
 
@@ -218,6 +219,13 @@ export const entityRegistry: Record<string, EntityDefinition> = {
     searchable: ["name", "bio"],
     defaultSort: "sort_order",
     requiredOnCreate: ["name"],
+    adminOnlyDelete: true,
+  },
+  "beo-script-templates": {
+    table: beoScriptTemplates,
+    searchable: ["slug", "title", "body"],
+    defaultSort: "slug",
+    requiredOnCreate: ["slug", "title"],
     adminOnlyDelete: true,
   },
   eateries: {

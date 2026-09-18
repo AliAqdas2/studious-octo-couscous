@@ -26,6 +26,29 @@ function flag(v) {
   return v ? '✓' : '—';
 }
 
+/** Mutually exclusive status columns (checkbox look, radio behavior). */
+const STATUS_FIELDS = ['needed', 'ordered', 'received', 'in_office'];
+const STATUS_PRIORITY = ['in_office', 'received', 'ordered', 'needed'];
+
+function statusPatch(field) {
+  const patch = {};
+  for (const f of STATUS_FIELDS) {
+    patch[f] = f === field;
+  }
+  return patch;
+}
+
+/** Pick highest status when legacy rows have multiple flags true. */
+function normalizeStatusRow(row) {
+  const active =
+    STATUS_PRIORITY.find((f) => Boolean(row[f])) || 'needed';
+  return { ...row, ...statusPatch(active) };
+}
+
+function normalizeStatusItems(items) {
+  return (items || []).map((row) => normalizeStatusRow(row));
+}
+
 function groupRowsBySection(rows) {
   const groups = [];
   const bySection = new Map();
@@ -229,7 +252,7 @@ export default function EventInventoryChecklist({
   );
 
   const startEdit = () => {
-    setDraft(cloneItems(items));
+    setDraft(normalizeStatusItems(items));
     setIsEditing(true);
   };
 
@@ -244,6 +267,12 @@ export default function EventInventoryChecklist({
     );
   };
 
+  const setStatus = (id, field, checked) => {
+    // Checking a status selects it; unchecking falls back to Needed.
+    const next = checked ? field : 'needed';
+    updateDraft(id, statusPatch(next));
+  };
+
   const saveDraft = () => {
     const byId = new Map(items.map((i) => [i.id, i]));
     const patches = [];
@@ -252,15 +281,23 @@ export default function EventInventoryChecklist({
       if (!orig) continue;
       const patch = { id: row.id };
       let dirty = false;
-      for (const field of ['needed', 'ordered', 'received', 'in_office', 'notes']) {
-        const a = row[field] ?? (field === 'notes' ? '' : false);
-        const b = orig[field] ?? (field === 'notes' ? '' : false);
-        if (a !== b) {
-          dirty = true;
-          if (field === 'in_office') patch.inOffice = Boolean(row.in_office);
-          else if (field === 'notes') patch.notes = row.notes || null;
-          else patch[field] = Boolean(row[field]);
+      let statusDirty = false;
+      for (const field of STATUS_FIELDS) {
+        if (Boolean(row[field]) !== Boolean(orig[field])) {
+          statusDirty = true;
+          break;
         }
+      }
+      if (statusDirty) {
+        dirty = true;
+        patch.needed = Boolean(row.needed);
+        patch.ordered = Boolean(row.ordered);
+        patch.received = Boolean(row.received);
+        patch.inOffice = Boolean(row.in_office);
+      }
+      if ((row.notes || '') !== (orig.notes || '')) {
+        dirty = true;
+        patch.notes = row.notes || null;
       }
       const urlA = (row.purchase_url || '').trim() || null;
       const urlB = (orig.purchase_url || '').trim() || null;
@@ -315,7 +352,7 @@ export default function EventInventoryChecklist({
         <div className="flex flex-wrap items-center justify-between gap-2">
           {summary ? (
             <p className="text-xs text-gray-500">
-              {summary.in_office}/{summary.needed} needed items in office
+              {summary.in_office}/{summary.needed} items in office
               {summary.triple_check_ready ? (
                 <Badge className="ml-2 bg-emerald-100 text-emerald-800 border-emerald-200">
                   24h triple-check ready
@@ -407,8 +444,7 @@ export default function EventInventoryChecklist({
                         </p>
                       ) : null}
                     </td>
-                    {['needed', 'ordered', 'received', 'in_office'].map(
-                      (field) => {
+                    {STATUS_FIELDS.map((field) => {
                         const checked = Boolean(item[field]);
                         return (
                           <td key={field} className="py-2 px-1 text-center">
@@ -416,9 +452,7 @@ export default function EventInventoryChecklist({
                               <Checkbox
                                 checked={checked}
                                 onCheckedChange={(v) =>
-                                  updateDraft(item.id, {
-                                    [field]: Boolean(v),
-                                  })
+                                  setStatus(item.id, field, Boolean(v))
                                 }
                               />
                             ) : (
@@ -426,8 +460,7 @@ export default function EventInventoryChecklist({
                             )}
                           </td>
                         );
-                      }
-                    )}
+                      })}
                     <td className="py-2 pl-2">
                       <VendorLinks item={item} />
                       {isEditing && canEdit && (
@@ -511,8 +544,9 @@ export default function EventInventoryChecklist({
         )}
 
         <p className="text-xs text-gray-500 pt-1">
-          24h before: confirm every needed row is in office, then set Acquire Ice
-          Y/N on the ice task.
+          24h before: confirm every checklist item is in office, then set Acquire
+          Ice Y/N on the ice task. Remove items with Delete — not by unchecking
+          Needed.
         </p>
       </div>
 

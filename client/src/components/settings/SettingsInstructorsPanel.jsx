@@ -110,9 +110,10 @@ export default function SettingsInstructorsPanel() {
           Instructors
         </CardTitle>
         <CardDescription>
-          Instructor names and bios for ops and event materials. Run{' '}
-          <code>npm run db:seed-instructors</code> to load the bundled list, or
-          add profiles below.
+          Instructor names and bios for BEO host scripts and event materials.
+          Bios fill <code>{'{{instructor_bio}}'}</code> in Settings → BEO Host
+          Script. Run <code>npm run db:seed-instructors</code> to load the
+          bundled list, or add profiles below.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

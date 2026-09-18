@@ -912,6 +912,40 @@ async function main(): Promise<void> {
     } else {
       console.log("tasks.completed_by already present");
     }
+
+    const beoScriptTable = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = 'beo_script_templates'
+    `;
+    if (beoScriptTable.length === 0) {
+      console.log("Applying BEO script templates migration (0026)...");
+      const beoScriptSql = readFileSync(
+        join(__dirname, "../drizzle/0026_beo_script_templates.sql"),
+        "utf8"
+      );
+      for (const statement of beoScriptSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("BEO script templates migration applied");
+    } else {
+      console.log("beo_script_templates table already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

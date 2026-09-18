@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { AppError } from "../../lib/errors.js";
 import { getDb } from "../../db/index.js";
 import {
+  clients,
   events,
   instructors,
   tasks,
@@ -15,9 +16,14 @@ import { getEventInventory } from "./eventInventory.js";
 import { listEventEateryStops } from "./eateryStops.js";
 import { listEventAttendees } from "./eventAttendees.js";
 import {
+  getBeoScriptTemplate,
+  DEFAULT_HOST_MC_SCRIPT_BODY,
+} from "./beoScriptTemplates.js";
+import {
   getRosConfirmLabel,
   isFoodTourExperience,
 } from "./experienceMatrix.js";
+import { HOST_MC_SCRIPT_SLUG } from "../../db/schema/beo-script-templates.js";
 
 function requireDb() {
   const db = getDb();
@@ -93,6 +99,22 @@ async function loadInstructor(instructorId: string | null | undefined) {
   };
 }
 
+async function loadClient(clientId: string | null | undefined) {
+  if (!clientId) return null;
+  const db = requireDb();
+  const [row] = await db
+    .select()
+    .from(clients)
+    .where(eq(clients.id, clientId))
+    .limit(1);
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    company: row.company,
+  };
+}
+
 export async function getBeoDocumentState(
   eventId: string,
   user?: AuthUser | null
@@ -113,22 +135,36 @@ export async function getBeoDocumentState(
   const [
     { venue, venueImages: images },
     instructor,
+    client,
     inventory,
     eateryStops,
     attendees,
+    hostScriptRow,
   ] = await Promise.all([
     loadVenueByName(event.venue),
     loadInstructor(event.instructorId),
+    loadClient(event.clientId),
     getEventInventory(eventId),
     listEventEateryStops(eventId),
     listEventAttendees(eventId),
+    getBeoScriptTemplate(HOST_MC_SCRIPT_SLUG).catch(() => null),
   ]);
 
   const inventoryItems = Array.isArray(inventory?.items)
-    ? inventory.items.filter(
-        (item) => item && (item as { needed?: boolean }).needed !== false
-      )
+    ? inventory.items.filter((item) => Boolean(item))
     : [];
+
+  const hostScriptTemplate = hostScriptRow
+    ? {
+        slug: hostScriptRow.slug,
+        title: hostScriptRow.title,
+        body: hostScriptRow.body,
+      }
+    : {
+        slug: HOST_MC_SCRIPT_SLUG,
+        title: "Host MC Script",
+        body: DEFAULT_HOST_MC_SCRIPT_BODY,
+      };
 
   return {
     html: event.beoDocumentHtml || null,
@@ -149,6 +185,8 @@ export async function getBeoDocumentState(
     venue,
     venueImages: images,
     instructor,
+    client,
+    hostScriptTemplate,
     inventory: inventoryItems,
     eateryStops,
     attendees,
