@@ -18,6 +18,7 @@ import OpsPanelShell from '@/components/events/OpsPanelShell';
 import {
   formatOrderLine,
   normalizeOrderLines,
+  FULFILLMENT_TYPES,
   ORDER_MODES,
   TIME_LABELS,
 } from '@/lib/eateryOrders';
@@ -267,6 +268,11 @@ export default function EventFoodTourStopsPanel({
                         <Badge variant="outline" className="text-xs">
                           {stop.order_mode}
                         </Badge>
+                        {stop.fulfillment_type ? (
+                          <Badge variant="outline" className="text-xs">
+                            {stop.fulfillment_type}
+                          </Badge>
+                        ) : null}
                       </div>
                       {!expanded && (
                         <p className="text-xs text-gray-500 mt-1">
@@ -382,6 +388,89 @@ export default function EventFoodTourStopsPanel({
                           </select>
                         </div>
                       </div>
+
+                      <div className="space-y-2 rounded-md border border-orange-100 bg-[#FFF9F0]/p-3">
+                        <div>
+                          <Label className="text-xs">Pick-Up / Delivery</Label>
+                          <select
+                            disabled={!canEdit}
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                            value={stop.fulfillment_type || ''}
+                            onChange={(e) =>
+                              updateMutation.mutate({
+                                stopId: stop.id,
+                                patch: {
+                                  fulfillment_type: e.target.value || null,
+                                },
+                              })
+                            }
+                          >
+                            <option value="">Select…</option>
+                            {FULFILLMENT_TYPES.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div>
+                            <Label className="text-xs">Time</Label>
+                            <Input
+                              disabled={!canEdit}
+                              placeholder="5:30 PM"
+                              defaultValue={stop.fulfillment_time || ''}
+                              key={`${stop.id}-ft-${stop.fulfillment_time || ''}`}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v !== (stop.fulfillment_time || '')) {
+                                  updateMutation.mutate({
+                                    stopId: stop.id,
+                                    patch: { fulfillment_time: v || null },
+                                  });
+                                }
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Who is Picking Up?</Label>
+                            <Input
+                              disabled={!canEdit}
+                              placeholder="Name"
+                              defaultValue={stop.fulfillment_contact || ''}
+                              key={`${stop.id}-fc-${stop.fulfillment_contact || ''}`}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v !== (stop.fulfillment_contact || '')) {
+                                  updateMutation.mutate({
+                                    stopId: stop.id,
+                                    patch: { fulfillment_contact: v || null },
+                                  });
+                                }
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Address</Label>
+                            <Input
+                              disabled={!canEdit}
+                              placeholder="Pickup / delivery address"
+                              defaultValue={stop.fulfillment_address || ''}
+                              key={`${stop.id}-fa-${stop.fulfillment_address || ''}`}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v !== (stop.fulfillment_address || '')) {
+                                  updateMutation.mutate({
+                                    stopId: stop.id,
+                                    patch: { fulfillment_address: v || null },
+                                  });
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div>
                           <Label className="text-xs">Time label</Label>

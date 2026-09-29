@@ -269,9 +269,8 @@ export async function createEventFromWonLead(
           lead.depositAmount != null ? Number(lead.depositAmount) : null,
         depositReceivedAt: new Date(),
         stage: "Deposit Received",
-        specialRequests: lead.notes
-          ? `Prefill from lead notes:\n${lead.notes}`.slice(0, 4000)
-          : null,
+        /** Leave blank — lead notes stay on the Lead; do not dump email threads into BEO. */
+        specialRequests: null,
       })
       .returning();
     newEvent = created;

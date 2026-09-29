@@ -946,6 +946,41 @@ async function main(): Promise<void> {
     } else {
       console.log("beo_script_templates table already present");
     }
+
+    const fulfillmentCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'event_eatery_stops'
+        and column_name = 'fulfillment_type'
+    `;
+    if (fulfillmentCols.length === 0) {
+      console.log("Applying eatery stop fulfillment migration (0027)...");
+      const fulfillmentSql = readFileSync(
+        join(__dirname, "../drizzle/0027_eatery_stop_fulfillment.sql"),
+        "utf8"
+      );
+      for (const statement of fulfillmentSql.split("--> statement-breakpoint")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log("eatery stop fulfillment migration applied");
+    } else {
+      console.log("event_eatery_stops.fulfillment_type already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

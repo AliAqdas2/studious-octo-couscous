@@ -8,6 +8,7 @@
 
 export const TIME_LABELS = ['Reservation Time', 'Arrival Time'];
 export const ORDER_MODES = ['PRE-ORDERED', 'ORDERING AT'];
+export const FULFILLMENT_TYPES = ['Pick-Up', 'Delivery'];
 
 export function normalizeOrderLines(lines) {
   if (!Array.isArray(lines)) return [];

@@ -147,6 +147,19 @@ export interface UpdateEateryStopPayload {
   order_key_dishes?: string | null;
   notes?: string | null;
   sort_order?: number;
+  fulfillment_type?: string | null;
+  fulfillment_time?: string | null;
+  fulfillment_contact?: string | null;
+  fulfillment_address?: string | null;
+}
+
+function normalizeFulfillmentType(
+  value: unknown
+): "Pick-Up" | "Delivery" | null {
+  if (value == null || value === "") return null;
+  const v = String(value).trim();
+  if (v === "Pick-Up" || v === "Delivery") return v;
+  throw new AppError("fulfillment_type must be Pick-Up or Delivery", 400);
 }
 
 export async function updateEateryStop(
@@ -192,6 +205,30 @@ export async function updateEateryStop(
   if (payload.notes !== undefined) patch.notes = payload.notes;
   if (payload.sort_order !== undefined) {
     patch.sortOrder = Number(payload.sort_order) || 0;
+  }
+  if (payload.fulfillment_type !== undefined) {
+    patch.fulfillmentType = normalizeFulfillmentType(payload.fulfillment_type);
+  }
+  if (payload.fulfillment_time !== undefined) {
+    const t =
+      payload.fulfillment_time == null
+        ? null
+        : String(payload.fulfillment_time).trim() || null;
+    patch.fulfillmentTime = t;
+  }
+  if (payload.fulfillment_contact !== undefined) {
+    const c =
+      payload.fulfillment_contact == null
+        ? null
+        : String(payload.fulfillment_contact).trim() || null;
+    patch.fulfillmentContact = c;
+  }
+  if (payload.fulfillment_address !== undefined) {
+    const a =
+      payload.fulfillment_address == null
+        ? null
+        : String(payload.fulfillment_address).trim() || null;
+    patch.fulfillmentAddress = a;
   }
 
   await db

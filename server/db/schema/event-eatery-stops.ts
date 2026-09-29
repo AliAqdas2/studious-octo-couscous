@@ -15,6 +15,8 @@ import type {
 } from "./eateries.js";
 import { events } from "./events.js";
 
+export type EateryFulfillmentType = "Pick-Up" | "Delivery";
+
 /** A selected food-tour stop for one event; order lines are an editable copy. */
 export const eventEateryStops = pgTable("event_eatery_stops", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -43,6 +45,13 @@ export const eventEateryStops = pgTable("event_eatery_stops", {
   drinkOption: text("drink_option"),
   orderKeyDishes: text("order_key_dishes"),
   notes: text("notes"),
+  /** Logistics: Pick-Up or Delivery (separate from PRE-ORDERED / ORDERING AT). */
+  fulfillmentType: varchar("fulfillment_type", { length: 50 }).$type<
+    EateryFulfillmentType
+  >(),
+  fulfillmentTime: varchar("fulfillment_time", { length: 50 }),
+  fulfillmentContact: varchar("fulfillment_contact", { length: 255 }),
+  fulfillmentAddress: text("fulfillment_address"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdDate: createdDate(),
   updatedDate: updatedDate(),

@@ -41,6 +41,43 @@ function ordersHtml(stops) {
         .map((line) => `<li>${esc(formatOrderLine(line, guests))}</li>`)
         .join('');
       const drink = stop.drink_option || stop.drinkOption;
+      const fulfillmentType =
+        stop.fulfillment_type || stop.fulfillmentType || '';
+      const fulfillmentTime =
+        stop.fulfillment_time || stop.fulfillmentTime || '';
+      const fulfillmentContact =
+        stop.fulfillment_contact || stop.fulfillmentContact || '';
+      const fulfillmentAddress =
+        stop.fulfillment_address || stop.fulfillmentAddress || '';
+      const fulfillmentBits = [];
+      if (fulfillmentType) {
+        fulfillmentBits.push(
+          `<p style="margin:0 0 2px;font-size:12px;"><strong>Fulfillment:</strong> ${esc(
+            fulfillmentType
+          )}</p>`
+        );
+      }
+      if (fulfillmentTime) {
+        fulfillmentBits.push(
+          `<p style="margin:0 0 2px;font-size:12px;"><strong>Time:</strong> ${esc(
+            fulfillmentTime
+          )}</p>`
+        );
+      }
+      if (fulfillmentContact) {
+        fulfillmentBits.push(
+          `<p style="margin:0 0 2px;font-size:12px;"><strong>Who is Picking Up?:</strong> ${esc(
+            fulfillmentContact
+          )}</p>`
+        );
+      }
+      if (fulfillmentAddress) {
+        fulfillmentBits.push(
+          `<p style="margin:0 0 2px;font-size:12px;"><strong>Address:</strong> ${esc(
+            fulfillmentAddress
+          )}</p>`
+        );
+      }
       return `<div style="margin:0 0 14px;">
         <p style="margin:0 0 2px;font-size:14px;font-family:Georgia,'Times New Roman',serif;color:#134f5c;">
           ${esc(stop.name || '')} — ${esc(time)}
@@ -53,7 +90,14 @@ function ordersHtml(stops) {
         </ul>
         ${
           drink
-            ? `<p style="margin:0;font-size:12px;">Alcohol option — ${esc(drink)}</p>`
+            ? `<p style="margin:0 0 6px;font-size:12px;">Alcohol option — ${esc(drink)}</p>`
+            : ''
+        }
+        ${
+          fulfillmentBits.length
+            ? `<div style="margin:6px 0 0;padding:6px 0 0;border-top:1px solid #e8e0d4;">${fulfillmentBits.join(
+                ''
+              )}</div>`
             : ''
         }
       </div>`;
