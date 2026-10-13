@@ -13,12 +13,14 @@ import leadsSearchRouter from "./leads-search.js";
 import onboardingRouter from "./onboarding.js";
 import tasksRouter from "./tasks.js";
 import gmailWebhookRouter from "./webhooks/gmail.js";
+import leadsWebhookRouter from "./webhooks/leads.js";
 import twilioWebhookRouter from "./webhooks/twilio.js";
 
 export function registerRoutes(app: Express): void {
   // Webhooks — no JWT
   app.use("/webhook/twilio", twilioWebhookRouter);
   app.use("/webhook/gmail", gmailWebhookRouter);
+  app.use("/webhook/leads", leadsWebhookRouter);
 
   app.use("/api", healthRouter);
   app.use("/api/auth", authRouter);

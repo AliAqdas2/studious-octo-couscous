@@ -49,6 +49,8 @@ export const env = {
     process.env.AI_MODEL?.trim() || "claude-sonnet-4-20250514",
   gmailPubsubTopic: () => process.env.GMAIL_PUBSUB_TOPIC?.trim() || "",
   gmailWebhookSecret: () => process.env.GMAIL_WEBHOOK_SECRET?.trim() || "",
+  /** Shared secret for POST /webhook/leads (inbound create-lead). Required for the endpoint. */
+  leadWebhookSecret: () => process.env.LEAD_WEBHOOK_SECRET?.trim() || "",
   /** Verbose Gmail Pub/Sub + intake dumps (headers, bodies, LLM). Off by default. */
   gmailIntakeDebug: () =>
     process.env.GMAIL_INTAKE_DEBUG === "true" ||
