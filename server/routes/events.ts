@@ -73,6 +73,7 @@ import {
 import type { EventOpsFeatures } from "../services/events/eventOpsFeatures.js";
 import { getOpsPanelSideFlags } from "../services/events/opsPanelSideFlags.js";
 import {
+  createClientCommStageDraft,
   listEventClientCommStages,
   patchEventClientCommStage,
   type PatchClientCommStagePayload,
@@ -740,6 +741,24 @@ router.patch(
         (req.body ?? {}) as PatchClientCommStagePayload,
         user
       );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/events/:id/client-comm-stages/:stageId/draft",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      const stageId = req.params.stageId;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      if (!stageId) throw new AppError("stageId is required", 400);
+      const user = (req as AuthenticatedRequest).user;
+      const result = await createClientCommStageDraft(eventId, stageId, user);
       res.json(result);
     } catch (err) {
       next(err);

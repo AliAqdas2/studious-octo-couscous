@@ -13,7 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronDown, ChevronRight, Copy, Mail } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Loader2,
+  Mail,
+  Send,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import {
@@ -153,6 +160,28 @@ export default function ClientCommunicationPanel({
     },
     onError: (err) => {
       toast.error(err?.message || 'Failed to update communication stage');
+    },
+  });
+
+  const draftMutation = useMutation({
+    mutationFn: (stageId) =>
+      base44.functions.invoke('createEventClientCommDraft', {
+        eventId,
+        stageId,
+      }),
+    onSuccess: (res) => {
+      const body = res?.data ?? res;
+      toast.success(
+        body?.to
+          ? `Gmail draft created for ${body.to}`
+          : 'Gmail draft created'
+      );
+    },
+    onError: (err) => {
+      toast.error(
+        err?.message ||
+          'Failed to create draft. Connect Gmail and set the event POC email.'
+      );
     },
   });
 
@@ -318,7 +347,7 @@ export default function ClientCommunicationPanel({
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                             Template
                           </p>
-                          <div className="flex gap-1">
+                          <div className="flex flex-wrap gap-1">
                             {subject ? (
                               <Button
                                 type="button"
@@ -348,8 +377,26 @@ export default function ClientCommunicationPanel({
                               <Copy className="mr-1 h-3 w-3" />
                               Copy all
                             </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-7 text-xs bg-[#C84B31] hover:bg-[#A03A23]"
+                              disabled={draftMutation.isPending}
+                              onClick={() => draftMutation.mutate(id)}
+                            >
+                              {draftMutation.isPending ? (
+                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              ) : (
+                                <Send className="mr-1 h-3 w-3" />
+                              )}
+                              Create Gmail draft
+                            </Button>
                           </div>
                         </div>
+                        <p className="text-xs text-gray-500">
+                          Draft fills placeholders from event POC, dates, deposit
+                          link, company, and venue — then saves to Gmail Drafts.
+                        </p>
                         {subject ? (
                           <p className="text-sm font-medium text-gray-800">
                             {subject}

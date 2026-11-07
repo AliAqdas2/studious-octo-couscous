@@ -546,6 +546,22 @@ export const base44 = {
         return { data: body };
       }
 
+      if (name === "createEventClientCommDraft") {
+        const eventId = payload.eventId || payload.id;
+        const stageId = payload.stageId || payload.stage_id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!stageId) {
+          throw new ApiError("stageId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/client-comm-stages/${encodeURIComponent(stageId)}/draft`,
+          { method: "POST", body: JSON.stringify({}) }
+        );
+        return { data: body };
+      }
+
       if (name === "regenerateEventWorkflow") {
         const eventId = payload.eventId || payload.id;
         if (!eventId) {

@@ -5,13 +5,16 @@ import {
   clientCommunicationStageDefs,
   eventClientCommunicationStages,
   events,
+  leads,
 } from "../../db/schema/index.js";
 import { toApiRecord } from "../entities/serialize.js";
 import type { AuthUser } from "../auth/authService.js";
+import { createGmailDraft } from "../gmail/drafts.js";
 import {
   CLIENT_COMM_STAGE_DEFS,
   type ClientCommEventTypeScope,
 } from "./clientCommStageCatalog.js";
+import { fillClientCommSubjectAndBody } from "./fillClientCommTemplate.js";
 import { isFoodTourExperience } from "./experienceMatrix.js";
 
 function requireDb() {
@@ -278,5 +281,84 @@ export async function patchEventClientCommStage(
 
   return {
     stage: toApiRecord((updated || existing) as Record<string, unknown>),
+  };
+}
+
+/**
+ * Fill stage template from event data and create a Gmail draft to the POC.
+ */
+export async function createClientCommStageDraft(
+  eventId: string,
+  stageId: string,
+  user?: AuthUser | null
+) {
+  const db = requireDb();
+  const [event] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+  if (!event) throw new AppError("Event not found", 404);
+
+  const [stage] = await db
+    .select()
+    .from(eventClientCommunicationStages)
+    .where(eq(eventClientCommunicationStages.id, stageId))
+    .limit(1);
+  if (!stage || stage.eventId !== eventId) {
+    throw new AppError("Client communication stage not found", 404);
+  }
+
+  let company: string | null = null;
+  if (event.leadId) {
+    const [lead] = await db
+      .select({ company: leads.company })
+      .from(leads)
+      .where(eq(leads.id, event.leadId))
+      .limit(1);
+    company = lead?.company ?? null;
+  }
+
+  const filled = fillClientCommSubjectAndBody(
+    stage.templateSubject,
+    stage.templateBody,
+    {
+      eventName: event.eventName,
+      eventType: event.eventType,
+      eventDate: event.eventDate,
+      startTime: event.startTime,
+      venue: event.venue,
+      venueAddress: event.venueAddress,
+      pocName: event.pocName,
+      pocEmail: event.pocEmail,
+      pocPhone: event.pocPhone,
+      depositPaymentUrl: event.depositPaymentUrl,
+      company,
+    }
+  );
+
+  if (!filled.to) {
+    throw new AppError(
+      "Event needs a POC email before creating a draft. Set POC email on the event (Deposit / Event details).",
+      400
+    );
+  }
+
+  const draft = await createGmailDraft({
+    to: filled.to,
+    subject: filled.subject,
+    body: filled.body,
+    leadId: event.leadId || undefined,
+    userId: user?.id,
+    userName: user?.full_name,
+  });
+
+  return {
+    ...draft,
+    to: filled.to,
+    subject: filled.subject,
+    body: filled.body,
+    stage_id: stageId,
+    stage_title: stage.title,
   };
 }
