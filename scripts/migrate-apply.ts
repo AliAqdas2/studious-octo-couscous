@@ -1165,6 +1165,26 @@ async function main(): Promise<void> {
     } else {
       console.log("client_communication_stage_defs already present");
     }
+
+    const simpleTrackCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'client_communication_stage_defs'
+        and column_name = 'show_in_simple_track'
+    `;
+    if (simpleTrackCols.length === 0) {
+      console.log("Applying client comm simple track migration (0037)...");
+      await applySqlFile(
+        "client comm simple track migration",
+        "../drizzle/0037_client_comm_simple_track.sql",
+        { wholeFile: true }
+      );
+    } else {
+      console.log(
+        "client_communication_stage_defs.show_in_simple_track already present"
+      );
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

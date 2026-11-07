@@ -47,6 +47,8 @@ export const clientCommunicationStageDefs = pgTable(
     eventTypeScope: clientCommEventTypeScopeEnum("event_type_scope")
       .notNull()
       .default("all"),
+    /** Cooking Class UI shows only stages with this flag (client's short list). */
+    showInSimpleTrack: boolean("show_in_simple_track").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     createdDate: createdDate(),
     updatedDate: updatedDate(),

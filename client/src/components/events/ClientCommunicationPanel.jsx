@@ -202,9 +202,9 @@ export default function ClientCommunicationPanel({
       milestoneLabel="Outreach track"
     >
       <p className="mb-3 text-sm text-gray-600">
-        Client outreach stages — separate from execution tasks. Expand a stage
-        for the email template; assign owner and due date; mark complete when
-        sent.
+        {data?.simple_track
+          ? 'Cooking Class client emails — the short checklist your team uses (participation → ROS → balance → thank you / referral). Separate from internal Tasks.'
+          : 'Client outreach stages — separate from execution tasks. Expand a stage for the email template; assign owner and due date; mark complete when sent.'}
       </p>
       {isLoading ? (
         <p className="text-sm text-gray-500">Loading stages…</p>

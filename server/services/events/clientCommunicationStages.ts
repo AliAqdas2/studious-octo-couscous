@@ -12,10 +12,17 @@ import type { AuthUser } from "../auth/authService.js";
 import { createGmailDraft } from "../gmail/drafts.js";
 import {
   CLIENT_COMM_STAGE_DEFS,
+  COOKING_SIMPLE_COMM_SLUGS,
   type ClientCommEventTypeScope,
 } from "./clientCommStageCatalog.js";
 import { fillClientCommSubjectAndBody } from "./fillClientCommTemplate.js";
 import { isFoodTourExperience } from "./experienceMatrix.js";
+
+function isCookingEventType(eventType: string | null | undefined): boolean {
+  return String(eventType || "")
+    .toLowerCase()
+    .includes("cooking");
+}
 
 function requireDb() {
   const db = getDb();
@@ -78,6 +85,7 @@ export async function ensureClientCommStageDefs() {
           dueOffsetDays: def.dueOffsetDays,
           dueAnchor: def.dueAnchor,
           eventTypeScope: def.eventTypeScope,
+          showInSimpleTrack: def.showInSimpleTrack,
           isActive: true,
           updatedDate: now,
         })
@@ -93,6 +101,7 @@ export async function ensureClientCommStageDefs() {
         dueOffsetDays: def.dueOffsetDays,
         dueAnchor: def.dueAnchor,
         eventTypeScope: def.eventTypeScope,
+        showInSimpleTrack: def.showInSimpleTrack,
         isActive: true,
         updatedDate: now,
       });
@@ -103,6 +112,7 @@ export async function ensureClientCommStageDefs() {
 
 /**
  * Materialize missing stage instances for an event (never deletes completed).
+ * Cooking events only get the simple 11-step track.
  */
 export async function materializeClientCommStagesForEvent(eventId: string) {
   const db = requireDb();
@@ -115,8 +125,9 @@ export async function materializeClientCommStagesForEvent(eventId: string) {
     .limit(1);
   if (!event) throw new AppError("Event not found", 404);
 
+  const cooking = isCookingEventType(event.eventType);
   const scopes = scopeForEventType(event.eventType);
-  const defs = await db
+  const defsAll = await db
     .select()
     .from(clientCommunicationStageDefs)
     .where(
@@ -127,6 +138,10 @@ export async function materializeClientCommStagesForEvent(eventId: string) {
     )
     .orderBy(asc(clientCommunicationStageDefs.sortOrder));
 
+  const defs = cooking
+    ? defsAll.filter((d) => d.showInSimpleTrack)
+    : defsAll;
+
   const existing = await db
     .select()
     .from(eventClientCommunicationStages)
@@ -136,7 +151,28 @@ export async function materializeClientCommStagesForEvent(eventId: string) {
   const now = new Date();
   let inserted = 0;
   for (const def of defs) {
-    if (have.has(def.id)) continue;
+    if (have.has(def.id)) {
+      // Refresh pending snapshots so renames/offsets apply after seed.
+      const row = existing.find((r) => r.defId === def.id);
+      if (row && row.status !== "done") {
+        await db
+          .update(eventClientCommunicationStages)
+          .set({
+            title: def.title,
+            sortOrder: def.sortOrder,
+            templateSubject: def.subject,
+            templateBody: def.body,
+            dueDate: computeDueDate(
+              event.eventDate,
+              def.dueOffsetDays,
+              def.dueAnchor
+            ),
+            updatedDate: now,
+          })
+          .where(eq(eventClientCommunicationStages.id, row.id));
+      }
+      continue;
+    }
     await db.insert(eventClientCommunicationStages).values({
       eventId,
       defId: def.id,
@@ -155,7 +191,7 @@ export async function materializeClientCommStagesForEvent(eventId: string) {
     inserted += 1;
   }
 
-  return { ok: true, inserted, totalDefs: defs.length };
+  return { ok: true, inserted, totalDefs: defs.length, cooking_simple: cooking };
 }
 
 export async function listEventClientCommStages(eventId: string) {
@@ -170,25 +206,49 @@ export async function listEventClientCommStages(eventId: string) {
   // Ensure stages exist when panel is opened (idempotent).
   await materializeClientCommStagesForEvent(eventId);
 
+  const cooking = isCookingEventType(event.eventType);
   const rows = await db
-    .select()
+    .select({
+      stage: eventClientCommunicationStages,
+      defSlug: clientCommunicationStageDefs.slug,
+      showInSimpleTrack: clientCommunicationStageDefs.showInSimpleTrack,
+    })
     .from(eventClientCommunicationStages)
+    .innerJoin(
+      clientCommunicationStageDefs,
+      eq(
+        eventClientCommunicationStages.defId,
+        clientCommunicationStageDefs.id
+      )
+    )
     .where(eq(eventClientCommunicationStages.eventId, eventId))
     .orderBy(asc(eventClientCommunicationStages.sortOrder));
 
-  const stages = rows.map((r) => toApiRecord(r as Record<string, unknown>));
-  const pending = rows.find((r) => r.status !== "done");
-  const doneCount = rows.filter((r) => r.status === "done").length;
+  const filtered = cooking
+    ? rows.filter(
+        (r) =>
+          r.showInSimpleTrack ||
+          (COOKING_SIMPLE_COMM_SLUGS as readonly string[]).includes(
+            r.defSlug || ""
+          )
+      )
+    : rows;
+
+  const stageRows = filtered.map((r) => r.stage);
+  const stages = stageRows.map((r) => toApiRecord(r as Record<string, unknown>));
+  const pending = stageRows.find((r) => r.status !== "done");
+  const doneCount = stageRows.filter((r) => r.status === "done").length;
 
   return {
     stages,
     current: pending
       ? toApiRecord(pending as Record<string, unknown>)
       : null,
-    current_title: pending?.title ?? (rows.length ? "Complete" : null),
+    current_title: pending?.title ?? (stageRows.length ? "Complete" : null),
     done_count: doneCount,
-    total_count: rows.length,
+    total_count: stageRows.length,
     ops_stage: event.stage ?? null,
+    simple_track: cooking,
   };
 }
 
