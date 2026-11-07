@@ -23,6 +23,7 @@
     "db:seed-instructors": "tsx scripts/seed-instructors.ts",
     "db:seed-beo-scripts": "tsx scripts/seed-beo-scripts.ts",
     "db:seed-client-comm-stages": "tsx scripts/seed-client-comm-stages.ts",
+    "db:seed-client-comm-stages:prod": "node dist/seed-client-comm-stages.js",
     "db:seed-eateries": "tsx scripts/seed-eateries.ts",
     "db:seed-venue-guidelines": "tsx scripts/seed-venue-guidelines.ts",
     "db:seed-beo-demo-events": "tsx scripts/seed-beo-demo-events.ts",

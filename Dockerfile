@@ -84,6 +84,12 @@ RUN npm run build \
     --packages=external \
     --outfile=dist/seed-venue-guidelines.js \
     --format=esm \
+  && npx esbuild scripts/seed-client-comm-stages.ts \
+    --bundle \
+    --platform=node \
+    --packages=external \
+    --outfile=dist/seed-client-comm-stages.js \
+    --format=esm \
   && npx esbuild scripts/send-daily-digest.ts \
     --bundle \
     --platform=node \

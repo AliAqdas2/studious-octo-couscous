@@ -982,6 +982,173 @@ async function main(): Promise<void> {
       console.log("event_eatery_stops.fulfillment_type already present");
     }
 
+    const applySqlFile = async (
+      label: string,
+      relativePath: string,
+      opts?: { wholeFile?: boolean }
+    ) => {
+      const fileSql = readFileSync(join(__dirname, relativePath), "utf8");
+      const chunks = opts?.wholeFile
+        ? [fileSql]
+        : fileSql.split("--> statement-breakpoint");
+      for (const statement of chunks) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+        try {
+          await sql.unsafe(trimmed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (
+            message.includes("already exists") ||
+            message.includes("duplicate")
+          ) {
+            console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      console.log(`${label} applied`);
+    };
+
+    const depositNumberCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'deposit_number'
+    `;
+    if (depositNumberCols.length === 0) {
+      console.log("Applying event deposit_number migration (0028)...");
+      await applySqlFile(
+        "event deposit_number migration",
+        "../drizzle/0028_event_deposit_number.sql"
+      );
+    } else {
+      console.log("events.deposit_number already present");
+    }
+
+    const depositPaymentUrlCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'deposit_payment_url'
+    `;
+    if (depositPaymentUrlCols.length === 0) {
+      console.log("Applying deposit_payment_url migration (0029)...");
+      await applySqlFile(
+        "deposit_payment_url migration",
+        "../drizzle/0029_deposit_payment_url.sql"
+      );
+    } else {
+      console.log("events.deposit_payment_url already present");
+    }
+
+    const venueAddressCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'venue_address'
+    `;
+    if (venueAddressCols.length === 0) {
+      console.log("Applying venue_address migration (0030)...");
+      await applySqlFile(
+        "venue_address migration",
+        "../drizzle/0030_venue_address.sql"
+      );
+    } else {
+      console.log("events.venue_address already present");
+    }
+
+    const attendeeListMetaCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'attendee_list_updated_at'
+    `;
+    if (attendeeListMetaCols.length === 0) {
+      console.log("Applying attendee list meta migration (0031)...");
+      await applySqlFile(
+        "attendee list meta migration",
+        "../drizzle/0031_attendee_list_meta.sql"
+      );
+    } else {
+      console.log("events.attendee_list_updated_at already present");
+    }
+
+    const groupLeaderCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'instructor_id_2'
+    `;
+    if (groupLeaderCols.length === 0) {
+      console.log("Applying group leaders migration (0032)...");
+      await applySqlFile(
+        "group leaders migration",
+        "../drizzle/0032_group_leaders.sql"
+      );
+    } else {
+      console.log("events.instructor_id_2 already present");
+    }
+
+    const attendeeEmailCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'event_attendees'
+        and column_name = 'email'
+    `;
+    if (attendeeEmailCols.length === 0) {
+      console.log("Applying attendee email migration (0033)...");
+      await applySqlFile(
+        "attendee email migration",
+        "../drizzle/0033_attendee_email.sql"
+      );
+    } else {
+      console.log("event_attendees.email already present");
+    }
+
+    const beoArtifactCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'beo_url_label'
+    `;
+    if (beoArtifactCols.length === 0) {
+      console.log("Applying BEO artifact meta migration (0034)...");
+      await applySqlFile(
+        "BEO artifact meta migration",
+        "../drizzle/0034_beo_artifact_meta.sql",
+        { wholeFile: true }
+      );
+    } else {
+      console.log("events.beo_url_label already present");
+    }
+
+    const siteVisitCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'events'
+        and column_name = 'site_visit_date'
+    `;
+    if (siteVisitCols.length === 0) {
+      console.log("Applying site visit migration (0035)...");
+      await applySqlFile(
+        "site visit migration",
+        "../drizzle/0035_site_visit.sql",
+        { wholeFile: true }
+      );
+    } else {
+      console.log("events.site_visit_date already present");
+    }
+
     const clientCommDefs = await sql`
       select table_name
       from information_schema.tables
@@ -990,24 +1157,11 @@ async function main(): Promise<void> {
     `;
     if (clientCommDefs.length === 0) {
       console.log("Applying client communication stages migration (0036)...");
-      const clientCommSql = readFileSync(
-        join(__dirname, "../drizzle/0036_client_communication_stages.sql"),
-        "utf8"
+      await applySqlFile(
+        "client communication stages migration",
+        "../drizzle/0036_client_communication_stages.sql",
+        { wholeFile: true }
       );
-      try {
-        await sql.unsafe(clientCommSql);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (
-          message.includes("already exists") ||
-          message.includes("duplicate")
-        ) {
-          console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
-        } else {
-          throw err;
-        }
-      }
-      console.log("client communication stages migration applied");
     } else {
       console.log("client_communication_stage_defs already present");
     }

@@ -125,6 +125,8 @@ docker compose down
 docker compose build --no-cache && docker compose up -d
 # Import pipeline email templates (one-shot upsert)
 docker compose exec app node dist/seed-email-templates.js
+# Seed Client Communication stage catalog (CRM-22; safe to re-run)
+docker exec -it mangia_app node dist/seed-client-comm-stages.js
 # Send daily digest now (same as 7 AM ET cron; does not disable the schedule)
 docker exec -it mangia_app node dist/send-daily-digest.js
 ```
