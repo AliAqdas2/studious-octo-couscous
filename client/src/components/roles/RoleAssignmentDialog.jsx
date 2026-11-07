@@ -111,6 +111,7 @@ export default function RoleAssignmentDialog({ users, assignments = [], onClose 
               <option value="Admin">Admin</option>
               <option value="Sales">Sales</option>
               <option value="Ops">Ops</option>
+              <option value="Marketing">Marketing</option>
               <option value="Chef">Chef</option>
               <option value="Event Host">Event Host</option>
               <option value="Finance">Finance</option>

@@ -121,6 +121,7 @@ export default function RoleAssignment() {
     'Admin': 'bg-purple-100 text-purple-800 border-purple-200',
     'Sales': 'bg-blue-100 text-blue-800 border-blue-200',
     'Ops': 'bg-green-100 text-green-800 border-green-200',
+    'Marketing': 'bg-cyan-100 text-cyan-800 border-cyan-200',
     'Chef': 'bg-orange-100 text-orange-800 border-orange-200',
     'Event Host': 'bg-pink-100 text-pink-800 border-pink-200',
     'Finance': 'bg-indigo-100 text-indigo-800 border-indigo-200',
@@ -153,7 +154,7 @@ export default function RoleAssignment() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {['Admin', 'Sales', 'Ops', 'Chef', 'Event Host', 'Finance', 'Instructor'].map(role => {
+        {['Admin', 'Sales', 'Ops', 'Marketing', 'Chef', 'Event Host', 'Finance', 'Instructor'].map(role => {
           const count = rolesByType[role]?.length || 0;
           return (
             <Card key={role} className="bg-white/80 backdrop-blur-sm border-orange-100">

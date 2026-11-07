@@ -13,13 +13,23 @@ import { Plus, Search, Trash2, Mail, Phone, ArrowUpDown, X } from 'lucide-react'
 import { toast } from 'sonner';
 import AddUserDialog from '@/components/users/AddUserDialog';
 
-const ROLES = ['Admin', 'Sales', 'Ops', 'Chef', 'Event Host', 'Finance', 'Instructor'];
+const ROLES = [
+  'Admin',
+  'Sales',
+  'Ops',
+  'Marketing',
+  'Chef',
+  'Event Host',
+  'Finance',
+  'Instructor',
+];
 const CONTACT_REQUIRED_ROLES = ['Instructor', 'Event Host'];
 
 const roleColors = {
   'Admin': 'bg-purple-100 text-purple-800',
   'Sales': 'bg-blue-100 text-blue-800',
   'Ops': 'bg-green-100 text-green-800',
+  'Marketing': 'bg-cyan-100 text-cyan-800',
   'Chef': 'bg-orange-100 text-orange-800',
   'Event Host': 'bg-pink-100 text-pink-800',
   'Finance': 'bg-indigo-100 text-indigo-800',
