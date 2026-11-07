@@ -1,10 +1,13 @@
 import type { AuthUser } from "../auth/authService.js";
-import { env } from "../../config/env.js";
-import { DEPOSIT_VIEWER_NAMES } from "./depositIntakeTypes.js";
+import {
+  DEPOSIT_VIEWER_EMAILS,
+  DEPOSIT_VIEWER_NAMES,
+} from "./depositIntakeTypes.js";
 
 /**
  * Deposit amount viewers: Dave, Zach, Monica only (meeting).
- * Optional env DEPOSIT_AMOUNT_VIEWERS = comma-separated emails overrides/extends matching.
+ * Primary: known emails. Extra: DEPOSIT_AMOUNT_VIEWERS env (comma-separated).
+ * Fallback: email local-part / full_name match against dave|zach|monica.
  */
 export function canViewDepositAmount(
   user: AuthUser | null | undefined
@@ -14,18 +17,29 @@ export function canViewDepositAmount(
   const email = (user.email || "").trim().toLowerCase();
   const fullName = (user.full_name || "").trim().toLowerCase();
 
+  if (
+    email &&
+    (DEPOSIT_VIEWER_EMAILS as readonly string[]).includes(email)
+  ) {
+    return true;
+  }
+
   const envList = (process.env.DEPOSIT_AMOUNT_VIEWERS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter((e) => e.includes("@"));
 
-  if (envList.length > 0 && envList.includes(email)) {
+  if (email && envList.includes(email)) {
     return true;
   }
 
   const local = email.split("@")[0] || "";
   for (const name of DEPOSIT_VIEWER_NAMES) {
-    if (local === name || local.startsWith(`${name}.`) || local.startsWith(`${name}_`)) {
+    if (
+      local === name ||
+      local.startsWith(`${name}.`) ||
+      local.startsWith(`${name}_`)
+    ) {
       return true;
     }
     if (
@@ -38,7 +52,6 @@ export function canViewDepositAmount(
     }
   }
 
-  void env;
   return false;
 }
 

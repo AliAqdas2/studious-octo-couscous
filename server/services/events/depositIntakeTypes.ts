@@ -53,6 +53,13 @@ export const CHEESEBOARD_MIN_UNITS = 25;
 /** Dave, Zach, Monica only (meeting). Match email local-part or full_name. */
 export const DEPOSIT_VIEWER_NAMES = ["dave", "zach", "monica"] as const;
 
+/** Primary allowlist — real Mangia mailboxes for Dave / Monica / Zach. */
+export const DEPOSIT_VIEWER_EMAILS = [
+  "info@mangiadc.com",
+  "admin2@mangiadc.com",
+  "operations@mangiadc.com",
+] as const;
+
 export interface CharcuterieSelection {
   style: "boards" | "platters" | null;
   amount?: number | null;
