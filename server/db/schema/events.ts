@@ -44,12 +44,27 @@ export const events = pgTable("events", {
   ),
   venue: varchar("venue", { length: 255 }),
   venueMode: venueModeEnum("venue_mode"),
+  /** Optional street/full address for custom / go-to-them locations (CRM-09). */
+  venueAddress: text("venue_address"),
   virtualPlatform: varchar("virtual_platform", { length: 255 }),
   venueRestrictions: text("venue_restrictions"),
+  /** CRM-18: Client Venue site visit (retained when switching to Our Venue). */
+  siteVisitDate: timestamp("site_visit_date", { withTimezone: true }),
+  siteVisitNotes: text("site_visit_notes"),
+  siteVisitParking: text("site_visit_parking"),
+  siteVisitContacts: text("site_visit_contacts"),
+  /** Array of { url, caption? } */
+  siteVisitPhotos: jsonb("site_visit_photos").$type<
+    Array<{ url: string; caption?: string | null }>
+  >(),
   eventDate: timestamp("event_date", { withTimezone: true }).notNull(),
   startTime: varchar("start_time", { length: 50 }),
   depositReceived: boolean("deposit_received").default(false),
   depositAmount: real("deposit_amount"),
+  /** QuickBooks invoice number (copied from lead.deposit_number on Confirm Sale). */
+  depositNumber: varchar("deposit_number", { length: 255 }),
+  /** QuickBooks invoice/payment page URL (CRM-08). */
+  depositPaymentUrl: varchar("deposit_payment_url", { length: 1024 }),
   depositReceivedAt: timestamp("deposit_received_at", { withTimezone: true }),
   depositIntakeCompletedAt: timestamp("deposit_intake_completed_at", {
     withTimezone: true,
@@ -74,9 +89,27 @@ export const events = pgTable("events", {
   postEvent: jsonb("post_event"),
   participationListUrl: text("participation_list_url"),
   participationListType: participationListTypeEnum("participation_list_type"),
+  /** CRM-11: last Attendee List import/replace metadata. */
+  attendeeListUpdatedAt: timestamp("attendee_list_updated_at", {
+    withTimezone: true,
+  }),
+  attendeeListUpdatedBy: uuid("attendee_list_updated_by").references(
+    () => users.id,
+    { onDelete: "set null" }
+  ),
+  attendeeListUpdatedByName: varchar("attendee_list_updated_by_name", {
+    length: 255,
+  }),
   postEventSurveyUrl: text("post_event_survey_url"),
   workflowCrmUrl: text("workflow_crm_url"),
   beoUrl: text("beo_url"),
+  /** CRM-16: display label for hosted Admin BEO artifact link. */
+  beoUrlLabel: varchar("beo_url_label", { length: 255 }),
+  beoUrlSavedAt: timestamp("beo_url_saved_at", { withTimezone: true }),
+  beoUrlSavedBy: uuid("beo_url_saved_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  beoUrlSavedByName: varchar("beo_url_saved_by_name", { length: 255 }),
   beoShellUrl: text("beo_shell_url"),
   /** In-app Admin BEO HTML (WYSIWYG). Distinct from external beoUrl. */
   beoDocumentHtml: text("beo_document_html"),
@@ -101,10 +134,16 @@ export const events = pgTable("events", {
   instructorAssigned: uuid("instructor_assigned").references(() => users.id, {
     onDelete: "set null",
   }),
-  /** Instructor bio catalog entry rendered into the BEO. */
+  /** Group Leader 1 — instructor catalog entry rendered into the BEO. */
   instructorId: uuid("instructor_id").references(() => instructors.id, {
     onDelete: "set null",
   }),
+  /** Group Leader 2 (optional) — second catalog bio for the BEO. */
+  instructorId2: uuid("instructor_id_2").references(() => instructors.id, {
+    onDelete: "set null",
+  }),
+  /** Free-text support staff names (no bio automation). */
+  supportStaff: text("support_staff"),
   opsSupportAssigned: uuid("ops_support_assigned").references(() => users.id, {
     onDelete: "set null",
   }),

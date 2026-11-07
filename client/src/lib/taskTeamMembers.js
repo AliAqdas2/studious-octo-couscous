@@ -114,20 +114,36 @@ export function enrichTeamMemberOptions(members, users) {
     });
 }
 
+/** CRM-21: duration stored in minutes; step and floor are 5. */
+export const DURATION_STEP_MINUTES = 5;
+export const DURATION_MIN_MINUTES = 5;
+
+/**
+ * Clamp to ≥5 and snap to a 5-minute step (CRM-21).
+ * Null/0/NaN → default 5.
+ * @param {unknown} value
+ * @returns {number}
+ */
+export function normalizeEstimatedMinutes(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return DURATION_MIN_MINUTES;
+  const floored = Math.floor(n);
+  const snapped =
+    Math.round(floored / DURATION_STEP_MINUTES) * DURATION_STEP_MINUTES;
+  return Math.max(DURATION_MIN_MINUTES, snapped);
+}
+
 /**
  * @param {number | null | undefined} minutes
  * @returns {string}
  */
 export function formatEstimatedMinutes(minutes) {
-  if (minutes == null || Number.isNaN(Number(minutes))) return '0m';
-  const m = Math.max(0, Math.floor(Number(minutes)));
+  const m = normalizeEstimatedMinutes(minutes);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   const rem = m % 60;
   return rem ? `${h}h ${rem}m` : `${h}h`;
 }
-
-export const DURATION_STEP_MINUTES = 15;
 
 /**
  * Build Task.update payload when assigning a person from the dropdown.

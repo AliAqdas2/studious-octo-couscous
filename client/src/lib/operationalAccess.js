@@ -13,6 +13,17 @@ export const OPS_ALLOWED_PAGES = [
 
 export const OPS_HOME_PATH = '/Events';
 
+/** Pages Marketing may open. */
+export const MARKETING_ALLOWED_PAGES = [
+  'Events',
+  'EventDetail',
+  'CalendarView',
+  'Tasks',
+  'Settings',
+];
+
+export const MARKETING_HOME_PATH = '/Events';
+
 export function isSystemAdmin(user) {
   return user?.role === 'admin';
 }
@@ -24,10 +35,18 @@ export function isOpsRole(assignment) {
   );
 }
 
+export function isMarketingRole(assignment) {
+  return (
+    assignment?.role === 'Marketing' &&
+    assignment?.is_active !== false
+  );
+}
+
 /**
  * Whether the current page is allowed for this user + assignment.
  * System admins: always true.
  * Ops: OPS_ALLOWED_PAGES only.
+ * Marketing: MARKETING_ALLOWED_PAGES only.
  * Others: unrestricted by this helper (Layout keeps sparse nav).
  */
 export function isPageAllowed(pageName, user, assignment) {
@@ -36,15 +55,19 @@ export function isPageAllowed(pageName, user, assignment) {
   if (isOpsRole(assignment)) {
     return OPS_ALLOWED_PAGES.includes(pageName);
   }
+  if (isMarketingRole(assignment)) {
+    return MARKETING_ALLOWED_PAGES.includes(pageName);
+  }
   return true;
 }
 
 /**
- * @returns {'admin' | 'ops' | 'default'}
+ * @returns {'admin' | 'ops' | 'marketing' | 'default'}
  */
 export function getNavProfile(user, assignment) {
   if (isSystemAdmin(user)) return 'admin';
   if (isOpsRole(assignment)) return 'ops';
+  if (isMarketingRole(assignment)) return 'marketing';
   return 'default';
 }
 

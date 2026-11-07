@@ -261,6 +261,18 @@ export default function Settings() {
   const isAdmin = isSystemAdmin(user);
   const canManageGmail = isGmailAdminEmail(user?.email);
 
+  React.useEffect(() => {
+    const hash = window.location.hash?.replace(/^#/, '');
+    if (!hash) return;
+    const t = window.setTimeout(() => {
+      document.getElementById(hash)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const { data: assignment } = useQuery({
     queryKey: ['user-assignment', user?.id],
     queryFn: async () => {
@@ -299,8 +311,8 @@ export default function Settings() {
         </h1>
         <p className="text-gray-600">
           {isOps && !isAdmin
-            ? 'House venues, instructors, eateries, and inventory catalog for event ops.'
-            : 'Manage house venues, instructors, eateries, inventory catalog, and shared Gmail (when authorized).'}
+            ? 'Our venues, group leaders, eateries, and inventory catalog for event ops.'
+            : 'Manage house venues, group leaders, eateries, inventory catalog, and shared Gmail (when authorized).'}
         </p>
       </div>
 

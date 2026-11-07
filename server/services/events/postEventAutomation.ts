@@ -238,6 +238,7 @@ export async function postEventAutomation(
           category: "Post-Event",
           responsibleRole: task.responsibleRole,
           dueDate,
+          estimatedMinutes: 5,
           status: "Not Acknowledged",
         });
         tasksCreated++;

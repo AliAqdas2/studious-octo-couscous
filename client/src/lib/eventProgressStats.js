@@ -198,6 +198,8 @@ export function buildEventProgressGroups({
     const showFoodTour = isFoodTourExperience(
       /** @type {string} */ (e.event_type || e.eventType)
     );
+    const isClientVenue =
+      String(e.venue_mode || e.venueMode || '').trim() === 'go_to_them';
     const eventTasks = tasksByEvent.get(eventId) || [];
     const flags = sideByEvent[eventId] || {
       hasInventory: false,
@@ -206,7 +208,9 @@ export function buildEventProgressGroups({
     };
 
     const milestones = OPS_PANEL_MILESTONES.filter(
-      (m) => !m.foodTourOnly || showFoodTour
+      (m) =>
+        (!m.foodTourOnly || showFoodTour) &&
+        (!m.clientVenueOnly || isClientVenue)
     ).map((m) => {
       const task = findOpsPanelTask(m.panelId, eventTasks);
       const complete = isOpsPanelComplete(m.panelId, event, flags);

@@ -4,58 +4,76 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { ExternalLink, FileText, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import AttendeeListStatus from '@/components/events/AttendeeListStatus';
 import {
   artifactsComplete,
   getPanelMilestoneLabel,
 } from '@/lib/eventMilestones';
 
 const emptyForm = () => ({
-  participationListUrl: '',
-  participationListType: '',
   postEventSurveyUrl: '',
   workflowCrmUrl: '',
   beoUrl: '',
+  beoUrlLabel: 'BEO',
   beoShellUrl: '',
   fareharborLink: '',
   rosTemplateUrl: '',
 });
 
-function linkRows(form) {
+function formFromArtifacts(a) {
+  if (!a) return emptyForm();
+  return {
+    postEventSurveyUrl: a.postEventSurveyUrl || '',
+    workflowCrmUrl: a.workflowCrmUrl || '',
+    beoUrl: a.beoUrl || '',
+    beoUrlLabel: a.beoUrlLabel || 'BEO',
+    beoShellUrl: a.beoShellUrl || '',
+    fareharborLink: a.fareharborLink || '',
+    rosTemplateUrl: a.rosTemplateUrl || '',
+  };
+}
+
+function linkRows(form, artifacts) {
+  const beoLabel = (form.beoUrlLabel || 'BEO').trim() || 'BEO';
+  const beoSavedAt =
+    artifacts?.beoUrlSavedAt || artifacts?.beo_url_saved_at || null;
+  const beoSavedBy =
+    artifacts?.beoUrlSavedByName ||
+    artifacts?.beo_url_saved_by_name ||
+    null;
   const rows = [
-    { label: 'BEO document URL', value: form.beoUrl },
+    form.beoUrl
+      ? {
+          label: `BEO · ${beoLabel}`,
+          value: form.beoUrl,
+          meta:
+            beoSavedAt || beoSavedBy
+              ? [
+                  beoSavedAt
+                    ? `Saved ${new Date(beoSavedAt).toLocaleString()}`
+                    : null,
+                  beoSavedBy ? `by ${beoSavedBy}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+              : null,
+        }
+      : null,
     { label: 'ROS template URL', value: form.rosTemplateUrl },
-    {
-      label: 'Participation link',
-      value: form.participationListUrl
-        ? `${form.participationListUrl}${
-            form.participationListType
-              ? ` (${form.participationListType})`
-              : ''
-          }`
-        : '',
-      href: form.participationListUrl,
-    },
     { label: 'Post-event survey', value: form.postEventSurveyUrl },
     { label: 'Event workflow link', value: form.workflowCrmUrl },
     { label: 'BEO Shell URL', value: form.beoShellUrl },
     { label: 'FareHarbor item', value: form.fareharborLink },
-  ];
+  ].filter(Boolean);
   return rows.filter((r) => r.value);
 }
 
 /**
- * Admin BEO vs Ops BEO shell artifact URLs (plan 05).
- * Distinct fields — no shared "BEO" blob.
+ * Admin BEO vs Ops BEO shell artifact URLs (plan 05 / CRM-16).
+ * Hosted BEO link only here — Generate lives in BeoDocumentPanel.
  */
 export default function EventArtifactsPanel({
   event,
@@ -80,27 +98,17 @@ export default function EventArtifactsPanel({
   useEffect(() => {
     const a = state?.artifacts;
     if (!a) return;
-    setForm({
-      participationListUrl: a.participationListUrl || '',
-      participationListType: a.participationListType || '',
-      postEventSurveyUrl: a.postEventSurveyUrl || '',
-      workflowCrmUrl: a.workflowCrmUrl || '',
-      beoUrl: a.beoUrl || '',
-      beoShellUrl: a.beoShellUrl || '',
-      fareharborLink: a.fareharborLink || '',
-      rosTemplateUrl: a.rosTemplateUrl || '',
-    });
+    setForm(formFromArtifacts(a));
   }, [state]);
 
   const mutation = useMutation({
     mutationFn: async () => {
       const res = await base44.functions.invoke('saveEventArtifacts', {
         eventId,
-        participationListUrl: form.participationListUrl || null,
-        participationListType: form.participationListType || null,
         postEventSurveyUrl: form.postEventSurveyUrl || null,
         workflowCrmUrl: form.workflowCrmUrl || null,
         beoUrl: form.beoUrl || null,
+        beoUrlLabel: form.beoUrl ? form.beoUrlLabel || 'BEO' : null,
         beoShellUrl: form.beoShellUrl || null,
         fareharborLink: form.fareharborLink || null,
         rosTemplateUrl: form.rosTemplateUrl || null,
@@ -137,24 +145,21 @@ export default function EventArtifactsPanel({
     'artifacts',
     eventForComplete
   );
-  const summaryRows = linkRows(form);
+  const summaryRows = linkRows(form, state?.artifacts);
+  const beoSavedAt =
+    state?.artifacts?.beoUrlSavedAt ||
+    state?.artifacts?.beo_url_saved_at ||
+    null;
+  const beoSavedByName =
+    state?.artifacts?.beoUrlSavedByName ||
+    state?.artifacts?.beo_url_saved_by_name ||
+    null;
+  const hasBeoLink = Boolean(String(form.beoUrl || '').trim());
 
   const openEdit = () => setIsEditing(true);
 
   const cancelEdit = () => {
-    const a = state?.artifacts;
-    if (a) {
-      setForm({
-        participationListUrl: a.participationListUrl || '',
-        participationListType: a.participationListType || '',
-        postEventSurveyUrl: a.postEventSurveyUrl || '',
-        workflowCrmUrl: a.workflowCrmUrl || '',
-        beoUrl: a.beoUrl || '',
-        beoShellUrl: a.beoShellUrl || '',
-        fareharborLink: a.fareharborLink || '',
-        rosTemplateUrl: a.rosTemplateUrl || '',
-      });
-    }
+    setForm(formFromArtifacts(state?.artifacts));
     setIsEditing(false);
   };
 
@@ -220,33 +225,91 @@ export default function EventArtifactsPanel({
                         {row.value}
                       </span>
                     )}
+                    {row.meta ? (
+                      <p className="mt-1 text-xs text-green-700 font-normal">
+                        {row.meta}
+                      </p>
+                    ) : null}
                   </dd>
                 </div>
               ))}
             </dl>
           ) : null}
+          <AttendeeListStatus eventId={eventId} event={event} />
         </div>
       ) : (
         <div className="space-y-5">
           <p className="text-xs text-gray-500">
-            Admin owns the BEO document + ROS template. Ops owns the BEO Shell
-            and FareHarbor embed. Day-of Hosts follow the event-specific BEO
-            (task).
+            Generate and download the BEO in the BEO document section. Paste the
+            hosted final URL here for shared access. Ops owns the BEO Shell and
+            FareHarbor embed.
           </p>
 
-          <section className="space-y-2">
+          <AttendeeListStatus eventId={eventId} event={event} />
+
+          <section className="space-y-3">
             <Label className="text-sm font-semibold text-[#C84B31]">
               Admin artifacts
             </Label>
-            <div>
-              <Label className="text-xs text-gray-500">BEO document URL</Label>
-              <Input
-                disabled={!canEditAdmin}
-                value={form.beoUrl}
-                onChange={(e) => set('beoUrl', e.target.value)}
-                placeholder="https://…"
-              />
+
+            <div className="rounded-md border border-orange-100 bg-orange-50/40 p-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-[#C84B31]">
+                    Type: BEO
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Hosted final BEO link (Drive, Fair Harbor, etc.) — not a
+                    second generator.
+                  </p>
+                </div>
+                {hasBeoLink ? (
+                  <a
+                    href={form.beoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[#C84B31] underline underline-offset-2"
+                  >
+                    Open link
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                ) : null}
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500">
+                  {hasBeoLink ? 'BEO link' : 'Add BEO Link'}
+                </Label>
+                <Input
+                  disabled={!canEditAdmin}
+                  value={form.beoUrl}
+                  onChange={(e) => set('beoUrl', e.target.value)}
+                  placeholder="https://…"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500">Label</Label>
+                <Input
+                  disabled={!canEditAdmin}
+                  value={form.beoUrlLabel}
+                  onChange={(e) => set('beoUrlLabel', e.target.value)}
+                  placeholder="BEO"
+                />
+              </div>
+              {beoSavedAt || beoSavedByName ? (
+                <p className="text-xs text-gray-600">
+                  Saved
+                  {beoSavedAt
+                    ? ` ${new Date(beoSavedAt).toLocaleString()}`
+                    : ''}
+                  {beoSavedByName ? ` by ${beoSavedByName}` : ''}
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Saved date and by appear after you save a link.
+                </p>
+              )}
             </div>
+
             <div>
               <Label className="text-xs text-gray-500">ROS template URL</Label>
               <Input
@@ -254,36 +317,6 @@ export default function EventArtifactsPanel({
                 value={form.rosTemplateUrl}
                 onChange={(e) => set('rosTemplateUrl', e.target.value)}
               />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs text-gray-500">
-                  Participation link
-                </Label>
-                <Input
-                  disabled={!canEditAdmin}
-                  value={form.participationListUrl}
-                  onChange={(e) =>
-                    set('participationListUrl', e.target.value)
-                  }
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-gray-500">Type</Label>
-                <Select
-                  value={form.participationListType}
-                  disabled={!canEditAdmin}
-                  onValueChange={(v) => set('participationListType', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sheets or Forms…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sheets">Sheets</SelectItem>
-                    <SelectItem value="forms">Forms</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             <div>
               <Label className="text-xs text-gray-500">

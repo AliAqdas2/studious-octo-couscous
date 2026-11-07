@@ -132,10 +132,12 @@ export default function SettingsVenuesPanel() {
       setAddUrl('');
       setAddCaption('');
       invalidate();
-      toast.success('Image added');
+      toast.success('Floor map added');
     },
     onError: (err) =>
-      toast.error(err?.body?.error || err?.message || 'Failed to add image'),
+      toast.error(
+        err?.body?.error || err?.message || 'Failed to add floor map'
+      ),
   });
 
   const updateImageMutation = useMutation({
@@ -150,7 +152,10 @@ export default function SettingsVenuesPanel() {
 
   const uploadImageMutation = useMutation({
     mutationFn: async ({ venueId, file }) => {
-      const uploadResult = await base44.integrations.Core.UploadFile({ file });
+      const uploadResult = await base44.integrations.Core.UploadFile({
+        file,
+        target: 'venueimages',
+      });
       const imageUrl = uploadResult?.file_url;
       if (!imageUrl) throw new Error('Upload failed');
       const venueImages = imagesByVenue.get(venueId) || [];
@@ -169,10 +174,12 @@ export default function SettingsVenuesPanel() {
     onSuccess: () => {
       setUploadVenueId(null);
       invalidate();
-      toast.success('Image uploaded');
+      toast.success('Floor map uploaded');
     },
     onError: (err) =>
-      toast.error(err?.body?.error || err?.message || 'Failed to upload image'),
+      toast.error(
+        err?.body?.error || err?.message || 'Failed to upload floor map'
+      ),
   });
 
   const handleFilePick = (venueId, e) => {
@@ -197,16 +204,20 @@ export default function SettingsVenuesPanel() {
   };
 
   return (
-    <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
+    <Card
+      id="settings-venues"
+      className="bg-white/80 backdrop-blur-sm border-orange-100 scroll-mt-24"
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-[#2D3436]">
           <MapPin className="w-5 h-5 text-[#C84B31]" />
-          House venues
+          Our venues
         </CardTitle>
         <CardDescription>
-          Shared list for Lead Detail, Deposit Intake, and event forms. Deactivate
-          instead of deleting so past events keep their free-text name. Add venue
-          photos below each location.
+          Catalog of Our Venues for Lead Detail, Deposit Intake, and event forms.
+          Deactivate instead of deleting so past events keep their free-text name.
+          Manage floor maps (and venue guidelines) below each location — they
+          render in the generated BEO.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -391,6 +402,13 @@ export default function SettingsVenuesPanel() {
                         </Button>
                       </div>
 
+                      <p className="text-sm font-medium text-[#2D3436]">
+                        Floor maps
+                      </p>
+                      <p className="text-xs text-gray-500 -mt-2">
+                        Upload or paste a URL to add or replace maps shown in the
+                        BEO Floor Map section.
+                      </p>
                       {venueImages.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                           {venueImages.map((img) => (
@@ -463,13 +481,15 @@ export default function SettingsVenuesPanel() {
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-500">No images yet.</p>
+                        <p className="text-sm text-gray-500">
+                          No floor maps yet.
+                        </p>
                       )}
 
                       <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-orange-100">
                         <Input
                           className="flex-1 text-sm"
-                          placeholder="Image URL (e.g. /venueimages/…)"
+                          placeholder="Floor map URL (e.g. /venueimages/…)"
                           value={expandedVenueId === v.id ? addUrl : ''}
                           onChange={(e) => setAddUrl(e.target.value)}
                         />
@@ -506,7 +526,7 @@ export default function SettingsVenuesPanel() {
                           uploadVenueId === v.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
-                            'Upload'
+                            'Upload floor map'
                           )}
                         </Button>
                       </div>

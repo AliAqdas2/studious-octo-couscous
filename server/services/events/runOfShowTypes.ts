@@ -130,11 +130,11 @@ export interface RunOfShowPayload {
 }
 
 export interface EventArtifactsPayload {
-  participationListUrl?: string | null;
-  participationListType?: "sheets" | "forms" | null;
   postEventSurveyUrl?: string | null;
   workflowCrmUrl?: string | null;
   beoUrl?: string | null;
+  /** Display label for the hosted Admin BEO link (CRM-16). */
+  beoUrlLabel?: string | null;
   beoShellUrl?: string | null;
   fareharborLink?: string | null;
   rosTemplateUrl?: string | null;

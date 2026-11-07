@@ -302,7 +302,10 @@ export default function SettingsEateriesPanel() {
   );
 
   return (
-    <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
+    <Card
+      id="settings-eateries"
+      className="bg-white/80 backdrop-blur-sm border-orange-100 scroll-mt-24"
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-[#2D3436]">
           <Utensils className="w-5 h-5 text-[#C84B31]" />

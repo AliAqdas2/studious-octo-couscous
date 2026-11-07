@@ -109,6 +109,7 @@ async function ensureTaskByTrace(
       category: "Post-Event",
       responsibleRole: role,
       dueDate: due,
+      estimatedMinutes: 5,
       status: "Not Acknowledged",
       workflowPhase: "post",
       traceId,
@@ -275,10 +276,17 @@ export async function savePostEvent(
   };
 
   const now = new Date();
+  const stageForPost =
+    event.stage === "In Progress" ||
+    event.stage === "Event Day" ||
+    event.stage === "Pre-Event Ready"
+      ? "Post-Event"
+      : event.stage;
   const [updated] = await db
     .update(events)
     .set({
       postEvent: nextPostEvent,
+      ...(stageForPost !== event.stage ? { stage: stageForPost } : {}),
       staffHoursNotes:
         payload.staffHoursNotes !== undefined
           ? payload.staffHoursNotes

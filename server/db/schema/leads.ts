@@ -67,9 +67,13 @@ export const leads = pgTable("leads", {
   eventCreated: boolean("event_created").default(false),
   linkedEventId: uuid("linked_event_id"),
   depositNumber: varchar("deposit_number", { length: 255 }),
+  /** QuickBooks invoice/payment page URL (CRM-08). */
+  depositPaymentUrl: varchar("deposit_payment_url", { length: 1024 }),
   depositAmount: real("deposit_amount"),
   venue: varchar("venue", { length: 255 }),
   venueMode: venueModeEnum("venue_mode"),
+  /** Optional street/full address for custom / go-to-them locations (CRM-09). */
+  venueAddress: text("venue_address"),
   aiFlagCategory: aiFlagCategoryEnum("ai_flag_category").default(""),
   aiFlagReason: text("ai_flag_reason"),
   skipAutoCall: boolean("skip_auto_call").default(false),

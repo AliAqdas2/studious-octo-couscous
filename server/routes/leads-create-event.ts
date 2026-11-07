@@ -16,8 +16,12 @@ router.post("/leads/:id/create-event", requireAuth, async (req, res, next) => {
       throw new AppError("No leadId found", 400);
     }
     const venue = typeof req.body?.venue === "string" ? req.body.venue : "";
+    const venueAddressRaw =
+      req.body?.venueAddress ?? req.body?.venue_address;
     const depositNumberRaw =
       req.body?.depositNumber ?? req.body?.deposit_number;
+    const depositPaymentUrlRaw =
+      req.body?.depositPaymentUrl ?? req.body?.deposit_payment_url;
     const depositAmountRaw =
       req.body?.depositAmount ?? req.body?.deposit_amount;
 
@@ -30,8 +34,18 @@ router.post("/leads/:id/create-event", requireAuth, async (req, res, next) => {
     const result = await createEventFromWonLead({
       leadId,
       venue,
+      venueAddress:
+        venueAddressRaw !== undefined
+          ? venueAddressRaw == null
+            ? null
+            : String(venueAddressRaw)
+          : undefined,
       depositNumber:
         depositNumberRaw != null ? String(depositNumberRaw) : undefined,
+      depositPaymentUrl:
+        depositPaymentUrlRaw != null
+          ? String(depositPaymentUrlRaw)
+          : undefined,
       depositAmount,
     });
     res.json(result);

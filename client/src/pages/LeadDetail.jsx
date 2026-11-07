@@ -25,6 +25,12 @@ import StageInfoBanner from '@/components/leads/StageInfoBanner';
 import { getStageMeta, STATUS_COLORS as STAGE_STATUS_COLORS } from '@/components/leads/stageMetadata';
 import StageTooltip from '@/components/leads/StageTooltip';
 import AdditionalContactsCard from '@/components/leads/AdditionalContactsCard';
+import {
+  CUSTOM_VENUE_LABEL,
+  CUSTOM_VENUE_OPTION,
+  CustomVenueFields,
+} from '@/components/venues/CustomVenueFields';
+import SettingsCatalogLink from '@/components/settings/SettingsCatalogLink';
 
 export default function LeadDetail() {
   const navigate = useNavigate();
@@ -34,9 +40,11 @@ export default function LeadDetail() {
   const [showEditForm, setShowEditForm] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
   const [depositNumber, setDepositNumber] = useState('');
+  const [depositPaymentUrl, setDepositPaymentUrl] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
   const [selectedVenue, setSelectedVenue] = useState('');
   const [otherVenue, setOtherVenue] = useState('');
+  const [venueAddress, setVenueAddress] = useState('');
   const [venuePrefillDone, setVenuePrefillDone] = useState(false);
   const [notesPage, setNotesPage] = useState(1);
   const [emailPage, setEmailPage] = useState(1);
@@ -92,22 +100,37 @@ export default function LeadDetail() {
     if (!lead || venuePrefillDone) return;
     const saved = (lead.venue || '').trim();
     if (saved) {
-      if (houseVenueNames.includes(saved)) {
+      if (houseVenueNames.some((n) => n.toLowerCase() === saved.toLowerCase())) {
         setSelectedVenue(saved);
         setOtherVenue('');
+        setVenueAddress('');
       } else {
-        setSelectedVenue('Other');
+        setSelectedVenue(CUSTOM_VENUE_OPTION);
         setOtherVenue(saved);
+        setVenueAddress(
+          String(lead.venue_address || lead.venueAddress || '').trim()
+        );
       }
+    } else {
+      setVenueAddress(
+        String(lead.venue_address || lead.venueAddress || '').trim()
+      );
     }
     if (lead.deposit_number) setDepositNumber(String(lead.deposit_number));
+    if (lead.deposit_payment_url)
+      setDepositPaymentUrl(String(lead.deposit_payment_url));
     if (lead.deposit_amount != null) setDepositAmount(String(lead.deposit_amount));
     setVenuePrefillDone(true);
   }, [lead, houseVenueNames, venuePrefillDone]);
 
   const resolvedVenueName = () => {
-    if (selectedVenue === 'Other') return otherVenue.trim();
+    if (selectedVenue === CUSTOM_VENUE_OPTION) return otherVenue.trim();
     return selectedVenue.trim();
+  };
+
+  const resolvedVenueAddress = () => {
+    if (selectedVenue !== CUSTOM_VENUE_OPTION) return null;
+    return venueAddress.trim() || null;
   };
 
   const [user, setUser] = useState(null);
@@ -129,8 +152,10 @@ export default function LeadDetail() {
   React.useEffect(() => {
     if (lead?.event_type_interest !== undefined) setSelectedEventTypes(parseInterests(lead.event_type_interest));
     if (lead?.deposit_number) setDepositNumber(lead.deposit_number);
+    if (lead?.deposit_payment_url)
+      setDepositPaymentUrl(lead.deposit_payment_url);
     if (lead?.deposit_amount) setDepositAmount(String(lead.deposit_amount));
-  }, [lead?.deposit_number, lead?.deposit_amount]);
+  }, [lead?.deposit_number, lead?.deposit_payment_url, lead?.deposit_amount]);
 
   const { data: activities = [] } = useQuery({
     queryKey: ['activities', 'Lead', leadId],
@@ -168,12 +193,7 @@ export default function LeadDetail() {
   const updateFieldMutation = useMutation({
     mutationFn: async ({ updates, fieldLabel }) => {
       await base44.entities.Lead.update(leadId, updates);
-      // Sync preferred_date to linked event when lead has been converted
-      if (updates.preferred_date && lead.converted_to_event_id) {
-        await base44.entities.Event.update(lead.converted_to_event_id, {
-          event_date: updates.preferred_date
-        });
-      }
+      // Date/time sync to linked event is handled server-side (CRM-07).
       await base44.entities.ActivityLog.create({
         entity_type: 'Lead', entity_id: leadId,
         action: 'Field Updated',
@@ -186,6 +206,10 @@ export default function LeadDetail() {
     onSuccess: (updates) => {
       updateLeadCache(updates);
       queryClient.invalidateQueries({ queryKey: ['activities', 'Lead', leadId], exact: true });
+      if (updates.preferred_date && lead?.converted_to_event_id) {
+        queryClient.invalidateQueries({ queryKey: ['event', lead.converted_to_event_id] });
+        queryClient.invalidateQueries({ queryKey: ['events'] });
+      }
     },
     onError: () => toast.error('Failed to update')
   });
@@ -255,18 +279,25 @@ export default function LeadDetail() {
   });
 
   const saveDepositMutation = useMutation({
-    mutationFn: async ({ number, amount, venue }) => {
+    mutationFn: async ({ number, paymentUrl, amount, venue, address }) => {
       const venueName = (venue || '').trim();
-      const venueMode = houseVenueNames.includes(venueName)
+      const isHouse = houseVenueNames.some(
+        (n) => n.toLowerCase() === venueName.toLowerCase()
+      );
+      const venueMode = isHouse
         ? 'house_venue'
         : venueName
           ? 'go_to_them'
           : null;
+      const venue_address = isHouse
+        ? null
+        : address?.trim() || null;
       return base44.entities.Lead.update(leadId, {
         deposit_number: number,
+        deposit_payment_url: paymentUrl?.trim() || null,
         deposit_amount: amount ? Number(amount) : null,
         ...(venueName
-          ? { venue: venueName, venue_mode: venueMode }
+          ? { venue: venueName, venue_mode: venueMode, venue_address }
           : {}),
       });
     },
@@ -305,7 +336,9 @@ export default function LeadDetail() {
         event: { entity_id: leadId },
         data: lead,
         venue,
+        venue_address: resolvedVenueAddress(),
         deposit_number: number,
+        deposit_payment_url: depositPaymentUrl.trim() || null,
         deposit_amount: Number(amount),
       });
       return response.data;
@@ -479,35 +512,79 @@ export default function LeadDetail() {
               </div>
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-blue-600" />
+                QuickBooks Payment Link
+              </label>
+              <Input
+                type="url"
+                placeholder="https://..."
+                value={depositPaymentUrl}
+                onChange={(e) => setDepositPaymentUrl(e.target.value)}
+              />
+              {lead.deposit_payment_url && (
+                <p className="text-xs text-green-600 break-all">
+                  Saved:{' '}
+                  <a
+                    href={lead.deposit_payment_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    Open Invoice/Payment
+                  </a>
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-2"><MapPin className="w-4 h-4 text-blue-600" />Location & Venue *</label>
               <select
                 value={selectedVenue}
-                onChange={(e) => { setSelectedVenue(e.target.value); if (e.target.value !== 'Other') setOtherVenue(''); }}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedVenue(v);
+                  if (v !== CUSTOM_VENUE_OPTION) {
+                    setOtherVenue('');
+                    setVenueAddress('');
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               >
                 <option value="">Select venue...</option>
                 {houseVenues.map((v) => (
                   <option key={v.id} value={v.name}>{v.name}</option>
                 ))}
-                <option value="Other">Other</option>
+                <option value={CUSTOM_VENUE_OPTION}>{CUSTOM_VENUE_LABEL}</option>
               </select>
-              {selectedVenue === 'Other' && (
-                <Input
-                  placeholder="Enter venue name..."
-                  value={otherVenue}
-                  onChange={(e) => setOtherVenue(e.target.value)}
+              {selectedVenue === CUSTOM_VENUE_OPTION && (
+                <CustomVenueFields
+                  idPrefix="lead-deposit-venue"
+                  customName={otherVenue}
+                  onCustomNameChange={setOtherVenue}
+                  address={venueAddress}
+                  onAddressChange={setVenueAddress}
                 />
               )}
+              <SettingsCatalogLink
+                hash="settings-venues"
+                label="Manage venues & floor maps in Settings"
+              />
               {lead.venue && (
-                <p className="text-xs text-green-600">Saved: {lead.venue}</p>
+                <p className="text-xs text-green-600">
+                  Saved: {lead.venue}
+                  {(lead.venue_address || lead.venueAddress) &&
+                    ` — ${lead.venue_address || lead.venueAddress}`}
+                </p>
               )}
             </div>
             <Button
               onClick={() =>
                 saveDepositMutation.mutate({
                   number: depositNumber,
+                  paymentUrl: depositPaymentUrl,
                   amount: depositAmount,
                   venue: resolvedVenueName(),
+                  address: resolvedVenueAddress(),
                 })
               }
               disabled={saveDepositMutation.isPending || !depositNumber.trim() || !depositAmount.trim()}
@@ -539,8 +616,12 @@ export default function LeadDetail() {
               <select
                 value={selectedVenue}
                 onChange={(e) => {
-                  setSelectedVenue(e.target.value);
-                  if (e.target.value !== 'Other') setOtherVenue('');
+                  const v = e.target.value;
+                  setSelectedVenue(v);
+                  if (v !== CUSTOM_VENUE_OPTION) {
+                    setOtherVenue('');
+                    setVenueAddress('');
+                  }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               >
@@ -548,15 +629,21 @@ export default function LeadDetail() {
                 {houseVenues.map((v) => (
                   <option key={v.id} value={v.name}>{v.name}</option>
                 ))}
-                <option value="Other">Other</option>
+                <option value={CUSTOM_VENUE_OPTION}>{CUSTOM_VENUE_LABEL}</option>
               </select>
-              {selectedVenue === 'Other' && (
-                <Input
-                  placeholder="Enter venue name..."
-                  value={otherVenue}
-                  onChange={(e) => setOtherVenue(e.target.value)}
+              {selectedVenue === CUSTOM_VENUE_OPTION && (
+                <CustomVenueFields
+                  idPrefix="lead-converted-venue"
+                  customName={otherVenue}
+                  onCustomNameChange={setOtherVenue}
+                  address={venueAddress}
+                  onAddressChange={setVenueAddress}
                 />
               )}
+              <SettingsCatalogLink
+                hash="settings-venues"
+                label="Manage venues & floor maps in Settings"
+              />
               <Button
                 variant="outline"
                 size="sm"
@@ -564,8 +651,11 @@ export default function LeadDetail() {
                 onClick={() =>
                   saveDepositMutation.mutate({
                     number: depositNumber || lead.deposit_number || '',
+                    paymentUrl:
+                      depositPaymentUrl || lead.deposit_payment_url || '',
                     amount: depositAmount || (lead.deposit_amount != null ? String(lead.deposit_amount) : ''),
                     venue: resolvedVenueName(),
+                    address: resolvedVenueAddress(),
                   })
                 }
               >
@@ -653,6 +743,11 @@ export default function LeadDetail() {
               <>
                 <InlineEditField label="Headcount Estimate" value={lead.headcount_estimate ? String(lead.headcount_estimate) : ''} icon={Users} type="number" onSave={(v) => updateFieldMutation.mutate({ updates: { headcount_estimate: v ? Number(v) : null }, fieldLabel: 'Headcount Estimate' })} />
                 <InlineEditField label="Preferred Date & Time" value={lead.preferred_date ? new Date(lead.preferred_date).toLocaleString() : ''} icon={Calendar} type="datetime-local" onSave={(v) => updateFieldMutation.mutate({ updates: { preferred_date: v ? new Date(v).toISOString() : '' }, fieldLabel: 'Preferred Date' })} />
+                {lead.converted_to_event_id ? (
+                  <p className="text-xs text-gray-500 -mt-1 ml-8">
+                    Synced with linked Event when converted — changes update both.
+                  </p>
+                ) : null}
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Event Type Interest</p>
                   {!editingEventTypes ? (

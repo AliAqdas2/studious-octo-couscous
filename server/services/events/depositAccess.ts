@@ -56,5 +56,7 @@ export function redactDepositFields(
   };
   delete next.deposit_amount;
   delete next.depositAmount;
+  delete next.deposit_payment_url;
+  delete next.depositPaymentUrl;
   return next;
 }

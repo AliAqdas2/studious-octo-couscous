@@ -60,7 +60,7 @@ export function cell(label, value, opts = {}) {
       ? opts.blank
         ? '&nbsp;'
         : '—'
-      : esc(value);
+      : esc(value).replace(/\n/g, '<br>');
   const bg = opts.accent ? `background:${ACCENT};` : '';
   return `<tr>
     <td style="width:34%;padding:6px 8px;border:1px solid ${BORDER};font-size:11px;font-weight:400;color:#222;">${esc(label)}</td>
@@ -268,27 +268,103 @@ export function imageBlock(images) {
   </div>`;
 }
 
+/**
+ * Client Venue site visit section for BEO (CRM-18).
+ * @param {unknown} siteVisit
+ * @param {Record<string, unknown>} [event]
+ */
+export function siteVisitBlock(siteVisit, event = {}) {
+  const sv =
+    siteVisit && typeof siteVisit === 'object'
+      ? siteVisit
+      : {
+          siteVisitDate: event.site_visit_date || event.siteVisitDate,
+          siteVisitNotes: event.site_visit_notes || event.siteVisitNotes,
+          siteVisitParking:
+            event.site_visit_parking || event.siteVisitParking,
+          siteVisitContacts:
+            event.site_visit_contacts || event.siteVisitContacts,
+          siteVisitPhotos:
+            event.site_visit_photos || event.siteVisitPhotos,
+        };
+  const dateRaw = sv.siteVisitDate || sv.site_visit_date;
+  const dateStr = dateRaw
+    ? (() => {
+        const d = new Date(dateRaw);
+        return Number.isNaN(d.getTime()) ? String(dateRaw) : d.toLocaleDateString();
+      })()
+    : '';
+  const notes = String(sv.siteVisitNotes || sv.site_visit_notes || '').trim();
+  const parking = String(
+    sv.siteVisitParking || sv.site_visit_parking || ''
+  ).trim();
+  const contacts = String(
+    sv.siteVisitContacts || sv.site_visit_contacts || ''
+  ).trim();
+  const photos = asArray(
+    sv.siteVisitPhotos || sv.site_visit_photos
+  ).filter((p) => p?.url);
+
+  if (!dateStr && !notes && !parking && !contacts && !photos.length) {
+    return `<p style="margin:0;font-size:12px;color:#666;">No site visit details on file. Add them on Event Detail → Site Visit.</p>`;
+  }
+
+  const row = (label, value) =>
+    value
+      ? `<p style="margin:0 0 8px;font-size:12px;"><strong>${esc(
+          label
+        )}:</strong> ${esc(value)}</p>`
+      : '';
+
+  const photoHtml = photos.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">
+        ${photos
+          .map((p) => {
+            const src = esc(p.url);
+            const cap = esc(p.caption || '');
+            return `<figure class="beo-floor-map beo-keep" style="margin:0;max-width:48%;">
+              <img src="${src}" alt="${cap || 'Site visit photo'}" style="display:block;max-width:100%;height:auto;border:1px solid ${BORDER};" />
+              ${
+                cap
+                  ? `<figcaption style="font-size:11px;color:#555;margin-top:4px;">${cap}</figcaption>`
+                  : ''
+              }
+            </figure>`;
+          })
+          .join('')}
+      </div>`
+    : '';
+
+  return `${row('Visit date', dateStr)}${row('Notes / instructions', notes)}${row(
+    'Parking / load-in',
+    parking
+  )}${row('Contacts', contacts)}${photoHtml}`;
+}
+
 export function attendeeTable(participationUrl, attendees = [], rowCount = 12) {
   const list = Array.isArray(attendees) ? attendees : [];
   const link = participationUrl
     ? `<p style="margin:0 0 8px;font-size:12px;">Participation list: <a href="${esc(participationUrl)}">${esc(participationUrl)}</a></p>`
     : list.length
       ? ''
-      : `<p style="margin:0 0 8px;font-size:12px;color:#666;">Add attendees on Event Detail (or a participation spreadsheet link on Artifacts). Blank rows below for day-of notes.</p>`;
+      : `<p style="margin:0 0 8px;font-size:12px;color:#666;">Add the Attendee List on Event Detail → Attendees (Upload / Replace or Import). Blank rows below for day-of notes.</p>`;
   const header = `<tr>
-    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:40%;">Name</th>
-    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:35%;">Allergies</th>
-    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:25%;">Phone Number</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:28%;">Name</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:24%;">Allergies</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:22%;">Phone Number</th>
+    <th style="border:1px solid ${BORDER};padding:5px 8px;font-size:10px;text-align:left;font-weight:700;width:26%;">Email</th>
   </tr>`;
   const filled = list.map((row) => {
     const r = row && typeof row === 'object' ? row : {};
     const name = r.name || r.Name || '';
     const allergies = r.allergies || r.Allergies || r.dietary || '';
     const phone = r.phone || r.Phone || r.phone_number || '';
+    const email = r.email || r.Email || '';
     return `<tr>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(name)) || '&nbsp;'}</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(allergies)) || '&nbsp;'}</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(phone)) || '&nbsp;'}</td>
+    <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">${esc(String(email)) || '&nbsp;'}</td>
   </tr>`;
   });
   const extra = filled.length === 0 ? 4 : 2;
@@ -296,6 +372,7 @@ export function attendeeTable(participationUrl, attendees = [], rowCount = 12) {
   const blankNeeded =
     filled.length >= cap ? 0 : Math.min(extra, cap - filled.length);
   const blanks = Array.from({ length: blankNeeded }, () => `<tr>
+    <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
     <td style="border:1px solid ${BORDER};padding:10px 8px;font-size:12px;">&nbsp;</td>
@@ -356,18 +433,28 @@ export function eventCoreFields(input) {
   const name = event.event_name || event.eventName || '';
   const type = event.event_type || event.eventType || '';
   const venue = event.venue || '';
+  const venueAddress = (
+    event.venue_address ||
+    event.venueAddress ||
+    ''
+  ).trim();
   const venueMode = event.venue_mode || event.venueMode;
-  const venueModeLabel =
+  const modeLabel =
     venueMode === 'go_to_them'
-      ? 'Go to them'
+      ? 'Client Venue'
       : venueMode === 'house_venue'
-        ? 'House venue'
+        ? 'Our Venue'
         : '';
-  const venueLabel = venue
-    ? venueModeLabel
-      ? `${venue} (${venueModeLabel})`
+  const venuePrimary = venue
+    ? modeLabel
+      ? `${venue} (${modeLabel})`
       : venue
     : '';
+  const venueLabel = venuePrimary
+    ? venueAddress
+      ? `${venuePrimary}\n${venueAddress}`
+      : venuePrimary
+    : venueAddress;
   const eventDateRaw = event.event_date || event.eventDate;
   const startTimeRaw = event.start_time || event.startTime || '';
   const eventDate =
@@ -435,12 +522,26 @@ export function eventCoreFields(input) {
       ''
   );
 
-  const staff = asArray(event.staff_assigned || event.staffAssigned)
+  const staffAssigned = asArray(event.staff_assigned || event.staffAssigned)
     .map((s) => (typeof s === 'string' ? s : s?.name || ''))
     .filter(Boolean)
     .join(', ');
 
   const instructorName = asRecord(input?.instructor).name || '';
+  const instructor2Name = asRecord(input?.instructor2).name || '';
+  const supportStaff = String(
+    input?.supportStaff ||
+      event.support_staff ||
+      event.supportStaff ||
+      ''
+  ).trim();
+  const leaderNames = [instructorName, instructor2Name]
+    .filter(Boolean)
+    .join(', ');
+  const staffFromLeaders = [leaderNames, supportStaff]
+    .filter(Boolean)
+    .join(' · ');
+  const staff = staffAssigned || staffFromLeaders;
 
   return {
     event,
@@ -448,6 +549,7 @@ export function eventCoreFields(input) {
     name,
     type,
     venue,
+    venueAddress,
     venueLabel,
     venueRestrictions: event.venue_restrictions || event.venueRestrictions || '',
     eventDate,
@@ -465,6 +567,7 @@ export function eventCoreFields(input) {
     media,
     staff,
     instructorName,
+    supportStaff,
     special: event.special_requests || event.specialRequests || '',
     dietary: event.dietary_restrictions || event.dietaryRestrictions || '',
     additional:
@@ -484,7 +587,7 @@ export function eventInfoTable(core) {
       cell('Event date', formatDate(core.eventDate)) +
       cell('Start time', core.startTime) +
       cell('Guest count', core.headcount) +
-      cell('Staff', core.staff || core.instructorName)
+      cell('Staff', core.staff || core.instructorName || '')
   );
 }
 

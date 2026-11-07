@@ -19,6 +19,17 @@ import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 import { depositComplete } from '@/lib/opsPanelCompletion';
+import {
+  CUSTOM_VENUE_LABEL,
+  CUSTOM_VENUE_OPTION,
+  CustomVenueFields,
+  PromoteVenueButton,
+} from '@/components/venues/CustomVenueFields';
+import { canAccessOpsSettings } from '@/lib/operationalAccess';
+import AttendeeListStatus from '@/components/events/AttendeeListStatus';
+import SettingsCatalogLink from '@/components/settings/SettingsCatalogLink';
+import { useUnsavedBeforeUnload } from '@/lib/useUnsavedNavigation';
+import { venueModeLabel } from '@/lib/venueModeLabels';
 
 const VENDOR_DIRECTORY =
   'https://docs.google.com/document/d/1HHU1nfh-3a0UdJVzgWqRqUFxBpfeC3Y_GQT-2Serbv4/edit';
@@ -129,8 +140,16 @@ function formatIntakeSummary(src, { isCooking, canViewDeposit }) {
     .join(' · ') || '—';
 
   const venueMode = src.venue_mode || src.venueMode;
+  const modeFriendly = venueModeLabel(venueMode);
+  const venueAddr = (
+    src.venue_address ||
+    src.venueAddress ||
+    ''
+  ).trim();
   const venue = src.venue
-    ? `${src.venue}${venueMode ? ` (${venueMode})` : ''}`
+    ? `${src.venue}${modeFriendly ? ` (${modeFriendly})` : ''}${
+        venueAddr ? `\n${venueAddr}` : ''
+      }`
     : '—';
 
   const rows = [
@@ -229,34 +248,25 @@ function formatIntakeSummary(src, { isCooking, canViewDeposit }) {
     rows.push({ label: 'Custom add-ons', kind: 'list', items: addonItems });
   }
 
-  const listType =
-    src.participation_list_type || src.participationListType;
-  const listUrl = src.participation_list_url || src.participationListUrl;
-  if (listType || listUrl) {
-    const typeLabel =
-      listType === 'sheets'
-        ? 'Google Sheets'
-        : listType === 'forms'
-          ? 'Google Forms'
-          : listType || null;
-    if (listUrl) {
-      rows.push({
-        label: 'Participation list',
-        kind: 'link',
-        value: typeLabel,
-        href: listUrl,
-        linkLabel: listUrl,
-      });
-    } else {
-      rows.push({
-        label: 'Participation list',
-        kind: 'text',
-        value: typeLabel,
-      });
-    }
+  const invoice = src.deposit_number ?? src.depositNumber;
+  if (invoice) {
+    rows.push({
+      label: 'Invoice Number',
+      kind: 'text',
+      value: String(invoice),
+    });
   }
 
   if (canViewDeposit) {
+    const payUrl = src.deposit_payment_url ?? src.depositPaymentUrl;
+    if (payUrl) {
+      rows.push({
+        label: 'QuickBooks Payment Link',
+        kind: 'link',
+        href: String(payUrl),
+        linkLabel: 'Open Invoice/Payment',
+      });
+    }
     const amt = src.deposit_amount ?? src.depositAmount;
     if (amt != null && amt !== '') {
       rows.push({
@@ -301,10 +311,11 @@ function buildFormFromSource(src, houseVenues = HOUSE_VENUES_FALLBACK) {
       venueMode: 'house_venue',
       venue: '',
       venueOther: '',
+      venueAddress: '',
       venueRestrictions: '',
       depositAmount: '',
-      participationListUrl: '',
-      participationListType: '',
+      depositNumber: '',
+      depositPaymentUrl: '',
     };
   }
 
@@ -314,7 +325,9 @@ function buildFormFromSource(src, houseVenues = HOUSE_VENUES_FALLBACK) {
   const transport = src.transportation_details || src.transportationDetails || {};
   const venueName = src.venue || '';
   const venueMode = src.venue_mode || src.venueMode || 'house_venue';
-  const knownVenue = houseVenues.includes(venueName);
+  const knownVenue = houseVenues.some(
+    (v) => v.toLowerCase() === String(venueName).toLowerCase()
+  );
   const dish = src.dish_configuration || src.dishConfiguration || '';
   const knownDish = ['Entree', 'App + Entree', 'App + Entree + Dessert'].includes(
     dish
@@ -399,7 +412,7 @@ function buildFormFromSource(src, houseVenues = HOUSE_VENUES_FALLBACK) {
         ? knownVenue
           ? venueName
           : venueName
-            ? 'Other'
+            ? CUSTOM_VENUE_OPTION
             : ''
         : '',
     venueOther:
@@ -408,12 +421,12 @@ function buildFormFromSource(src, houseVenues = HOUSE_VENUES_FALLBACK) {
         : !knownVenue && venueName
           ? venueName
           : '',
+    venueAddress: src.venue_address || src.venueAddress || '',
     venueRestrictions: src.venue_restrictions || src.venueRestrictions || '',
     depositAmount: src.deposit_amount ?? src.depositAmount ?? '',
-    participationListUrl:
-      src.participation_list_url || src.participationListUrl || '',
-    participationListType:
-      src.participation_list_type || src.participationListType || '',
+    depositNumber: src.deposit_number ?? src.depositNumber ?? '',
+    depositPaymentUrl:
+      src.deposit_payment_url ?? src.depositPaymentUrl ?? '',
   };
 }
 
@@ -456,6 +469,8 @@ export default function DepositIntakeForm({ event, user }) {
     buildFormFromSource(event, HOUSE_VENUES_FALLBACK)
   );
 
+  useUnsavedBeforeUnload(isEditing);
+
   const hydrateFromLatest = () => {
     setForm(buildFormFromSource(sourceEvent, houseVenues));
   };
@@ -481,8 +496,67 @@ export default function DepositIntakeForm({ event, user }) {
 
   const houseVenueSelected = useMemo(() => {
     if (form.venueMode !== 'house_venue') return false;
-    return houseVenues.includes(form.venue) || form.venue === 'Other';
+    return (
+      houseVenues.some(
+        (v) => v.toLowerCase() === String(form.venue || '').toLowerCase()
+      ) || form.venue === CUSTOM_VENUE_OPTION
+    );
   }, [form.venue, form.venueMode, houseVenues]);
+
+  const { data: assignment } = useQuery({
+    queryKey: ['user-assignment', user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      if (user.role === 'admin') return { is_active: true, role: 'Admin' };
+      const rows = await base44.entities.RoleAssignment.filter({
+        user_id: user.id,
+      });
+      return rows[0] || null;
+    },
+    enabled: !!user,
+  });
+  const canPromote = canAccessOpsSettings(user, assignment);
+
+  const promoteMutation = useMutation({
+    mutationFn: async (name) => {
+      const trimmed = String(name || '').trim();
+      if (!trimmed) throw new Error('Venue name is required');
+      const existing = await base44.entities.Venue.filter({});
+      const list = Array.isArray(existing) ? existing : [];
+      const dup = list.find(
+        (v) => String(v.name || '').toLowerCase() === trimmed.toLowerCase()
+      );
+      if (dup) {
+        if (dup.is_active === false) {
+          return base44.entities.Venue.update(dup.id, { is_active: true });
+        }
+        throw new Error('That venue is already on the standard list');
+      }
+      const maxSort = list.reduce(
+        (m, v) => Math.max(m, Number(v.sort_order) || 0),
+        0
+      );
+      return base44.entities.Venue.create({
+        name: trimmed,
+        sort_order: maxSort + 1,
+        is_active: true,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['venues-active'] });
+      queryClient.invalidateQueries({ queryKey: ['venues-all'] });
+      queryClient.invalidateQueries({ queryKey: ['deposit-intake', eventId] });
+      toast.success('Added to standard venues');
+    },
+    onError: (err) =>
+      toast.error(err?.body?.error || err?.message || 'Failed to add venue'),
+  });
+
+  const customLocationName = useMemo(() => {
+    if (form.venueMode === 'go_to_them') return (form.venueOther || '').trim();
+    if (form.venue === CUSTOM_VENUE_OPTION) return (form.venueOther || '').trim();
+    return '';
+  }, [form.venue, form.venueMode, form.venueOther]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -493,6 +567,13 @@ export default function DepositIntakeForm({ event, user }) {
             `Cheeseboard requires a minimum of ${CHEESEBOARD_MIN} units`
           );
         }
+      }
+      if (
+        (form.venueMode === 'go_to_them' ||
+          form.venue === CUSTOM_VENUE_OPTION) &&
+        !customLocationName
+      ) {
+        throw new Error('Enter a custom location name');
       }
 
       const payload = {
@@ -584,25 +665,41 @@ export default function DepositIntakeForm({ event, user }) {
             ? 'Sammy Transport'
             : form.transportCompany || null,
         transportCompanyOther: form.transportCompanyOther || null,
-        venueMode: form.venueMode,
+        venueMode:
+          form.venueMode === 'go_to_them' ||
+          form.venue === CUSTOM_VENUE_OPTION
+            ? houseVenues.some(
+                (v) =>
+                  v.toLowerCase() ===
+                  String(customLocationName || '').toLowerCase()
+              )
+              ? 'house_venue'
+              : 'go_to_them'
+            : form.venueMode,
         venue:
           form.venueMode === 'house_venue'
-            ? houseVenueSelected
-              ? form.venue
-              : form.venue || 'Other'
+            ? form.venue === CUSTOM_VENUE_OPTION
+              ? CUSTOM_VENUE_OPTION
+              : houseVenueSelected
+                ? form.venue
+                : form.venue || CUSTOM_VENUE_OPTION
             : null,
         venueOther:
-          form.venueMode === 'go_to_them'
+          form.venueMode === 'go_to_them' || form.venue === CUSTOM_VENUE_OPTION
             ? form.venueOther || form.venue
-            : form.venue === 'Other'
-              ? form.venueOther
-              : null,
+            : null,
+        venueAddress:
+          form.venueMode === 'go_to_them' || form.venue === CUSTOM_VENUE_OPTION
+            ? form.venueAddress?.trim() || null
+            : null,
         venueRestrictions: form.venueRestrictions || null,
         ...(canViewDeposit
-          ? { depositAmount: numOrNull(form.depositAmount) }
+          ? {
+              depositAmount: numOrNull(form.depositAmount),
+              depositNumber: form.depositNumber?.trim() || null,
+              depositPaymentUrl: form.depositPaymentUrl?.trim() || null,
+            }
           : {}),
-        participationListUrl: form.participationListUrl || null,
-        participationListType: form.participationListType || null,
       };
 
       const res = await base44.functions.invoke(
@@ -687,7 +784,7 @@ export default function DepositIntakeForm({ event, user }) {
                 <dt className="text-xs font-semibold uppercase tracking-wider text-green-700">
                   {row.label}
                 </dt>
-                <dd className="text-sm font-semibold text-green-950 break-words mt-1">
+                <dd className="text-sm font-semibold text-green-950 break-words mt-1 whitespace-pre-line">
                   {row.kind === 'list' ? (
                     <ul className="flex flex-col gap-2 list-none p-0 m-0 font-normal">
                       {row.items.map((item) => (
@@ -751,6 +848,22 @@ export default function DepositIntakeForm({ event, user }) {
               </div>
             ))}
           </dl>
+          <PromoteVenueButton
+            venueName={
+              houseVenues.some(
+                (v) =>
+                  v.toLowerCase() ===
+                  String(sourceEvent?.venue || '').toLowerCase()
+              )
+                ? ''
+                : sourceEvent?.venue || ''
+            }
+            houseVenueNames={houseVenues}
+            canPromote={canPromote}
+            pending={promoteMutation.isPending}
+            onPromote={(name) => promoteMutation.mutate(name)}
+          />
+          <AttendeeListStatus eventId={eventId} event={sourceEvent} />
         </div>
       </OpsPanelShell>
     );
@@ -775,7 +888,7 @@ export default function DepositIntakeForm({ event, user }) {
             ? 'Update intake fields below. Saving does not re-send the deposit notify email.'
             : 'Prefill from CRM — confirm location, preferences, and add-ons. Completing this generates the event workflow and emails Dave, Zach, Monica, and Eileen (Slack alert not required).'}
         </p>
-        {/* Core prefill */}
+        {/* CRM-10: identifiers */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Event date</Label>
@@ -784,6 +897,11 @@ export default function DepositIntakeForm({ event, user }) {
               value={form.eventDate}
               onChange={(e) => setField('eventDate', e.target.value)}
             />
+            {(event?.lead_id || event?.source_lead_id) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Synced with linked Lead — changes update both.
+              </p>
+            )}
           </div>
           <div>
             <Label>Start time</Label>
@@ -801,146 +919,360 @@ export default function DepositIntakeForm({ event, user }) {
             />
           </div>
           <div>
-            <Label>Planner email</Label>
-            <Input
-              value={form.pocEmail}
-              onChange={(e) => setField('pocEmail', e.target.value)}
-            />
-          </div>
-          <div>
             <Label>Planner phone</Label>
             <Input
               value={form.pocPhone}
               onChange={(e) => setField('pocPhone', e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>Headcount min</Label>
-              <Input
-                type="number"
-                min={0}
-                max={999}
-                value={form.headcountMin}
-                onChange={(e) => setField('headcountMin', e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Headcount max</Label>
-              <Input
-                type="number"
-                min={0}
-                max={999}
-                value={form.headcountMax}
-                onChange={(e) => setField('headcountMax', e.target.value)}
-              />
-            </div>
-          </div>
-          {canViewDeposit ? (
-            <div>
-              <Label>Deposit amount (Dave / Zach / Monica only)</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.depositAmount}
-                onChange={(e) => setField('depositAmount', e.target.value)}
-              />
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 md:col-span-2">
-              Deposit amount is restricted to Dave, Zach, and Monica.
-            </div>
-          )}
         </section>
 
-        {/* Alcohol */}
-        <section className="space-y-3 border-t pt-4">
-          <Label className="text-base font-semibold">Alcohol</Label>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={form.alcoholIncluded}
-              onCheckedChange={(v) => setField('alcoholIncluded', Boolean(v))}
-              id="alcohol"
-            />
-            <label htmlFor="alcohol" className="text-sm">
-              Alcohol included
-            </label>
-          </div>
-          {form.alcoholIncluded && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-1">
+        {/* CRM-10: Headcount | Venue */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-4">
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">Headcount</Label>
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Bar payment</Label>
+                <Label>Headcount min</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={999}
+                  value={form.headcountMin}
+                  onChange={(e) => setField('headcountMin', e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Headcount max</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={999}
+                  value={form.headcountMax}
+                  onChange={(e) => setField('headcountMax', e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <Label className="text-base font-semibold">Venue</Label>
+            <Select
+              value={form.venueMode}
+              onValueChange={(v) => setField('venueMode', v)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="go_to_them">Client Venue</SelectItem>
+                <SelectItem value="house_venue">Our Venue</SelectItem>
+              </SelectContent>
+            </Select>
+            {form.venueMode === 'house_venue' ? (
+              <div className="space-y-3">
                 <Select
-                  value={form.barPaymentMode}
-                  onValueChange={(v) => setField('barPaymentMode', v)}
+                  value={form.venue}
+                  onValueChange={(v) => {
+                    setForm((f) => ({
+                      ...f,
+                      venue: v,
+                      venueOther:
+                        v === CUSTOM_VENUE_OPTION ? f.venueOther : '',
+                      venueAddress:
+                        v === CUSTOM_VENUE_OPTION ? f.venueAddress : '',
+                    }));
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select…" />
+                    <SelectValue placeholder="Select venue…" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Card on file">Card on file</SelectItem>
-                    <SelectItem value="Ticketed">Ticketed</SelectItem>
-                    <SelectItem value="Fixed Open Bar">Fixed Open Bar</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
+                    {houseVenues.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={CUSTOM_VENUE_OPTION}>
+                      {CUSTOM_VENUE_LABEL}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              {form.barPaymentMode === 'Other' && (
-                <div>
-                  <Label>Other payment</Label>
-                  <Input
-                    value={form.barPaymentModeOther}
-                    onChange={(e) =>
-                      setField('barPaymentModeOther', e.target.value)
-                    }
+                {form.venue === CUSTOM_VENUE_OPTION && (
+                  <CustomVenueFields
+                    idPrefix="deposit-house-custom"
+                    customName={form.venueOther}
+                    onCustomNameChange={(v) => setField('venueOther', v)}
+                    address={form.venueAddress}
+                    onAddressChange={(v) => setField('venueAddress', v)}
                   />
+                )}
+              </div>
+            ) : (
+              <CustomVenueFields
+                idPrefix="deposit-goto-custom"
+                customName={form.venueOther}
+                onCustomNameChange={(v) => setField('venueOther', v)}
+                address={form.venueAddress}
+                onAddressChange={(v) => setField('venueAddress', v)}
+              />
+            )}
+            <PromoteVenueButton
+              venueName={customLocationName}
+              houseVenueNames={houseVenues}
+              canPromote={canPromote}
+              pending={promoteMutation.isPending}
+              onPromote={(name) => promoteMutation.mutate(name)}
+            />
+            <SettingsCatalogLink
+              hash="settings-venues"
+              label="Manage venues & floor maps in Settings"
+              dirty={isEditing}
+            />
+            <div>
+              <Label>Venue restrictions</Label>
+              <Textarea
+                rows={2}
+                value={form.venueRestrictions}
+                onChange={(e) => setField('venueRestrictions', e.target.value)}
+                placeholder="Loading dock, noise, capacity…"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* CRM-10: Alcohol | Competition */}
+        <section
+          className={`grid grid-cols-1 gap-3 border-t pt-4 ${
+            isCooking ? 'md:grid-cols-2' : ''
+          }`}
+        >
+          <div className="space-y-3">
+            <Label className="text-base font-semibold">Alcohol</Label>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={form.alcoholIncluded}
+                onCheckedChange={(v) =>
+                  setField('alcoholIncluded', Boolean(v))
+                }
+                id="alcohol"
+              />
+              <label htmlFor="alcohol" className="text-sm">
+                Alcohol included
+              </label>
+            </div>
+            {form.alcoholIncluded && (
+              <div className="grid grid-cols-1 gap-3 pl-1">
+                <div>
+                  <Label>Bar payment</Label>
+                  <Select
+                    value={form.barPaymentMode}
+                    onValueChange={(v) => setField('barPaymentMode', v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Card on file">Card on file</SelectItem>
+                      <SelectItem value="Ticketed">Ticketed</SelectItem>
+                      <SelectItem value="Fixed Open Bar">
+                        Fixed Open Bar
+                      </SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
+                {form.barPaymentMode === 'Other' && (
+                  <div>
+                    <Label>Other payment</Label>
+                    <Input
+                      value={form.barPaymentModeOther}
+                      onChange={(e) =>
+                        setField('barPaymentModeOther', e.target.value)
+                      }
+                    />
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={form.wineBeerSoft}
+                    onCheckedChange={(v) =>
+                      setField('wineBeerSoft', Boolean(v))
+                    }
+                    id="wineBeer"
+                  />
+                  <label htmlFor="wineBeer" className="text-sm">
+                    Wine / Beer / Soft drinks
+                  </label>
+                </div>
+                <div>
+                  <Label>Mixed drinks</Label>
+                  <Select
+                    value={form.mixedDrinks}
+                    onValueChange={(v) => setField('mixedDrinks', v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Optional…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Top Shelf">Top Shelf</SelectItem>
+                      <SelectItem value="Rail">Rail</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+          {isCooking && (
+            <div className="space-y-3">
+              <Label className="text-base font-semibold">Competition</Label>
               <div className="flex items-center gap-2">
                 <Checkbox
-                  checked={form.wineBeerSoft}
-                  onCheckedChange={(v) => setField('wineBeerSoft', Boolean(v))}
-                  id="wineBeer"
+                  checked={form.isCompetition}
+                  onCheckedChange={(v) =>
+                    setField('isCompetition', Boolean(v))
+                  }
+                  id="competition"
                 />
-                <label htmlFor="wineBeer" className="text-sm">
-                  Wine / Beer / Soft drinks
+                <label htmlFor="competition" className="text-sm">
+                  Competition (vs cooking experience)
                 </label>
-              </div>
-              <div>
-                <Label>Mixed drinks</Label>
-                <Select
-                  value={form.mixedDrinks}
-                  onValueChange={(v) => setField('mixedDrinks', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Optional…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Top Shelf">Top Shelf</SelectItem>
-                    <SelectItem value="Rail">Rail</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
           )}
         </section>
 
-        {/* Cooking-only */}
+        {/* CRM-10: Transportation | Planner email */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-base font-semibold">Transportation</Label>
+              <a
+                href={VENDOR_DIRECTORY}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-[#C84B31] inline-flex items-center gap-1 shrink-0"
+              >
+                Vendor Directory <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={form.transportationNeeded}
+                onCheckedChange={(v) =>
+                  setField('transportationNeeded', Boolean(v))
+                }
+              />
+              Pickup / drop-off needed
+            </label>
+            {form.transportationNeeded && (
+              <div className="space-y-3">
+                <Select
+                  value={form.transportCompany}
+                  onValueChange={(v) => setField('transportCompany', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Company…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Sammy Transport">
+                      Sammy Transport (Alberto)
+                    </SelectItem>
+                    <SelectItem value="DC Nation Tours">
+                      DC Nation Tours
+                    </SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.transportCompany === 'Other' && (
+                  <Input
+                    placeholder="Other company"
+                    value={form.transportCompanyOther}
+                    onChange={(e) =>
+                      setField('transportCompanyOther', e.target.value)
+                    }
+                  />
+                )}
+              </div>
+            )}
+          </div>
+          <div>
+            <Label>Planner email</Label>
+            <Input
+              value={form.pocEmail}
+              onChange={(e) => setField('pocEmail', e.target.value)}
+            />
+          </div>
+        </section>
+
+        {/* CRM-10: Payment / deposit group */}
+        <section className="space-y-3 border-t pt-4">
+          <Label className="text-base font-semibold">Payment & deposit</Label>
+          {canViewDeposit ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label>Invoice Number</Label>
+                <Input
+                  value={form.depositNumber}
+                  onChange={(e) => setField('depositNumber', e.target.value)}
+                  placeholder="Invoice number..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>QuickBooks Payment Link</Label>
+                <Input
+                  type="url"
+                  value={form.depositPaymentUrl}
+                  onChange={(e) =>
+                    setField('depositPaymentUrl', e.target.value)
+                  }
+                  placeholder="https://..."
+                />
+                {form.depositPaymentUrl?.trim() ? (
+                  <Button asChild variant="outline" size="sm" type="button">
+                    <a
+                      href={form.depositPaymentUrl.trim()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open Invoice/Payment
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+              <div>
+                <Label>Deposit amount (Dave / Zach / Monica only)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.depositAmount}
+                  onChange={(e) => setField('depositAmount', e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {form.depositNumber ? (
+                <div>
+                  <Label>Invoice Number</Label>
+                  <p className="text-sm font-medium text-gray-900 mt-1">
+                    {form.depositNumber}
+                  </p>
+                </div>
+              ) : null}
+              <div className="text-sm text-gray-500 md:col-span-2">
+                Deposit amount and QuickBooks payment link are restricted to
+                Dave, Zach, and Monica.
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Cooking dish configuration (Competition moved beside Alcohol) */}
         {isCooking && (
           <section className="space-y-3 border-t pt-4">
             <Label className="text-base font-semibold">Cooking setup</Label>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={form.isCompetition}
-                onCheckedChange={(v) => setField('isCompetition', Boolean(v))}
-                id="competition"
-              />
-              <label htmlFor="competition" className="text-sm">
-                Competition (vs cooking experience)
-              </label>
-            </div>
             <div>
               <Label>Dish configuration</Label>
               <Select
@@ -1125,141 +1457,10 @@ export default function DepositIntakeForm({ event, user }) {
           </AddonRow>
         </section>
 
-        {/* Transport */}
-        <section className="space-y-3 border-t pt-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-base font-semibold">Transportation</Label>
-            <a
-              href={VENDOR_DIRECTORY}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-[#C84B31] inline-flex items-center gap-1"
-            >
-              Vendor Directory <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={form.transportationNeeded}
-              onCheckedChange={(v) =>
-                setField('transportationNeeded', Boolean(v))
-              }
-            />
-            Pickup / drop-off needed
-          </label>
-          {form.transportationNeeded && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Select
-                value={form.transportCompany}
-                onValueChange={(v) => setField('transportCompany', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Company…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Sammy Transport">
-                    Sammy Transport (Alberto)
-                  </SelectItem>
-                  <SelectItem value="DC Nation Tours">DC Nation Tours</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              {form.transportCompany === 'Other' && (
-                <Input
-                  placeholder="Other company"
-                  value={form.transportCompanyOther}
-                  onChange={(e) =>
-                    setField('transportCompanyOther', e.target.value)
-                  }
-                />
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* Venue */}
-        <section className="space-y-3 border-t pt-4">
-          <Label className="text-base font-semibold">Venue</Label>
-          <Select
-            value={form.venueMode}
-            onValueChange={(v) => setField('venueMode', v)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="go_to_them">Go to them</SelectItem>
-              <SelectItem value="house_venue">House venue</SelectItem>
-            </SelectContent>
-          </Select>
-          {form.venueMode === 'house_venue' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Select
-                value={form.venue}
-                onValueChange={(v) => setField('venue', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select venue…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {houseVenues.map((v) => (
-                    <SelectItem key={v} value={v}>
-                      {v}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              {form.venue === 'Other' && (
-                <Input
-                  placeholder="Other venue name"
-                  value={form.venueOther}
-                  onChange={(e) => setField('venueOther', e.target.value)}
-                />
-              )}
-            </div>
-          ) : (
-            <Input
-              placeholder="Client venue / address"
-              value={form.venueOther}
-              onChange={(e) => setField('venueOther', e.target.value)}
-            />
-          )}
-          <div>
-            <Label>Venue restrictions</Label>
-            <Textarea
-              rows={2}
-              value={form.venueRestrictions}
-              onChange={(e) => setField('venueRestrictions', e.target.value)}
-              placeholder="Loading dock, noise, capacity…"
-            />
-          </div>
-        </section>
-
-        {/* Admin participation */}
-        <section className="space-y-3 border-t pt-4">
-          <Label className="text-base font-semibold">
-            Participation list (Admin)
-          </Label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Select
-              value={form.participationListType}
-              onValueChange={(v) => setField('participationListType', v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Sheets or Forms…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sheets">Google Sheets</SelectItem>
-                <SelectItem value="forms">Google Forms</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="Participation list URL"
-              value={form.participationListUrl}
-              onChange={(e) => setField('participationListUrl', e.target.value)}
-            />
-          </div>
+        {/* CRM-11: Attendee List is owned by Attendees panel */}
+        <section className="space-y-2 border-t pt-4">
+          <Label className="text-base font-semibold">Attendee List</Label>
+          <AttendeeListStatus eventId={eventId} event={sourceEvent} />
         </section>
 
         <div className="flex justify-end gap-2 border-t pt-4">

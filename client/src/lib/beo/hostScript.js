@@ -12,8 +12,10 @@ export function fillBeoHostScript(template, vars = {}) {
   if (!raw.trim()) return "";
   return raw.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_m, key) => {
     const k = String(key).toLowerCase();
+    // Present-but-empty (e.g. instructor_bio) clears the token; missing keys keep {{token}}.
+    if (!Object.prototype.hasOwnProperty.call(vars, k)) return `{{${k}}}`;
     const val = vars[k];
-    return val != null && String(val).trim() !== "" ? String(val) : `{{${k}}}`;
+    return val != null ? String(val) : "";
   });
 }
 
@@ -57,11 +59,20 @@ export function hostNameFromStaff(staffAssigned) {
   return name || "Host";
 }
 
+const esc = (s) =>
+  String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
 /**
- * Build placeholder map for the host MC script.
+ * Build placeholder map for the host MC / Standard Script.
+ * Bios are intentionally empty — Group Leader Biography is a separate BEO section (CRM-17).
  * @param {{
  *   event?: Record<string, unknown>,
  *   instructor?: { name?: string, bio?: string } | null,
+ *   instructor2?: { name?: string, bio?: string } | null,
  *   client?: { name?: string, company?: string } | null,
  *   runOfShow?: Record<string, unknown>,
  * }} input
@@ -69,6 +80,7 @@ export function hostNameFromStaff(staffAssigned) {
 export function buildHostScriptVars(input = {}) {
   const event = input.event || {};
   const instructor = input.instructor || {};
+  const instructor2 = input.instructor2 || {};
   const client = input.client || {};
   const ros = input.runOfShow || {};
 
@@ -99,6 +111,14 @@ export function buildHostScriptVars(input = {}) {
     event.menu ||
     "dish/drink";
 
+  const gl1Name = instructor.name ? String(instructor.name).trim() : "";
+  const gl2Name = instructor2.name ? String(instructor2.name).trim() : "";
+
+  const instructorName =
+    gl1Name && gl2Name
+      ? `${gl1Name} & ${gl2Name}`
+      : gl1Name || "(Group Leader name)";
+
   return {
     client_name: String(clientName),
     host_name: hostNameFromStaff(
@@ -106,16 +126,64 @@ export function buildHostScriptVars(input = {}) {
     ),
     event_name: String(eventName),
     experience_activity: experienceActivityPhrase(String(eventType)),
-    instructor_name: instructor.name
-      ? String(instructor.name)
-      : "(Instructor name)",
-    instructor_bio: instructor.bio ? String(instructor.bio) : "",
+    instructor_name: instructorName,
+    // Bios live in Group Leader Biography section — leave empty for script fill.
+    instructor_bio: "",
+    instructor_2_name: gl2Name,
+    instructor_2_bio: "",
     dish_or_drink: String(dishOrDrink),
   };
 }
 
 /**
- * Render host script as BEO HTML section body.
+ * Distinct Group Leader Biography section body (CRM-17).
+ * @param {{ name?: string, bio?: string } | null | undefined} instructor
+ * @param {{ name?: string, bio?: string } | null | undefined} instructor2
+ */
+export function groupLeaderBiographyHtml(instructor, instructor2) {
+  const gl1 = instructor && typeof instructor === "object" ? instructor : {};
+  const gl2 = instructor2 && typeof instructor2 === "object" ? instructor2 : {};
+  const gl1Name = gl1.name ? String(gl1.name).trim() : "";
+  const gl1Bio = gl1.bio ? String(gl1.bio).trim() : "";
+  const gl2Name = gl2.name ? String(gl2.name).trim() : "";
+  const gl2Bio = gl2.bio ? String(gl2.bio).trim() : "";
+
+  if (!gl1Name && !gl1Bio && !gl2Name && !gl2Bio) {
+    return `<p style="margin:0;font-size:12px;color:#666;">Select Group Leader(s) on Event Detail to include biographies. Manage bios under Settings → Group Leaders.</p>`;
+  }
+
+  const leaderBlock = (label, name, bio) => {
+    if (!name && !bio) return "";
+    return `<div style="margin:0 0 12px;">
+      <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#555;">${esc(
+        label
+      )}</p>
+      ${
+        name
+          ? `<p style="margin:0 0 6px;font-size:13px;font-weight:700;">${esc(
+              name
+            )}</p>`
+          : ""
+      }
+      ${
+        bio
+          ? `<div style="margin:0;white-space:pre-wrap;font-size:12px;line-height:1.5;">${esc(
+              bio
+            )}</div>`
+          : `<p style="margin:0;font-size:12px;color:#666;">No biography on file.</p>`
+      }
+    </div>`;
+  };
+
+  return `${leaderBlock("Group Leader 1", gl1Name, gl1Bio)}${leaderBlock(
+    "Group Leader 2",
+    gl2Name,
+    gl2Bio
+  )}`;
+}
+
+/**
+ * Render Standard Script as BEO HTML section body (no embedded bios).
  * @param {string | null | undefined} templateBody
  * @param {Record<string, string>} vars
  * @param {{ missingInstructor?: boolean }} opts
@@ -123,18 +191,12 @@ export function buildHostScriptVars(input = {}) {
 export function hostScriptSectionHtml(templateBody, vars, opts = {}) {
   const filled = fillBeoHostScript(templateBody || "", vars);
   const note = opts.missingInstructor
-    ? `<p style="margin:0 0 10px;font-size:12px;color:#666;">Select an instructor on Event Detail (Instructor &amp; attendees) to fill bio placeholders.</p>`
+    ? `<p style="margin:0 0 10px;font-size:12px;color:#666;">Select Group Leader 1 on Event Detail to fill name placeholders in the script.</p>`
     : "";
+
   if (!filled.trim()) {
     return `${note}<p style="margin:0;font-size:12px;color:#666;">No host script template configured. Add one under Settings → BEO Host Script.</p>`;
   }
-  // Escape is done by caller if needed — template is ops-authored plain text.
-  const esc = (s) =>
-    String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
   return `${note}<div style="margin:0;white-space:pre-wrap;font-size:12px;line-height:1.5;">${esc(
     filled
   )}</div>`;

@@ -26,7 +26,8 @@ function sortInstructors(rows) {
 }
 
 /**
- * Admin/Ops CRUD for standalone instructor bios.
+ * Admin/Ops CRUD for Group Leader display names + bios (CRM-14).
+ * Entity remains Instructor under the hood.
  */
 export default function SettingsInstructorsPanel() {
   const queryClient = useQueryClient();
@@ -55,7 +56,7 @@ export default function SettingsInstructorsPanel() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const trimmedName = name.trim();
-      if (!trimmedName) throw new Error('Name is required');
+      if (!trimmedName) throw new Error('Display name is required');
       const maxSort = instructors.reduce(
         (m, row) => Math.max(m, Number(row.sort_order) || 0),
         0
@@ -71,22 +72,32 @@ export default function SettingsInstructorsPanel() {
       setName('');
       setBio('');
       invalidate();
-      toast.success('Instructor added');
+      toast.success('Group leader added');
     },
     onError: (err) =>
-      toast.error(err?.body?.error || err?.message || 'Failed to add instructor'),
+      toast.error(
+        err?.body?.error || err?.message || 'Failed to add group leader'
+      ),
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, patch }) =>
       base44.entities.Instructor.update(id, patch),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       setEditingId(null);
       invalidate();
-      toast.success('Instructor updated');
+      if (vars?.patch && Object.prototype.hasOwnProperty.call(vars.patch, 'is_active')) {
+        toast.success(
+          vars.patch.is_active ? 'Group leader activated' : 'Group leader deactivated'
+        );
+      } else {
+        toast.success('Group leader updated');
+      }
     },
     onError: (err) =>
-      toast.error(err?.body?.error || err?.message || 'Failed to update instructor'),
+      toast.error(
+        err?.body?.error || err?.message || 'Failed to update group leader'
+      ),
   });
 
   const startEdit = (row) => {
@@ -103,35 +114,61 @@ export default function SettingsInstructorsPanel() {
   };
 
   return (
-    <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
+    <Card
+      id="settings-group-leaders"
+      className="bg-white/80 backdrop-blur-sm border-orange-100 scroll-mt-24"
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-[#2D3436]">
           <GraduationCap className="w-5 h-5 text-[#C84B31]" />
-          Instructors
+          Group Leaders
         </CardTitle>
-        <CardDescription>
-          Instructor names and bios for BEO host scripts and event materials.
-          Bios fill <code>{'{{instructor_bio}}'}</code> in Settings → BEO Host
-          Script. Run <code>npm run db:seed-instructors</code> to load the
-          bundled list, or add profiles below.
+        <CardDescription className="space-y-2">
+          <span className="block">
+            Maintain the directory used by Event Detail → Group Leader 1 / 2
+            dropdowns. Active leaders appear in those lists; biographies fill
+            the BEO Group Leader Bio / Script section when the BEO is
+            regenerated.
+          </span>
+          <span className="block text-xs text-gray-500">
+            Admin tip: add a Display Name + Biography, leave Active on, then
+            select the leader on an event. Deactivate to hide from new picks
+            without removing past event assignments. Seed with{' '}
+            <code>npm run db:seed-instructors</code> if the list is empty.
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2 border border-orange-100 rounded-md p-3">
-          <Label htmlFor="new-instructor-name">Add instructor</Label>
-          <Input
-            id="new-instructor-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Full name"
-          />
-          <Textarea
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            placeholder="Bio"
-            rows={4}
-            className="resize-y"
-          />
+          <Label htmlFor="new-group-leader-name">Add group leader</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-group-leader-name" className="text-xs text-gray-500">
+              Display Name
+            </Label>
+            <Input
+              id="new-group-leader-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full name as shown on the BEO"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-group-leader-bio" className="text-xs text-gray-500">
+              Biography
+            </Label>
+            <Textarea
+              id="new-group-leader-bio"
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Bio shown in the BEO"
+              rows={4}
+              className="resize-y"
+            />
+          </div>
+          <p className="text-xs text-gray-500">
+            New leaders are Active by default and immediately eligible for
+            Group Leader dropdowns.
+          </p>
           <Button
             className="bg-[#C84B31] hover:bg-[#A03A23]"
             disabled={createMutation.isPending || !name.trim()}
@@ -162,26 +199,43 @@ export default function SettingsInstructorsPanel() {
                     <div className="flex-1 min-w-0 space-y-2">
                       {isEditing ? (
                         <>
-                          <Input
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            placeholder="Name"
-                          />
-                          <Textarea
-                            value={editBio}
-                            onChange={(e) => setEditBio(e.target.value)}
-                            rows={6}
-                            className="resize-y"
-                          />
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-gray-500">
+                              Display Name
+                            </Label>
+                            <Input
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              placeholder="Display Name"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-gray-500">
+                              Biography
+                            </Label>
+                            <Textarea
+                              value={editBio}
+                              onChange={(e) => setEditBio(e.target.value)}
+                              rows={6}
+                              className="resize-y"
+                            />
+                          </div>
                         </>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-gray-800 truncate">
                             {row.name}
                           </span>
-                          {!row.is_active && (
+                          {row.is_active === false ? (
                             <Badge variant="outline" className="text-xs">
                               Inactive
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-green-200 text-green-800"
+                            >
+                              Active
                             </Badge>
                           )}
                         </div>
@@ -261,7 +315,7 @@ export default function SettingsInstructorsPanel() {
 
                   {!isEditing && expanded && (
                     <p className="text-sm text-gray-600 whitespace-pre-wrap border-t border-orange-50 pt-2">
-                      {row.bio?.trim() ? row.bio : 'No bio yet.'}
+                      {row.bio?.trim() ? row.bio : 'No biography yet.'}
                     </p>
                   )}
                 </li>
@@ -269,7 +323,7 @@ export default function SettingsInstructorsPanel() {
             })}
             {sorted.length === 0 && (
               <li className="p-4 text-sm text-gray-500">
-                No instructors yet. Run{' '}
+                No group leaders yet. Run{' '}
                 <code>npm run db:seed-instructors</code> or add one above.
               </li>
             )}

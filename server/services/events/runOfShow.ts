@@ -233,6 +233,12 @@ export async function getRunOfShowState(eventId: string, user?: AuthUser | null)
       postEventSurveyUrl: event.postEventSurveyUrl,
       workflowCrmUrl: event.workflowCrmUrl,
       beoUrl: event.beoUrl,
+      beoUrlLabel: event.beoUrlLabel,
+      beoUrlSavedAt: event.beoUrlSavedAt
+        ? new Date(event.beoUrlSavedAt).toISOString()
+        : null,
+      beoUrlSavedBy: event.beoUrlSavedBy ?? null,
+      beoUrlSavedByName: event.beoUrlSavedByName ?? null,
       beoShellUrl: event.beoShellUrl,
       fareharborLink: event.fareharborLink,
       beoLink: event.beoLink,
@@ -485,14 +491,6 @@ export async function saveEventArtifacts(
     .limit(1);
   if (!event) throw new AppError("Event not found", 404);
 
-  if (
-    payload.participationListType != null &&
-    payload.participationListType !== "sheets" &&
-    payload.participationListType !== "forms"
-  ) {
-    throw new AppError("participationListType must be sheets or forms", 400);
-  }
-
   const now = new Date();
   const ros = asRecord(event.runOfShow) as RunOfShowPayload;
   const nextRos: RunOfShowPayload =
@@ -500,17 +498,57 @@ export async function saveEventArtifacts(
       ? { ...ros, rosTemplateUrl: payload.rosTemplateUrl }
       : ros;
 
+  const nextBeoUrl =
+    payload.beoUrl !== undefined
+      ? String(payload.beoUrl ?? "").trim() || null
+      : event.beoUrl;
+  const beoUrlChanged =
+    payload.beoUrl !== undefined && nextBeoUrl !== (event.beoUrl || null);
+
+  let nextBeoUrlLabel = event.beoUrlLabel;
+  let nextBeoUrlSavedAt = event.beoUrlSavedAt;
+  let nextBeoUrlSavedBy = event.beoUrlSavedBy;
+  let nextBeoUrlSavedByName = event.beoUrlSavedByName;
+
+  if (payload.beoUrl !== undefined) {
+    if (!nextBeoUrl) {
+      nextBeoUrlLabel = null;
+      nextBeoUrlSavedAt = null;
+      nextBeoUrlSavedBy = null;
+      nextBeoUrlSavedByName = null;
+    } else {
+      if (payload.beoUrlLabel !== undefined) {
+        nextBeoUrlLabel =
+          String(payload.beoUrlLabel ?? "").trim() || "BEO";
+      } else if (!event.beoUrlLabel) {
+        nextBeoUrlLabel = "BEO";
+      }
+      if (beoUrlChanged || !event.beoUrlSavedAt) {
+        nextBeoUrlSavedAt = now;
+        nextBeoUrlSavedBy = user?.id ?? null;
+        nextBeoUrlSavedByName =
+          user?.full_name?.trim() || user?.email || null;
+      } else if (payload.beoUrlLabel !== undefined) {
+        // Label-only edit: keep prior saved audit, refresh stamp lightly
+        nextBeoUrlSavedAt = now;
+        nextBeoUrlSavedBy = user?.id ?? event.beoUrlSavedBy;
+        nextBeoUrlSavedByName =
+          user?.full_name?.trim() ||
+          user?.email ||
+          event.beoUrlSavedByName;
+      }
+    }
+  } else if (payload.beoUrlLabel !== undefined && event.beoUrl) {
+    nextBeoUrlLabel = String(payload.beoUrlLabel ?? "").trim() || "BEO";
+    nextBeoUrlSavedAt = now;
+    nextBeoUrlSavedBy = user?.id ?? event.beoUrlSavedBy;
+    nextBeoUrlSavedByName =
+      user?.full_name?.trim() || user?.email || event.beoUrlSavedByName;
+  }
+
   const [updated] = await db
     .update(events)
     .set({
-      participationListUrl:
-        payload.participationListUrl !== undefined
-          ? payload.participationListUrl
-          : event.participationListUrl,
-      participationListType:
-        payload.participationListType !== undefined
-          ? payload.participationListType
-          : event.participationListType,
       postEventSurveyUrl:
         payload.postEventSurveyUrl !== undefined
           ? payload.postEventSurveyUrl
@@ -519,8 +557,11 @@ export async function saveEventArtifacts(
         payload.workflowCrmUrl !== undefined
           ? payload.workflowCrmUrl
           : event.workflowCrmUrl,
-      beoUrl:
-        payload.beoUrl !== undefined ? payload.beoUrl : event.beoUrl,
+      beoUrl: nextBeoUrl,
+      beoUrlLabel: nextBeoUrlLabel,
+      beoUrlSavedAt: nextBeoUrlSavedAt,
+      beoUrlSavedBy: nextBeoUrlSavedBy,
+      beoUrlSavedByName: nextBeoUrlSavedByName,
       beoShellUrl:
         payload.beoShellUrl !== undefined
           ? payload.beoShellUrl
@@ -531,9 +572,7 @@ export async function saveEventArtifacts(
           : event.fareharborLink,
       // Keep legacy beoLink in sync with Admin BEO when provided
       beoLink:
-        payload.beoUrl !== undefined
-          ? payload.beoUrl
-          : event.beoLink,
+        payload.beoUrl !== undefined ? nextBeoUrl : event.beoLink,
       runOfShow: nextRos,
       updatedDate: now,
     })
@@ -541,12 +580,13 @@ export async function saveEventArtifacts(
     .returning();
 
   const artifactTaskMarks: string[] = [];
-  if (payload.beoUrl) artifactTaskMarks.push("C035");
+  if (nextBeoUrl && payload.beoUrl !== undefined) {
+    artifactTaskMarks.push("C035");
+  }
   if (payload.rosTemplateUrl) artifactTaskMarks.push("C036");
   if (payload.beoShellUrl || payload.fareharborLink) {
     artifactTaskMarks.push("C037");
   }
-  if (payload.participationListUrl) artifactTaskMarks.push("C032");
   if (payload.postEventSurveyUrl) artifactTaskMarks.push("C033");
   if (payload.workflowCrmUrl) artifactTaskMarks.push("C034");
 
@@ -563,7 +603,7 @@ export async function saveEventArtifacts(
     entityId: eventId,
     action: "Event Artifacts Updated",
     details: {
-      beo: Boolean(payload.beoUrl),
+      beo: Boolean(nextBeoUrl),
       beo_shell: Boolean(payload.beoShellUrl),
       fareharbor: Boolean(payload.fareharborLink),
     },
@@ -584,6 +624,12 @@ export async function saveEventArtifacts(
       postEventSurveyUrl: updated?.postEventSurveyUrl,
       workflowCrmUrl: updated?.workflowCrmUrl,
       beoUrl: updated?.beoUrl,
+      beoUrlLabel: updated?.beoUrlLabel,
+      beoUrlSavedAt: updated?.beoUrlSavedAt
+        ? new Date(updated.beoUrlSavedAt).toISOString()
+        : null,
+      beoUrlSavedBy: updated?.beoUrlSavedBy ?? null,
+      beoUrlSavedByName: updated?.beoUrlSavedByName ?? null,
       beoShellUrl: updated?.beoShellUrl,
       fareharborLink: updated?.fareharborLink,
       rosTemplateUrl: nextRos.rosTemplateUrl ?? null,

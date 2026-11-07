@@ -16,6 +16,7 @@ export * from "./eateries.js";
 export * from "./event-eatery-stops.js";
 export * from "./event-attendees.js";
 export * from "./event-inventory-items.js";
+export * from "./client-communication-stages.js";
 export * from "./events.js";
 export * from "./tasks.js";
 export * from "./role-assignments.js";

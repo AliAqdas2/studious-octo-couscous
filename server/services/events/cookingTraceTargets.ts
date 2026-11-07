@@ -43,7 +43,10 @@ export const COOKING_TRACE_TARGETS: Record<string, CookingTraceTarget> = {
     note: "Email blast Dave/Zach/Monica/Eileen; Slack optional resource only",
   },
   C031: { kind: "task", title: "Create FareHarbor item" },
-  C032: { kind: "field", path: "events.participationListUrl|participationListType" },
+  C032: {
+    kind: "field",
+    path: "event_attendees|events.attendeeListUpdatedAt",
+  },
   C033: { kind: "field", path: "events.postEventSurveyUrl" },
   C034: { kind: "field", path: "events.workflowCrmUrl" },
   C035: { kind: "task", title: "Create BEO (Admin)" },

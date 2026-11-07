@@ -16,6 +16,7 @@ import { toApiRecord } from "../entities/serialize.js";
 import { postSystemMessage } from "../tasks/postSystemMessage.js";
 import { ensureEventInventoryChecklist } from "./eventInventory.js";
 import { advanceEventStageIfDue } from "./advanceEventStage.js";
+import { materializeClientCommStagesForEvent } from "./clientCommunicationStages.js";
 import { computeWorkflowDueDate } from "./workflowDueDate.js";
 import { getEventOpsFeatures } from "./eventOpsSettings.js";
 import {
@@ -608,6 +609,7 @@ export async function generateEventWorkflow(
         category: mapCategory(def.category, category),
         responsibleRole: role,
         dueDate,
+        estimatedMinutes: 5,
         order: def.sortOrder ?? null,
         workflowPhase: def.phase ?? null,
         workflowTaskDefId: def.taskDefId ?? null,
@@ -685,6 +687,15 @@ export async function generateEventWorkflow(
   }
 
   await advanceEventStageIfDue(eventId);
+
+  try {
+    await materializeClientCommStagesForEvent(eventId);
+  } catch (err) {
+    console.warn(
+      "[generateEventWorkflow] materializeClientCommStagesForEvent failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
 
   const now = new Date();
   await db.insert(activityLogs).values({
@@ -805,6 +816,7 @@ export async function reconcileEventWorkflowTasks(
         category: mapCategory(def.category, category),
         responsibleRole: role,
         dueDate,
+        estimatedMinutes: 5,
         order: def.sortOrder ?? null,
         workflowPhase: def.phase ?? null,
         workflowTaskDefId: def.taskDefId ?? null,
@@ -1022,6 +1034,7 @@ async function generateEventWorkflowForce(
         category: mapCategory(def.category, category),
         responsibleRole: role,
         dueDate,
+        estimatedMinutes: 5,
         order: def.sortOrder ?? null,
         workflowPhase: def.phase ?? null,
         workflowTaskDefId: def.taskDefId ?? null,
@@ -1068,6 +1081,15 @@ async function generateEventWorkflowForce(
     } catch {
       /* ignore */
     }
+  }
+
+  try {
+    await materializeClientCommStagesForEvent(eventId);
+  } catch (err) {
+    console.warn(
+      "[regenerateEventWorkflow] materializeClientCommStagesForEvent failed:",
+      err instanceof Error ? err.message : err
+    );
   }
 
   return {

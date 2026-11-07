@@ -1,14 +1,61 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { AppError } from "../../lib/errors.js";
 import { getDb } from "../../db/index.js";
-import { eventAttendees, events } from "../../db/schema/index.js";
+import { eventAttendees, events, tasks } from "../../db/schema/index.js";
+import type { AuthUser } from "../auth/authService.js";
 import { toApiRecord } from "../entities/serialize.js";
 
 function requireDb() {
   const db = getDb();
   if (!db) throw new AppError("Database is not configured", 503);
   return db;
+}
+
+export type AttendeeListImportOptions = {
+  user?: AuthUser | null;
+  /** When importing from a Google Sheet, persist URL for BEO reference. */
+  sourceSheetUrl?: string | null;
+};
+
+async function markC032Done(eventId: string) {
+  const db = requireDb();
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.eventId, eventId),
+        inArray(tasks.traceId, ["C032"]),
+        ne(tasks.status, "Done")
+      )
+    );
+  if (!rows.length) return;
+  const now = new Date();
+  const note = "Marked done via Attendee List import (CRM-11)";
+  for (const t of rows) {
+    await db
+      .update(tasks)
+      .set({
+        status: "Done",
+        completionTimestamp: now,
+        progressNotes: [t.progressNotes, note].filter(Boolean).join("\n"),
+        updatedDate: now,
+      })
+      .where(eq(tasks.id, t.id));
+  }
+}
+
+function listMetaFromEvent(event: typeof events.$inferSelect) {
+  return {
+    attendee_list_updated_at: event.attendeeListUpdatedAt
+      ? new Date(event.attendeeListUpdatedAt).toISOString()
+      : null,
+    attendee_list_updated_by: event.attendeeListUpdatedBy ?? null,
+    attendee_list_updated_by_name: event.attendeeListUpdatedByName ?? null,
+    participation_list_url: event.participationListUrl ?? null,
+    participation_list_type: event.participationListType ?? null,
+  };
 }
 
 async function requireEvent(eventId: string) {
@@ -26,18 +73,21 @@ export interface AttendeeRowInput {
   name?: string | null;
   allergies?: string | null;
   phone?: string | null;
+  email?: string | null;
 }
 
 function normalizeAttendeeRow(row: AttendeeRowInput): {
   name: string;
   allergies: string | null;
   phone: string | null;
+  email: string | null;
 } | null {
   const name = String(row?.name ?? "").trim();
   if (!name) return null;
   const allergies = String(row?.allergies ?? "").trim() || null;
   const phone = String(row?.phone ?? "").trim() || null;
-  return { name, allergies, phone };
+  const email = String(row?.email ?? "").trim() || null;
+  return { name, allergies, phone, email };
 }
 
 function headerKey(raw: unknown): string {
@@ -47,19 +97,31 @@ function headerKey(raw: unknown): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-/** Map spreadsheet header cells to name / allergies / phone. */
+/** Map spreadsheet header cells to name / allergies / phone / email. */
 function mapHeaderIndexes(headers: unknown[]): {
   name: number;
   allergies: number;
   phone: number;
+  email: number;
 } {
   let name = -1;
   let allergies = -1;
   let phone = -1;
+  let email = -1;
   headers.forEach((h, i) => {
     const key = headerKey(h);
     if (!key) return;
-    if (name < 0 && (key === "name" || key === "fullname" || key === "attendee")) {
+    // Email before phone so email headers never land in phone (CRM-15).
+    // headerKey("E-mail") → "email"; do not match "gmail".
+    if (
+      email < 0 &&
+      (key === "email" || key === "emailaddress" || key === "mail")
+    ) {
+      email = i;
+    } else if (
+      name < 0 &&
+      (key === "name" || key === "fullname" || key === "attendee")
+    ) {
       name = i;
     } else if (
       allergies < 0 &&
@@ -81,18 +143,19 @@ function mapHeaderIndexes(headers: unknown[]): {
       phone = i;
     }
   });
-  return { name, allergies, phone };
+  return { name, allergies, phone, email };
 }
 
 function rowsFromSheetMatrix(matrix: unknown[][]): AttendeeRowInput[] {
   if (!matrix.length) return [];
   const headers = matrix[0] ?? [];
   const indexes = mapHeaderIndexes(headers);
-  // If no name header, treat first column as name (no header row).
+  // If no name header, treat first columns as name / allergies / phone (legacy).
   const useHeader = indexes.name >= 0;
   const nameIdx = useHeader ? indexes.name : 0;
   const allergiesIdx = useHeader ? indexes.allergies : 1;
   const phoneIdx = useHeader ? indexes.phone : 2;
+  const emailIdx = useHeader ? indexes.email : -1;
   const dataRows = useHeader ? matrix.slice(1) : matrix;
 
   const out: AttendeeRowInput[] = [];
@@ -106,6 +169,8 @@ function rowsFromSheetMatrix(matrix: unknown[][]): AttendeeRowInput[] {
           : "",
       phone:
         phoneIdx >= 0 && row[phoneIdx] != null ? String(row[phoneIdx]) : "",
+      email:
+        emailIdx >= 0 && row[emailIdx] != null ? String(row[emailIdx]) : "",
     });
     if (mapped) out.push(mapped);
   }
@@ -180,8 +245,13 @@ export async function listEventAttendees(eventId: string) {
 }
 
 export async function getEventAttendees(eventId: string) {
-  await requireEvent(eventId);
-  return { attendees: await listEventAttendees(eventId) };
+  const event = await requireEvent(eventId);
+  const attendees = await listEventAttendees(eventId);
+  return {
+    attendees,
+    count: attendees.length,
+    ...listMetaFromEvent(event),
+  };
 }
 
 export async function createEventAttendee(
@@ -203,6 +273,7 @@ export async function createEventAttendee(
       name: normalized.name,
       allergies: normalized.allergies,
       phone: normalized.phone,
+      email: normalized.email,
       sortOrder,
       updatedDate: new Date(),
     })
@@ -245,6 +316,10 @@ export async function updateEventAttendee(
         payload.phone !== undefined
           ? String(payload.phone ?? "").trim() || null
           : existing.phone,
+      email:
+        payload.email !== undefined
+          ? String(payload.email ?? "").trim() || null
+          : existing.email,
       sortOrder:
         payload.sort_order != null && Number.isFinite(Number(payload.sort_order))
           ? Number(payload.sort_order)
@@ -274,7 +349,8 @@ export async function deleteEventAttendee(eventId: string, attendeeId: string) {
 
 export async function replaceEventAttendeesFromImport(
   eventId: string,
-  rows: AttendeeRowInput[]
+  rows: AttendeeRowInput[],
+  options: AttendeeListImportOptions = {}
 ) {
   const db = requireDb();
   await requireEvent(eventId);
@@ -285,34 +361,67 @@ export async function replaceEventAttendeesFromImport(
 
   await db.delete(eventAttendees).where(eq(eventAttendees.eventId, eventId));
 
-  if (normalized.length === 0) {
-    return { attendees: [], imported: 0 };
+  const now = new Date();
+  const user = options.user;
+  const sheetUrl = options.sourceSheetUrl?.trim() || null;
+
+  let inserted: (typeof eventAttendees.$inferSelect)[] = [];
+  if (normalized.length > 0) {
+    inserted = await db
+      .insert(eventAttendees)
+      .values(
+        normalized.map((r, i) => ({
+          eventId,
+          name: r.name,
+          allergies: r.allergies,
+          phone: r.phone,
+          email: r.email,
+          sortOrder: i,
+          updatedDate: now,
+        }))
+      )
+      .returning();
   }
 
-  const now = new Date();
-  const inserted = await db
-    .insert(eventAttendees)
-    .values(
-      normalized.map((r, i) => ({
-        eventId,
-        name: r.name,
-        allergies: r.allergies,
-        phone: r.phone,
-        sortOrder: i,
-        updatedDate: now,
-      }))
-    )
+  const [updatedEvent] = await db
+    .update(events)
+    .set({
+      attendeeListUpdatedAt: now,
+      attendeeListUpdatedBy: user?.id ?? null,
+      attendeeListUpdatedByName: user?.full_name?.trim() || user?.email || null,
+      ...(sheetUrl
+        ? {
+            participationListUrl: sheetUrl,
+            participationListType: "sheets" as const,
+          }
+        : {}),
+      updatedDate: now,
+    })
+    .where(eq(events.id, eventId))
     .returning();
+
+  if (inserted.length > 0) {
+    try {
+      await markC032Done(eventId);
+    } catch (err) {
+      console.warn(
+        "[replaceEventAttendeesFromImport] markC032Done failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
 
   return {
     attendees: inserted.map((r) => toApiRecord(r as Record<string, unknown>)),
     imported: inserted.length,
+    ...(updatedEvent ? listMetaFromEvent(updatedEvent) : {}),
   };
 }
 
 export async function importAttendeesFromSheetUrl(
   eventId: string,
-  rawUrl: string
+  rawUrl: string,
+  options: AttendeeListImportOptions = {}
 ) {
   const exportUrl = googleSheetCsvExportUrl(rawUrl);
   let res: Response;
@@ -343,5 +452,8 @@ export async function importAttendeesFromSheetUrl(
     );
   }
   const rows = parseAttendeeCsvText(text);
-  return replaceEventAttendeesFromImport(eventId, rows);
+  return replaceEventAttendeesFromImport(eventId, rows, {
+    ...options,
+    sourceSheetUrl: rawUrl,
+  });
 }

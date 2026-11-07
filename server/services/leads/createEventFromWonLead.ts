@@ -70,7 +70,9 @@ const DEFAULT_CHECKLIST = [
 export interface CreateEventFromWonLeadInput {
   leadId: string;
   venue?: string;
+  venueAddress?: string | null;
   depositNumber?: string | null;
+  depositPaymentUrl?: string | null;
   depositAmount?: number | null;
 }
 
@@ -123,13 +125,19 @@ export async function createEventFromWonLead(
 
   const depositUpdates: {
     depositNumber?: string;
+    depositPaymentUrl?: string | null;
     depositAmount?: number | null;
     venue?: string;
     venueMode?: "go_to_them" | "house_venue" | null;
+    venueAddress?: string | null;
     updatedDate: Date;
   } = { updatedDate: new Date() };
   if (input.depositNumber != null && String(input.depositNumber).trim() !== "") {
     depositUpdates.depositNumber = String(input.depositNumber).trim();
+  }
+  if (input.depositPaymentUrl !== undefined) {
+    const url = String(input.depositPaymentUrl || "").trim();
+    depositUpdates.depositPaymentUrl = url || null;
   }
   if (input.depositAmount !== undefined && input.depositAmount !== null) {
     const n = Number(input.depositAmount);
@@ -149,14 +157,25 @@ export async function createEventFromWonLead(
   const venueMode = resolvedVenue
     ? await resolveVenueModeForName(resolvedVenue)
     : null;
+  const resolvedVenueAddress =
+    input.venueAddress !== undefined
+      ? String(input.venueAddress || "").trim() || null
+      : lead.venueAddress?.trim() || null;
   if (resolvedVenue) {
     depositUpdates.venue = resolvedVenue;
     depositUpdates.venueMode = venueMode;
   }
+  if (input.venueAddress !== undefined || resolvedVenue) {
+    // Clear address when switching to a catalog house venue.
+    depositUpdates.venueAddress =
+      venueMode === "house_venue" ? null : resolvedVenueAddress;
+  }
   if (
     depositUpdates.depositNumber !== undefined ||
+    depositUpdates.depositPaymentUrl !== undefined ||
     depositUpdates.depositAmount !== undefined ||
-    depositUpdates.venue !== undefined
+    depositUpdates.venue !== undefined ||
+    depositUpdates.venueAddress !== undefined
   ) {
     await db.update(leads).set(depositUpdates).where(eq(leads.id, leadId));
     leadRows = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
@@ -241,6 +260,10 @@ export async function createEventFromWonLead(
   const finalVenueMode =
     lead.venueMode ||
     (finalVenue ? await resolveVenueModeForName(finalVenue) : null);
+  const finalVenueAddress =
+    finalVenueMode === "house_venue"
+      ? null
+      : (lead.venueAddress || resolvedVenueAddress || "").trim() || null;
 
   let newEvent: typeof events.$inferSelect;
   try {
@@ -264,9 +287,12 @@ export async function createEventFromWonLead(
         clientId: lead.clientId || null,
         venue: finalVenue,
         venueMode: finalVenueMode,
+        venueAddress: finalVenueAddress,
         depositReceived: true,
         depositAmount:
           lead.depositAmount != null ? Number(lead.depositAmount) : null,
+        depositNumber: lead.depositNumber?.trim() || null,
+        depositPaymentUrl: lead.depositPaymentUrl?.trim() || null,
         depositReceivedAt: new Date(),
         stage: "Deposit Received",
         /** Leave blank — lead notes stay on the Lead; do not dump email threads into BEO. */
@@ -283,6 +309,7 @@ export async function createEventFromWonLead(
         linkedEventId: newEvent.id,
         venue: finalVenue,
         venueMode: finalVenueMode,
+        venueAddress: finalVenueAddress,
         updatedDate: new Date(),
       })
       .where(eq(leads.id, leadId));
@@ -294,6 +321,7 @@ export async function createEventFromWonLead(
           eventId: newEvent.id,
           venue: finalVenue,
           venueMode: finalVenueMode,
+          venueAddress: finalVenueAddress,
         });
       } catch (syncErr) {
         console.warn(
@@ -311,6 +339,7 @@ export async function createEventFromWonLead(
         responsibleRole: "Admin",
         status: "Not Acknowledged",
         order: item.order,
+        estimatedMinutes: 5,
       });
     }
 

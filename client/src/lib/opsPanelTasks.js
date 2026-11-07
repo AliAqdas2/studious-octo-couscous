@@ -2,24 +2,29 @@
  * Map ops panels → primary workflow task (by title / trace id).
  */
 
-/** @typedef {'deposit' | 'ros' | 'inventory' | 'beo' | 'artifacts' | 'food_tour_stops' | 'attendees' | 'post_event'} OpsPanelId */
+/** @typedef {'deposit' | 'ros' | 'inventory' | 'beo' | 'artifacts' | 'site_visit' | 'food_tour_stops' | 'attendees' | 'post_event'} OpsPanelId */
 
 /**
  * Shared Event Detail / staffing / Event Progress milestone list.
- * @type {Array<{ panelId: OpsPanelId, label: string, foodTourOnly?: boolean }>}
+ * @type {Array<{ panelId: OpsPanelId, label: string, foodTourOnly?: boolean, clientVenueOnly?: boolean }>}
  */
 export const OPS_PANEL_MILESTONES = [
   { panelId: 'deposit', label: 'Deposit Intake' },
-  { panelId: 'ros', label: 'Run of Show' },
-  { panelId: 'inventory', label: 'Inventory' },
   { panelId: 'beo', label: 'BEO document' },
   { panelId: 'artifacts', label: 'BEO & artifact links' },
+  {
+    panelId: 'site_visit',
+    label: 'Site Visit',
+    clientVenueOnly: true,
+  },
+  { panelId: 'ros', label: 'Run of Show' },
+  { panelId: 'inventory', label: 'Inventory' },
   {
     panelId: 'food_tour_stops',
     label: 'Food tour stops',
     foodTourOnly: true,
   },
-  { panelId: 'attendees', label: 'Instructor & attendees' },
+  { panelId: 'attendees', label: 'Group Leader' },
   { panelId: 'post_event', label: 'During & post-event' },
 ];
 
@@ -63,6 +68,9 @@ export const OPS_PANEL_TASK_MATCHERS = {
       /BEO Shell/i,
     ],
     traceIds: ['C037', 'C056'],
+  },
+  site_visit: {
+    titles: [/site visit/i, /client venue/i],
   },
   food_tour_stops: {
     titles: [

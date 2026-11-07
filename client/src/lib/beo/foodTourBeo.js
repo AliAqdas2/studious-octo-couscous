@@ -22,6 +22,7 @@ import {
 } from './shared.js';
 import {
   buildHostScriptVars,
+  groupLeaderBiographyHtml,
   hostScriptSectionHtml,
 } from './hostScript.js';
 
@@ -158,6 +159,7 @@ export function buildFoodTourBeoHtml(input) {
   const printDate = formatDate(new Date().toISOString());
   const stops = asArray(input?.eateryStops);
   const instructor = asRecord(input?.instructor);
+  const instructor2 = asRecord(input?.instructor2);
   const hostTemplate =
     asRecord(input?.hostScriptTemplate).body ||
     asRecord(input?.host_script_template).body ||
@@ -167,11 +169,15 @@ export function buildFoodTourBeoHtml(input) {
     buildHostScriptVars({
       event: core.event,
       instructor,
+      instructor2,
       client: input?.client,
       runOfShow: core.ros,
     }),
-    { missingInstructor: !instructor.name }
+    {
+      missingInstructor: !instructor.name,
+    }
   );
+  const biographyHtml = groupLeaderBiographyHtml(instructor, instructor2);
 
   const detailBits = [];
   if (core.ros.notes) detailBits.push(core.ros.notes);
@@ -209,7 +215,8 @@ export function buildFoodTourBeoHtml(input) {
         ? openSection('Inventory', inventoryChecklistHtml(input.inventory))
         : ''
     }
-    ${openSection('Instructor Bio / Script', scriptHtml, { keep: true })}
+    ${openSection('Standard Script', scriptHtml, { keep: true })}
+    ${openSection('Group Leader Biography', biographyHtml, { keep: true })}
     ${openSection('Attendees', attendeeTable(core.participationUrl, input?.attendees))}
     ${approvalsBlock()}
   `;

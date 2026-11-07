@@ -11,6 +11,7 @@ import {
 } from "../../db/schema/index.js";
 import type { AuthUser } from "../../types/auth.js";
 import { toApiRecord } from "../entities/serialize.js";
+import { siteVisitFromEvent } from "./eventSiteVisit.js";
 import { redactDepositFields } from "./depositAccess.js";
 import { getEventInventory } from "./eventInventory.js";
 import { listEventEateryStops } from "./eateryStops.js";
@@ -135,6 +136,7 @@ export async function getBeoDocumentState(
   const [
     { venue, venueImages: images },
     instructor,
+    instructor2,
     client,
     inventory,
     eateryStops,
@@ -143,6 +145,7 @@ export async function getBeoDocumentState(
   ] = await Promise.all([
     loadVenueByName(event.venue),
     loadInstructor(event.instructorId),
+    loadInstructor(event.instructorId2),
     loadClient(event.clientId),
     getEventInventory(eventId),
     listEventEateryStops(eventId),
@@ -185,11 +188,14 @@ export async function getBeoDocumentState(
     venue,
     venueImages: images,
     instructor,
+    instructor2,
+    supportStaff: event.supportStaff || null,
     client,
     hostScriptTemplate,
     inventory: inventoryItems,
     eateryStops,
     attendees,
+    siteVisit: siteVisitFromEvent(event),
   };
 }
 

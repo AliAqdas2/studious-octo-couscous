@@ -35,6 +35,7 @@ export async function resolveVenueModeForName(
   const name = (venueName || "").trim();
   if (!name) return null;
   const active = await listActiveHouseVenueNames();
-  if (active.includes(name)) return "house_venue";
+  const lower = name.toLowerCase();
+  if (active.some((v) => v.toLowerCase() === lower)) return "house_venue";
   return "go_to_them";
 }

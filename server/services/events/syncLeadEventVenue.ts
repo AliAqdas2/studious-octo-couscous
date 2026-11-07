@@ -12,14 +12,15 @@ function requireDb() {
 export type VenueModeValue = "go_to_them" | "house_venue" | null;
 
 /**
- * Keep lead.venue / lead.venueMode and event.venue / event.venueMode aligned
- * when the lead is linked to the event (or vice versa).
+ * Keep lead.venue / venueMode / venueAddress aligned with the linked event
+ * (and vice versa).
  */
 export async function syncLeadEventVenue(input: {
   leadId?: string | null;
   eventId?: string | null;
   venue: string | null;
   venueMode?: VenueModeValue;
+  venueAddress?: string | null;
   /** Skip writing back to the side that originated the change. */
   skipLead?: boolean;
   skipEvent?: boolean;
@@ -27,6 +28,10 @@ export async function syncLeadEventVenue(input: {
   const db = requireDb();
   const venue = input.venue?.trim() || null;
   const venueMode = input.venueMode ?? null;
+  const venueAddress =
+    input.venueAddress !== undefined
+      ? input.venueAddress?.trim() || null
+      : undefined;
   const now = new Date();
 
   let leadId = input.leadId || null;
@@ -67,6 +72,7 @@ export async function syncLeadEventVenue(input: {
       .set({
         venue,
         venueMode,
+        ...(venueAddress !== undefined ? { venueAddress } : {}),
         updatedDate: now,
       })
       .where(eq(leads.id, leadId));
@@ -78,6 +84,7 @@ export async function syncLeadEventVenue(input: {
       .set({
         venue,
         venueMode,
+        ...(venueAddress !== undefined ? { venueAddress } : {}),
         updatedDate: now,
       })
       .where(eq(events.id, eventId));

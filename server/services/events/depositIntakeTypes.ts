@@ -120,13 +120,17 @@ export interface DepositIntakePayload {
   venueMode: "go_to_them" | "house_venue";
   venue?: string | null;
   venueOther?: string | null;
+  /** Optional full address for custom / go-to-them locations (CRM-09). */
+  venueAddress?: string | null;
   venueRestrictions?: string | null;
 
   /** Restricted — only applied when caller may view/edit deposit */
   depositAmount?: number | null;
+  /** QuickBooks invoice number — applied when caller may view/edit deposit */
+  depositNumber?: string | null;
+  /** QuickBooks payment/invoice URL — applied when caller may view/edit deposit */
+  depositPaymentUrl?: string | null;
 
-  participationListUrl?: string | null;
-  participationListType?: "sheets" | "forms" | null;
 }
 
 export function emptyFoodAdditions(): FoodAdditionsIntake {

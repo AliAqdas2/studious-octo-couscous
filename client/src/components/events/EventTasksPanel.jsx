@@ -21,6 +21,12 @@ import WorkflowTaskExtras, {
   PHASE_LABELS,
 } from '@/components/events/WorkflowTaskExtras';
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import {
   buildAssignUpdate,
   buildTeamMemberOptions,
   enrichTeamMemberOptions,
@@ -28,8 +34,30 @@ import {
 import {
   isFullEventTaskViewer,
   isMyAssignedTask,
-  sortTasksMineFirst,
 } from '@/lib/taskMineHighlight';
+import {
+  getTaskCompletionDate,
+  isTaskCompleted,
+  isTaskOverdue,
+  partitionEventTasks,
+  sortEventTasks,
+} from '@/lib/sortEventTasks';
+import {
+  filterTasksForStage,
+  getEventStageColor,
+  normalizeEventStage,
+} from '@/components/events/eventPipelineConfig';
+
+function formatTaskDate(raw) {
+  if (!raw) return '';
+  const d = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 const PHASE_ORDER = [
   'upon_deposit',
@@ -49,6 +77,7 @@ const PHASE_ORDER = [
  *
  * @param {{
  *   eventId: string,
+ *   eventStage?: string,
  *   user: Record<string, unknown> | null,
  *   roleAssignments?: unknown[],
  *   onGenerate?: () => void,
@@ -60,6 +89,7 @@ const PHASE_ORDER = [
  */
 const EventTasksPanel = ({
   eventId,
+  eventStage,
   user,
   roleAssignments = [],
   onGenerate,
@@ -73,6 +103,8 @@ const EventTasksPanel = ({
   const [editingDueDate, setEditingDueDate] = useState(null);
   const [dueDateValue, setDueDateValue] = useState('');
   const [expandedThread, setExpandedThread] = useState(null);
+  const [taskView, setTaskView] = useState('current'); // current | all
+  const stageLabel = normalizeEventStage(eventStage);
 
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['event-tasks', eventId],
@@ -255,12 +287,10 @@ const EventTasksPanel = ({
         })
   ).filter((t) => !featureHidden(t));
 
-  const sortGroup = (list) => sortTasksMineFirst(list, user?.id);
+  const sortGroup = (list) => sortEventTasks(list, user?.id);
 
   const checklistTasks = sortGroup(
-    visibleTasks
-      .filter((t) => t.category === 'Checklist')
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
+    visibleTasks.filter((t) => t.category === 'Checklist')
   );
   const workflowTasks = visibleTasks.filter((t) => t.category !== 'Checklist');
   const hasPhases = workflowTasks.some((t) => t.workflow_phase);
@@ -268,13 +298,7 @@ const EventTasksPanel = ({
     phase,
     label: PHASE_LABELS[phase] || phase,
     tasks: sortGroup(
-      workflowTasks
-        .filter((t) => t.workflow_phase === phase)
-        .sort(
-          (a, b) =>
-            (a.order || 0) - (b.order || 0) ||
-            new Date(a.due_date || 0) - new Date(b.due_date || 0)
-        )
+      workflowTasks.filter((t) => t.workflow_phase === phase)
     ),
   })).filter((g) => g.tasks.length > 0);
   const unphasedWorkflow = sortGroup(
@@ -282,17 +306,13 @@ const EventTasksPanel = ({
   );
 
   const preEventTasks = sortGroup(
-    visibleTasks
-      .filter((t) => t.category === 'Pre-Event')
-      .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+    visibleTasks.filter((t) => t.category === 'Pre-Event')
   );
   const eventDayTasks = sortGroup(
     visibleTasks.filter((t) => t.category === 'Event-Day')
   );
   const postEventTasks = sortGroup(
-    visibleTasks
-      .filter((t) => t.category === 'Post-Event')
-      .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+    visibleTasks.filter((t) => t.category === 'Post-Event')
   );
 
   const checklistCompleted = checklistTasks.filter(
@@ -318,6 +338,15 @@ const EventTasksPanel = ({
     postEventTasks.length > 0 ||
     workflowTasks.length > 0;
 
+  const currentStageTasks = useMemo(
+    () => sortGroup(filterTasksForStage(workflowTasks, stageLabel)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sortGroup/workflowTasks stable per render
+    [workflowTasks, stageLabel, user?.id]
+  );
+  const currentStageDone = currentStageTasks.filter(
+    (t) => t.status === 'Done' || t.status === 'Completed'
+  ).length;
+
   const assignDisabled =
     assignTaskMutation.isPending ||
     updateDurationMutation.isPending ||
@@ -332,6 +361,12 @@ const EventTasksPanel = ({
     const assigneeName = teamMembers.find(
       (m) => m.userId === task.assigned_user
     )?.name;
+    const done = isTaskCompleted(task);
+    const overdue = isTaskOverdue(task);
+    const completedAt = getTaskCompletionDate(task);
+    const completedLabel = completedAt
+      ? `Completed ${formatTaskDate(completedAt)}`
+      : 'Completed';
 
     return (
       <div
@@ -339,14 +374,16 @@ const EventTasksPanel = ({
         className={`p-4 bg-white rounded-lg border hover:shadow-md transition-all ${
           isMine
             ? 'border-[#C84B31] border-l-4 bg-orange-50/60 ring-1 ring-[#C84B31]/20'
-            : ''
+            : overdue
+              ? 'border-red-200 bg-red-50/40'
+              : ''
         }`}
       >
-        <div className="flex items-start justify-between mb-3 gap-2">
-          <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-start justify-between mb-3 gap-2 min-w-0">
+          <div className="flex-1 min-w-0 basis-[min(100%,12rem)]">
             <p
-              className={`font-medium text-gray-900 mb-1 ${
-                task.status === 'Done' ? 'line-through text-gray-400' : ''
+              className={`font-medium text-gray-900 mb-1 break-words ${
+                done ? 'line-through text-gray-400' : ''
               }`}
             >
               {task.title}
@@ -355,17 +392,24 @@ const EventTasksPanel = ({
               {isMine ? (
                 <Badge className="bg-[#C84B31] text-white text-xs">Yours</Badge>
               ) : null}
+              {overdue ? (
+                <Badge className="bg-red-100 text-red-800 border-red-200 text-xs">
+                  Overdue
+                </Badge>
+              ) : null}
               <Badge variant="outline" className="text-xs">
                 {task.responsible_role}
               </Badge>
-              {assigneeName ? (
-                <Badge
-                  variant="outline"
-                  className="text-xs border-[#C84B31]/text-[#C84B31]"
-                >
-                  {assigneeName}
-                </Badge>
-              ) : null}
+              <Badge
+                variant="outline"
+                className={`text-xs ${
+                  assigneeName
+                    ? 'border-[#C84B31]/text-[#C84B31]'
+                    : 'text-gray-500'
+                }`}
+              >
+                Owner: {assigneeName || 'Unassigned'}
+              </Badge>
               <Badge
                 className={
                   task.status === 'Not Acknowledged'
@@ -377,6 +421,25 @@ const EventTasksPanel = ({
               >
                 {task.status}
               </Badge>
+              <Badge
+                variant="outline"
+                className={
+                  done
+                    ? 'text-xs border-green-300 text-green-800 bg-green-50'
+                    : 'text-xs border-amber-200 text-amber-800 bg-amber-50'
+                }
+              >
+                {done ? completedLabel : 'Not completed'}
+              </Badge>
+              {task.due_date ? (
+                <Badge variant="outline" className="text-xs text-gray-700">
+                  Due {formatTaskDate(task.due_date)}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs text-gray-400">
+                  No due date
+                </Badge>
+              )}
               {task.override_flag && (
                 <Badge className="bg-amber-100 text-amber-700">
                   Admin Override
@@ -392,11 +455,11 @@ const EventTasksPanel = ({
                 acknowledgeTaskMutation.mutate({ taskId: task.id, task })
               }
               disabled={acknowledgeTaskMutation.isPending}
-              className={
+              className={`shrink-0 ${
                 isAcknowledged
                   ? 'bg-amber-600 hover:bg-amber-700'
                   : 'bg-[#C84B31] hover:bg-[#A03A23]'
-              }
+              }`}
             >
               <HandMetal className="w-4 h-4 mr-1" />
               {isAcknowledged ? 'Override' : 'Acknowledge'}
@@ -620,6 +683,42 @@ const EventTasksPanel = ({
     );
   };
 
+  /**
+   * Active tasks first; completed collapsed at bottom (CRM-23).
+   * @param {unknown[]} tasksList
+   * @param {string} [accordionKey]
+   */
+  const renderTaskSection = (tasksList, accordionKey = 'completed') => {
+    const { active, completed } = partitionEventTasks(tasksList);
+    if (active.length === 0 && completed.length === 0) {
+      return null;
+    }
+    return (
+      <div className="space-y-3">
+        {active.length === 0 && completed.length > 0 ? (
+          <p className="text-sm text-gray-500 text-center py-1">
+            All tasks in this section are complete.
+          </p>
+        ) : null}
+        {active.map(renderTaskCard)}
+        {completed.length > 0 ? (
+          <Accordion type="single" collapsible className="rounded-lg border border-gray-200 bg-gray-50/80 px-3">
+            <AccordionItem value={accordionKey} className="border-0">
+              <AccordionTrigger className="py-3 text-sm font-medium text-gray-700 hover:no-underline">
+                Completed ({completed.length})
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3 pb-2">
+                  {completed.map(renderTaskCard)}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        ) : null}
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="h-40 animate-pulse rounded-lg bg-slate-100" />
@@ -636,6 +735,34 @@ const EventTasksPanel = ({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {hasWorkflow ? (
+            <div className="inline-flex rounded-lg border border-orange-200 bg-white p-0.5">
+              <Button
+                size="sm"
+                variant={taskView === 'current' ? 'default' : 'ghost'}
+                className={
+                  taskView === 'current'
+                    ? 'bg-[#C84B31] hover:bg-[#A03A23] h-8'
+                    : 'h-8 text-gray-600'
+                }
+                onClick={() => setTaskView('current')}
+              >
+                Current stage
+              </Button>
+              <Button
+                size="sm"
+                variant={taskView === 'all' ? 'default' : 'ghost'}
+                className={
+                  taskView === 'all'
+                    ? 'bg-[#C84B31] hover:bg-[#A03A23] h-8'
+                    : 'h-8 text-gray-600'
+                }
+                onClick={() => setTaskView('all')}
+              >
+                All phases
+              </Button>
+            </div>
+          ) : null}
           {!hasWorkflow && onGenerate ? (
             <Button
               onClick={onGenerate}
@@ -688,7 +815,42 @@ const EventTasksPanel = ({
         </div>
       )}
 
-      {checklistTasks.length > 0 && (
+      {taskView === 'current' && hasWorkflow ? (
+        <Card className="bg-orange-50/80 border-orange-200">
+          <CardHeader>
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              <Clock className="w-5 h-5 text-[#C84B31]" />
+              <span>Current stage</span>
+              <Badge
+                className={`${getEventStageColor(stageLabel)} border font-medium`}
+              >
+                {stageLabel}
+              </Badge>
+              <span className="text-sm font-normal text-gray-600">
+                ({currentStageDone}/{currentStageTasks.length} done)
+              </span>
+            </CardTitle>
+            <p className="text-xs text-gray-600">
+              Title, owner, due date, and completion for this stage.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {currentStageTasks.length === 0 ? (
+              <p className="text-sm text-gray-500 py-4 text-center">
+                No open workflow tasks for this stage
+                {stageLabel === 'Pre-Event Ready'
+                  ? ' — pre-event work looks complete.'
+                  : '.'}{' '}
+                Switch to All phases to see the full checklist.
+              </p>
+            ) : (
+              renderTaskSection(currentStageTasks, 'current-completed')
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {taskView === 'all' && checklistTasks.length > 0 && (
         <Card className="bg-orange-50 border-orange-200">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -697,12 +859,12 @@ const EventTasksPanel = ({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">{checklistTasks.map(renderTaskCard)}</div>
+            {renderTaskSection(checklistTasks, 'checklist-completed')}
           </CardContent>
         </Card>
       )}
 
-      {hasPhases ? (
+      {taskView === 'all' && hasPhases ? (
         <>
           {tasksByPhase.map((group) => {
             const done = group.tasks.filter((t) => t.status === 'Done').length;
@@ -715,9 +877,7 @@ const EventTasksPanel = ({
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {group.tasks.map(renderTaskCard)}
-                  </div>
+                  {renderTaskSection(group.tasks, `phase-${group.phase}`)}
                 </CardContent>
               </Card>
             );
@@ -728,14 +888,12 @@ const EventTasksPanel = ({
                 <CardTitle className="text-base">Other workflow tasks</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {unphasedWorkflow.map(renderTaskCard)}
-                </div>
+                {renderTaskSection(unphasedWorkflow, 'unphased-completed')}
               </CardContent>
             </Card>
           )}
         </>
-      ) : (
+      ) : taskView === 'all' ? (
         <>
           {preEventTasks.length > 0 && (
             <Card className="bg-blue-50 border-blue-200">
@@ -750,9 +908,7 @@ const EventTasksPanel = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {preEventTasks.map(renderTaskCard)}
-                </div>
+                {renderTaskSection(preEventTasks, 'pre-completed')}
               </CardContent>
             </Card>
           )}
@@ -768,9 +924,7 @@ const EventTasksPanel = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {eventDayTasks.map(renderTaskCard)}
-                </div>
+                {renderTaskSection(eventDayTasks, 'day-completed')}
               </CardContent>
             </Card>
           )}
@@ -786,14 +940,12 @@ const EventTasksPanel = ({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {postEventTasks.map(renderTaskCard)}
-                </div>
+                {renderTaskSection(postEventTasks, 'post-completed')}
               </CardContent>
             </Card>
           )}
         </>
-      )}
+      ) : null}
 
       {visibleTasks.length === 0 && tasks.length > 0 && (
         <Card>

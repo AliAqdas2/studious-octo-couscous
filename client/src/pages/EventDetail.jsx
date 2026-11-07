@@ -15,10 +15,21 @@ import RunOfShowForm from '@/components/events/RunOfShowForm';
 import BeoDocumentPanel from '@/components/events/BeoDocumentPanel';
 import { isFoodTourExperience } from '@/lib/foodTourExperiences';
 import EventArtifactsPanel from '@/components/events/EventArtifactsPanel';
+import EventSiteVisitPanel from '@/components/events/EventSiteVisitPanel';
 import PostEventPanel from '@/components/events/PostEventPanel';
 import EventFormDialog from '@/components/events/EventFormDialog';
 import EventTasksPanel from '@/components/events/EventTasksPanel';
 import EventDetailSectionNav from '@/components/events/EventDetailSectionNav';
+import EventStagePipeline from '@/components/events/EventStagePipeline';
+import ClientCommunicationPanel, {
+  ClientCommStageOverview,
+} from '@/components/events/ClientCommunicationPanel';
+import {
+  getEventStageColor,
+  normalizeEventStage,
+} from '@/components/events/eventPipelineConfig';
+import { timelineFamilyLabel } from '@/lib/timelineFamilyLabels';
+import { isClientVenue } from '@/lib/venueModeLabels';
 
 function readTabFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -100,29 +111,33 @@ export default function EventDetail() {
       ['Ops', 'Ops Manager', 'Admin'].includes(r.role)
     );
 
+  const clientVenue = isClientVenue(event);
+
   const sectionNavItems = useMemo(() => {
     /** @type {Array<{ id: string, label: string }>} */
-    const items = [{ id: 'section-staffing', label: 'Staffing' }];
+    const items = [
+      { id: 'section-client-comm', label: 'Client Comm' },
+      { id: 'section-staffing', label: 'Staffing' },
+    ];
     items.push({ id: 'section-deposit', label: 'Deposit' });
-    if (event?.event_type) {
-      items.push({ id: 'section-inventory', label: 'Inventory' });
-    }
     if (showFoodTour) {
       items.push({ id: 'section-food-tour', label: 'Food tour' });
     }
-    items.push(
-      { id: 'section-attendees', label: 'Attendees' },
-      { id: 'section-artifacts', label: 'Artifacts' }
-    );
+    items.push({ id: 'section-attendees', label: 'Group Leader' });
+    items.push({ id: 'section-beo', label: 'BEO' });
+    items.push({ id: 'section-artifacts', label: 'Artifacts' });
+    if (clientVenue) {
+      items.push({ id: 'section-site-visit', label: 'Site Visit' });
+    }
     if (hasRos) {
       items.push({ id: 'section-ros', label: 'Run of Show' });
     }
-    items.push(
-      { id: 'section-beo', label: 'BEO' },
-      { id: 'section-post-event', label: 'Post-event' }
-    );
+    if (event?.event_type) {
+      items.push({ id: 'section-inventory', label: 'Inventory' });
+    }
+    items.push({ id: 'section-post-event', label: 'Post-event' });
     return items;
-  }, [event?.event_type, showFoodTour, hasRos]);
+  }, [event?.event_type, showFoodTour, hasRos, clientVenue]);
 
   const generateWorkflowMutation = useMutation({
     mutationFn: () =>
@@ -131,6 +146,7 @@ export default function EventDetail() {
       queryClient.invalidateQueries(['event-tasks', eventId]);
       queryClient.invalidateQueries(['event-inventory', eventId]);
       queryClient.invalidateQueries(['event-experience', eventId]);
+      queryClient.invalidateQueries(['event-client-comm-stages', eventId]);
       toast.success('Event workflow generated successfully');
       setTab('tasks');
       setTabInUrl('tasks');
@@ -149,6 +165,7 @@ export default function EventDetail() {
       queryClient.invalidateQueries(['event-inventory', eventId]);
       queryClient.invalidateQueries(['event', eventId]);
       queryClient.invalidateQueries(['event-experience', eventId]);
+      queryClient.invalidateQueries(['event-client-comm-stages', eventId]);
       const body = res?.data ?? res;
       toast.success(
         `Workflow regenerated (${body?.deletedOpenTasks ?? 0} open tasks replaced)`
@@ -159,10 +176,40 @@ export default function EventDetail() {
     },
   });
 
+  const stageMutation = useMutation({
+    mutationFn: (nextStage) =>
+      base44.entities.Event.update(eventId, { stage: nextStage }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['event', eventId]);
+      queryClient.invalidateQueries(['events']);
+      toast.success('Event stage updated');
+    },
+    onError: (err) => {
+      toast.error(err?.message || 'Failed to update stage');
+    },
+  });
+
+  const canEditStage =
+    user?.role === 'admin' ||
+    roleAssignments.some((r) =>
+      ['Ops', 'Ops Manager', 'Admin', 'Sales'].includes(r.role)
+    );
+
   const handleTabChange = (next) => {
     setTab(next);
     setTabInUrl(next);
   };
+
+  const openClientCommPanel = () => {
+    handleTabChange('details');
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById('section-client-comm')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const stageLabel = normalizeEventStage(event?.stage);
 
   if (isLoading || !event) {
     return <div className="text-center py-12">Loading event...</div>;
@@ -177,10 +224,19 @@ export default function EventDetail() {
           </h1>
           <div className="flex flex-wrap gap-2">
             <Badge className="bg-[#7A9D54] text-white">{event.event_type}</Badge>
-            <Badge variant="outline">{event.stage}</Badge>
-            {experience?.timelineFamily && (
-              <Badge variant="outline" className="text-xs">
-                Timeline {experience.timelineFamily}
+            <Badge
+              className={`${getEventStageColor(stageLabel)} border font-medium`}
+            >
+              {stageLabel}
+            </Badge>
+            {experience?.timelineFamily &&
+              timelineFamilyLabel(experience.timelineFamily) && (
+              <Badge
+                variant="outline"
+                className="text-xs"
+                title={`Internal code: ${experience.timelineFamily}`}
+              >
+                {timelineFamilyLabel(experience.timelineFamily)}
               </Badge>
             )}
             {needsZach && (
@@ -190,7 +246,8 @@ export default function EventDetail() {
             )}
           </div>
           <p className="text-sm text-gray-600 mt-2 max-w-2xl">
-            Details = panels + who owns them. Tasks = full workflow checklist.
+            Details = panels + who owns them. Tasks = stage work (owner, due,
+            status) with full checklist available.
           </p>
           {needsZach && experience?.flagNote && (
             <p className="text-xs text-amber-800 mt-2 max-w-xl">
@@ -222,6 +279,19 @@ export default function EventDetail() {
         <EventFormDialog event={event} onClose={() => setShowEditForm(false)} />
       )}
 
+      <div className="grid gap-3 lg:grid-cols-2">
+        <EventStagePipeline
+          stage={event.stage}
+          canEdit={canEditStage}
+          pending={stageMutation.isPending}
+          onStageChange={(next) => stageMutation.mutate(next)}
+        />
+        <ClientCommStageOverview
+          eventId={eventId}
+          onOpenPanel={openClientCommPanel}
+        />
+      </div>
+
       <Tabs value={tab} onValueChange={handleTabChange} className="space-y-2">
         <TabsList className="h-11 w-full sm:w-auto gap-1 rounded-xl border-2 border-[#C84B31]/30 bg-white p-1.5 shadow-sm">
           <TabsTrigger
@@ -240,13 +310,20 @@ export default function EventDetail() {
         <p className="text-xs text-gray-500">
           {tab === 'details'
             ? 'Assign panel owners, then fill Deposit, Inventory, ROS, and the rest.'
-            : 'Full workflow and checklist — assignee, duration, and due date per task.'}
+            : 'Current stage tasks by default — title, owner, due date, completion. Switch to All phases for the full checklist.'}
         </p>
 
         <TabsContent value="details" className="mt-4 space-y-6">
           <EventDetailSectionNav items={sectionNavItems} />
 
-          <div id="section-staffing" className="scroll-mt-24">
+          <div id="section-client-comm" className="scroll-mt-[9.5rem]">
+            <ClientCommunicationPanel
+              eventId={eventId}
+              canEdit={canEditStage}
+            />
+          </div>
+
+          <div id="section-staffing" className="scroll-mt-[9.5rem]">
             <EventStaffingPanel
               eventId={eventId}
               event={event}
@@ -255,28 +332,12 @@ export default function EventDetail() {
             />
           </div>
 
-          <div id="section-deposit" className="scroll-mt-24">
+          <div id="section-deposit" className="scroll-mt-[9.5rem]">
             <DepositIntakeForm event={event} user={user} />
           </div>
 
-          {event?.event_type ? (
-            <div id="section-inventory" className="scroll-mt-24">
-              <EventInventoryChecklist
-                eventId={eventId}
-                event={event}
-                experienceKey={event.event_type}
-                canEdit={
-                  user?.role === 'admin' ||
-                  roleAssignments.some((r) =>
-                    ['Ops', 'Ops Manager', 'Intern'].includes(r.role)
-                  )
-                }
-              />
-            </div>
-          ) : null}
-
           {showFoodTour ? (
-            <div id="section-food-tour" className="scroll-mt-24">
+            <div id="section-food-tour" className="scroll-mt-[9.5rem]">
               <EventFoodTourStopsPanel
                 eventId={eventId}
                 event={event}
@@ -285,7 +346,7 @@ export default function EventDetail() {
             </div>
           ) : null}
 
-          <div id="section-attendees" className="scroll-mt-24">
+          <div id="section-attendees" className="scroll-mt-[9.5rem]">
             <EventAttendeesPanel
               eventId={eventId}
               event={event}
@@ -293,7 +354,19 @@ export default function EventDetail() {
             />
           </div>
 
-          <div id="section-artifacts" className="scroll-mt-24">
+          <div id="section-beo" className="scroll-mt-[9.5rem]">
+            <BeoDocumentPanel
+              event={event}
+              canEdit={
+                user?.role === 'admin' ||
+                roleAssignments.some((r) =>
+                  ['Ops', 'Ops Manager', 'Sales', 'Admin'].includes(r.role)
+                )
+              }
+            />
+          </div>
+
+          <div id="section-artifacts" className="scroll-mt-[9.5rem]">
             <EventArtifactsPanel
               event={event}
               canEditAdmin={
@@ -309,8 +382,22 @@ export default function EventDetail() {
             />
           </div>
 
+          {clientVenue ? (
+            <div id="section-site-visit" className="scroll-mt-[9.5rem]">
+              <EventSiteVisitPanel
+                event={event}
+                canEdit={
+                  user?.role === 'admin' ||
+                  roleAssignments.some((r) =>
+                    ['Ops', 'Ops Manager', 'Sales', 'Admin'].includes(r.role)
+                  )
+                }
+              />
+            </div>
+          ) : null}
+
           {hasRos ? (
-            <div id="section-ros" className="scroll-mt-24">
+            <div id="section-ros" className="scroll-mt-[9.5rem]">
               <RunOfShowForm
                 event={event}
                 user={user}
@@ -324,19 +411,23 @@ export default function EventDetail() {
             </div>
           ) : null}
 
-          <div id="section-beo" className="scroll-mt-24">
-            <BeoDocumentPanel
-              event={event}
-              canEdit={
-                user?.role === 'admin' ||
-                roleAssignments.some((r) =>
-                  ['Ops', 'Ops Manager', 'Sales', 'Admin'].includes(r.role)
-                )
-              }
-            />
-          </div>
+          {event?.event_type ? (
+            <div id="section-inventory" className="scroll-mt-[9.5rem]">
+              <EventInventoryChecklist
+                eventId={eventId}
+                event={event}
+                experienceKey={event.event_type}
+                canEdit={
+                  user?.role === 'admin' ||
+                  roleAssignments.some((r) =>
+                    ['Ops', 'Ops Manager', 'Intern'].includes(r.role)
+                  )
+                }
+              />
+            </div>
+          ) : null}
 
-          <div id="section-post-event" className="scroll-mt-24">
+          <div id="section-post-event" className="scroll-mt-[9.5rem]">
             <PostEventPanel
               event={event}
               canEdit={
@@ -358,6 +449,7 @@ export default function EventDetail() {
         <TabsContent value="tasks" className="mt-4 space-y-6">
           <EventTasksPanel
             eventId={eventId}
+            eventStage={event.stage}
             user={user}
             roleAssignments={roleAssignments}
             onGenerate={() => generateWorkflowMutation.mutate()}

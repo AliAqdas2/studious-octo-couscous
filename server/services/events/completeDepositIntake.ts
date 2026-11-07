@@ -14,6 +14,7 @@ import { sendDepositNotifyEmail } from "./depositNotifyEmail.js";
 import { generateEventWorkflow, reconcileEventWorkflowTasks } from "./generateWorkflow.js";
 import { listActiveHouseVenueNames } from "./venuesService.js";
 import { syncLeadEventVenue } from "./syncLeadEventVenue.js";
+import { applyEventDateTimeToLead } from "./syncLeadEventDateTime.js";
 
 function requireDb() {
   const db = getDb();
@@ -31,7 +32,7 @@ function clampHeadcount(n: unknown): number | null {
 
 function resolveVenue(payload: DepositIntakePayload): string | null {
   if (payload.venueMode === "go_to_them") {
-    return (payload.venueOther || payload.venue || "Client venue (go to them)").trim();
+    return (payload.venueOther || payload.venue || "Client Venue").trim();
   }
   if (payload.venue === "Other") {
     return (payload.venueOther || "Other").trim();
@@ -67,15 +68,6 @@ function validatePayload(
         `Cheeseboard requires a minimum of ${CHEESEBOARD_MIN_UNITS} units`,
         400
       );
-    }
-  }
-
-  if (payload.participationListType != null) {
-    if (
-      payload.participationListType !== "sheets" &&
-      payload.participationListType !== "forms"
-    ) {
-      throw new AppError("participationListType must be sheets or forms", 400);
     }
   }
 
@@ -152,6 +144,14 @@ export async function completeDepositIntake(
     allowDeposit && payload.depositAmount != null
       ? Number(payload.depositAmount)
       : undefined;
+  const depositNumber =
+    allowDeposit && payload.depositNumber !== undefined
+      ? String(payload.depositNumber || "").trim() || null
+      : undefined;
+  const depositPaymentUrl =
+    allowDeposit && payload.depositPaymentUrl !== undefined
+      ? String(payload.depositPaymentUrl || "").trim() || null
+      : undefined;
 
   const now = new Date();
   const eventDate = payload.eventDate
@@ -185,12 +185,13 @@ export async function completeDepositIntake(
       transportationDetails: transportDetails,
       venueMode: payload.venueMode,
       venue,
+      venueAddress: payload.venueAddress?.trim() || null,
       venueRestrictions: payload.venueRestrictions?.trim() || null,
-      participationListUrl: payload.participationListUrl?.trim() || null,
-      participationListType: payload.participationListType || null,
       ...(depositAmount !== undefined && !Number.isNaN(depositAmount)
         ? { depositAmount }
         : {}),
+      ...(depositNumber !== undefined ? { depositNumber } : {}),
+      ...(depositPaymentUrl !== undefined ? { depositPaymentUrl } : {}),
       ...(isUpdate
         ? {}
         : { depositIntakeCompletedAt: now, stage: "Planning" as const }),
@@ -207,6 +208,7 @@ export async function completeDepositIntake(
       leadId: updated.leadId,
       venue: updated.venue,
       venueMode: updated.venueMode,
+      venueAddress: updated.venueAddress,
       skipEvent: true,
     });
   } catch (syncErr) {
@@ -214,6 +216,25 @@ export async function completeDepositIntake(
       "[completeDepositIntake] syncLeadEventVenue failed:",
       syncErr instanceof Error ? syncErr.message : syncErr
     );
+  }
+
+  const linkedLeadId = updated.leadId || updated.sourceLeadId || null;
+  if (linkedLeadId && updated.eventDate) {
+    try {
+      await applyEventDateTimeToLead(
+        linkedLeadId,
+        {
+          eventDate: updated.eventDate,
+          startTime: updated.startTime,
+        },
+        { user, eventId }
+      );
+    } catch (dtErr) {
+      console.warn(
+        "[completeDepositIntake] applyEventDateTimeToLead failed:",
+        dtErr instanceof Error ? dtErr.message : dtErr
+      );
+    }
   }
 
   // Instantiate workflow if not already generated; otherwise reconcile new conditionals

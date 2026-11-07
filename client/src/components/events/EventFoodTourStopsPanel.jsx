@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import SettingsCatalogLink from '@/components/settings/SettingsCatalogLink';
 import {
   formatOrderLine,
   normalizeOrderLines,
@@ -211,33 +212,39 @@ export default function EventFoodTourStopsPanel({
         </p>
 
         {canEdit && (
-          <div className="flex flex-col sm:flex-row gap-2">
-            <select
-              className="flex-1 h-10 rounded-md border border-input bg-background px-3 text-sm"
-              value={addEateryId}
-              onChange={(e) => setAddEateryId(e.target.value)}
-            >
-              <option value="">Add a restaurant…</option>
-              {available.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-            <Button
-              className="bg-[#C84B31] hover:bg-[#A03A23]"
-              disabled={addMutation.isPending || !addEateryId}
-              onClick={() => addMutation.mutate()}
-            >
-              {addMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add stop
-                </>
-              )}
-            </Button>
+          <div className="space-y-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                className="flex-1 h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={addEateryId}
+                onChange={(e) => setAddEateryId(e.target.value)}
+              >
+                <option value="">Add a restaurant…</option>
+                {available.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                className="bg-[#C84B31] hover:bg-[#A03A23]"
+                disabled={addMutation.isPending || !addEateryId}
+                onClick={() => addMutation.mutate()}
+              >
+                {addMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add stop
+                  </>
+                )}
+              </Button>
+            </div>
+            <SettingsCatalogLink
+              hash="settings-eateries"
+              label="Add more eateries in Settings"
+            />
           </div>
         )}
 
@@ -245,7 +252,13 @@ export default function EventFoodTourStopsPanel({
           <div className="h-16 animate-pulse bg-slate-100 rounded" />
         ) : stops.length === 0 ? (
           <p className="text-sm text-gray-500">
-            No stops yet. Add restaurants from the catalog.
+            No stops yet. Add restaurants from the catalog or{' '}
+            <SettingsCatalogLink
+              hash="settings-eateries"
+              label="add more in Settings"
+              className="align-baseline"
+            />
+            .
           </p>
         ) : (
           <ul className="divide-y divide-orange-50 border border-orange-100 rounded-md">

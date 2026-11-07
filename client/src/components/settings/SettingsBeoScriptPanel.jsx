@@ -17,12 +17,12 @@ const TOKEN_HELP = [
   '{{event_name}}',
   '{{experience_activity}}',
   '{{instructor_name}}',
-  '{{instructor_bio}}',
   '{{dish_or_drink}}',
 ];
 
 /**
- * Edit the shared BEO host MC script template (fills into Instructor Bio / Script).
+ * Edit the shared BEO Standard Script template (CRM-17).
+ * Group Leader biographies are a separate BEO section — prefer omitting {{instructor_bio}}.
  */
 export default function SettingsBeoScriptPanel() {
   const queryClient = useQueryClient();
@@ -64,25 +64,29 @@ export default function SettingsBeoScriptPanel() {
     onSuccess: (saved) => {
       if (saved?.id) setRowId(saved.id);
       queryClient.invalidateQueries({ queryKey: ['beo-script-templates'] });
-      toast.success('BEO host script saved');
+      toast.success('BEO standard script saved');
     },
     onError: (err) =>
       toast.error(err?.body?.error || err?.message || 'Failed to save script'),
   });
 
   return (
-    <Card className="bg-white/80 backdrop-blur-sm border-orange-100">
+    <Card
+      id="settings-beo-script"
+      className="bg-white/80 backdrop-blur-sm border-orange-100 scroll-mt-24"
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-[#2D3436]">
           <FileText className="w-5 h-5 text-[#C84B31]" />
-          BEO Host Script
+          BEO Standard Script
         </CardTitle>
         <CardDescription>
-          Template used in the BEO &quot;Instructor Bio / Script&quot; section.
-          Placeholders are filled from the event, assigned instructor bio
-          (Settings → Instructors), and staff. Seed default with{' '}
-          <code>npm run db:seed-beo-scripts</code>. Regenerate/rebuild the BEO
-          on an event to pick up edits.
+          Approved Mangia DC host script for the BEO &quot;Standard Script&quot;
+          section. Leader names fill via placeholders; biographies are a separate
+          BEO section (Settings → Group Leaders). Prefer omitting{' '}
+          <code>{'{{instructor_bio}}'}</code> from this body. Seed default with{' '}
+          <code>npm run db:seed-beo-scripts</code>. Regenerate the BEO on an event
+          to pick up edits.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -107,7 +111,7 @@ export default function SettingsBeoScriptPanel() {
                 className="min-h-[280px] font-mono text-xs"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder="Host MC script with {{placeholders}}…"
+                placeholder="Standard script with {{placeholders}}…"
               />
             </div>
             <p className="text-xs text-gray-500">
@@ -117,13 +121,15 @@ export default function SettingsBeoScriptPanel() {
                   {t}
                 </code>
               ))}
+              (optional legacy <code>{'{{instructor_bio}}'}</code> is left empty
+              on regenerate — use Group Leader Biography instead)
             </p>
             <Button
               className="bg-[#C84B31] hover:bg-[#A03A23]"
               disabled={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending ? 'Saving…' : 'Save host script'}
+              {saveMutation.isPending ? 'Saving…' : 'Save standard script'}
             </Button>
           </>
         )}

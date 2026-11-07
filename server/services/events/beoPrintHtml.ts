@@ -3,6 +3,10 @@
  */
 import fs from "fs";
 import path from "path";
+import {
+  parseFileIdFromUrl,
+  tryResolveFileSync,
+} from "../files/storage.js";
 
 const BEO_PRINT_CSS = `
   body { margin: 0; background: #fff; font-family: Arial, Helvetica, sans-serif; color: #111; }
@@ -228,7 +232,7 @@ export function fileToDataUrl(filePath: string): string | null {
 }
 
 /**
- * Embed /venueimages/* and mangiadc-logo.png as data URLs from disk.
+ * Embed /venueimages/*, /api/files/*, and mangiadc-logo.png as data URLs from disk.
  * Matches relative, absolute http(s), and file:// srcs, including ?access_token=.
  */
 export function embedLocalBeoImagesAsDataUrls(
@@ -260,6 +264,19 @@ export function embedLocalBeoImagesAsDataUrls(
       }
     );
   }
+
+  // Legacy uploaded floor maps stored as /api/files/{uuid}
+  out = out.replace(
+    /src=(["'])([^"']*\/api\/files\/[^"']+)\1/gi,
+    (_m, q: string, url: string) => {
+      const id = parseFileIdFromUrl(url);
+      if (!id) return _m;
+      const resolved = tryResolveFileSync(id);
+      if (!resolved) return _m;
+      const dataUrl = fileToDataUrl(resolved.absolutePath);
+      return dataUrl ? `src=${q}${dataUrl}${q}` : _m;
+    }
+  );
 
   return out;
 }

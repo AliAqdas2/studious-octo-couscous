@@ -38,10 +38,18 @@ const EventStaffingPanel = ({
     event?.event_type || event?.eventType
   );
 
+  const isClientVenue =
+    String(event?.venue_mode || event?.venueMode || '').trim() ===
+    'go_to_them';
+
   const milestones = useMemo(
     () =>
-      OPS_PANEL_MILESTONES.filter((m) => !m.foodTourOnly || showFoodTour),
-    [showFoodTour]
+      OPS_PANEL_MILESTONES.filter(
+        (m) =>
+          (!m.foodTourOnly || showFoodTour) &&
+          (!m.clientVenueOnly || isClientVenue)
+      ),
+    [showFoodTour, isClientVenue]
   );
 
   const { data: user } = useQuery({

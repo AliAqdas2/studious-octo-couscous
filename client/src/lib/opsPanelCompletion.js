@@ -100,6 +100,19 @@ export function artifactsComplete(event) {
 }
 
 /**
+ * Site Visit (CRM-18): N/A complete for Our Venue; for Client Venue need date or notes.
+ * @param {unknown} event
+ */
+export function siteVisitComplete(event) {
+  const e = event && typeof event === 'object' ? event : {};
+  const mode = String(e.venue_mode || e.venueMode || '').trim();
+  if (mode !== 'go_to_them') return true;
+  const date = e.site_visit_date || e.siteVisitDate;
+  const notes = String(e.site_visit_notes || e.siteVisitNotes || '').trim();
+  return Boolean(date) || Boolean(notes);
+}
+
+/**
  * Inventory panel: checklist has at least one row.
  * @param {{ hasInventory?: boolean }} [opts]
  */
@@ -165,6 +178,8 @@ export function isOpsPanelComplete(panelId, event, opts = {}) {
       return beoSaved(event);
     case 'artifacts':
       return artifactsComplete(event);
+    case 'site_visit':
+      return siteVisitComplete(event);
     case 'food_tour_stops':
       return foodTourStopsComplete(opts);
     case 'attendees':

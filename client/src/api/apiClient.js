@@ -513,6 +513,39 @@ export const base44 = {
         return { data: body };
       }
 
+      if (name === "getEventClientCommStages") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/client-comm-stages`,
+          { method: "GET" }
+        );
+        return { data: body };
+      }
+
+      if (name === "patchEventClientCommStage") {
+        const eventId = payload.eventId || payload.id;
+        const stageId = payload.stageId || payload.stage_id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        if (!stageId) {
+          throw new ApiError("stageId is required", 400);
+        }
+        const { eventId: _e, id: _i, stageId: _s, stage_id: _sid, ...rest } =
+          payload;
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/client-comm-stages/${encodeURIComponent(stageId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
       if (name === "regenerateEventWorkflow") {
         const eventId = payload.eventId || payload.id;
         if (!eventId) {
@@ -682,6 +715,22 @@ export const base44 = {
         const { eventId: _e, id: _i, ...rest } = payload ?? {};
         const body = await request(
           `/api/events/${encodeURIComponent(eventId)}/artifacts`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(rest),
+          }
+        );
+        return { data: body };
+      }
+
+      if (name === "saveEventSiteVisit") {
+        const eventId = payload.eventId || payload.id;
+        if (!eventId) {
+          throw new ApiError("eventId is required", 400);
+        }
+        const { eventId: _e, id: _i, ...rest } = payload ?? {};
+        const body = await request(
+          `/api/events/${encodeURIComponent(eventId)}/site-visit`,
           {
             method: "PATCH",
             body: JSON.stringify(rest),
@@ -1051,18 +1100,23 @@ export const base44 = {
   },
   integrations: {
     Core: {
-      async UploadFile({ file } = {}) {
+      async UploadFile({ file, target } = {}) {
         if (!file) {
           throw new ApiError("file is required", 400);
         }
         const doUpload = async () => {
           const form = new FormData();
           form.append("file", file, file.name || "upload.bin");
+          if (target) form.append("target", String(target));
           const headers = {};
           if (accessToken) {
             headers.Authorization = `Bearer ${accessToken}`;
           }
-          return fetch("/api/files/upload", {
+          const qs =
+            target != null && String(target).trim()
+              ? `?target=${encodeURIComponent(String(target).trim())}`
+              : "";
+          return fetch(`/api/files/upload${qs}`, {
             method: "POST",
             credentials: "include",
             headers,

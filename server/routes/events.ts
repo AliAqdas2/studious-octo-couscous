@@ -31,6 +31,10 @@ import {
   saveRunOfShow,
 } from "../services/events/runOfShow.js";
 import {
+  saveEventSiteVisit,
+  type EventSiteVisitPayload,
+} from "../services/events/eventSiteVisit.js";
+import {
   getBeoDocumentState,
   saveBeoDocument,
 } from "../services/events/beoDocument.js";
@@ -68,6 +72,11 @@ import {
 } from "../services/events/eventOpsSettings.js";
 import type { EventOpsFeatures } from "../services/events/eventOpsFeatures.js";
 import { getOpsPanelSideFlags } from "../services/events/opsPanelSideFlags.js";
+import {
+  listEventClientCommStages,
+  patchEventClientCommStage,
+  type PatchClientCommStagePayload,
+} from "../services/events/clientCommunicationStages.js";
 
 function requireDb() {
   const db = getDb();
@@ -357,6 +366,23 @@ router.patch(
   }
 );
 
+router.patch(
+  "/events/:id/site-visit",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const user = (req as AuthenticatedRequest).user;
+      const payload = (req.body ?? {}) as EventSiteVisitPayload;
+      const result = await saveEventSiteVisit(eventId, payload, user);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 router.get(
   "/events/:id/beo-document",
   requireAuth,
@@ -545,12 +571,14 @@ router.post(
 router.post(
   "/events/:id/attendees/import",
   requireAuth,
-  async (req, res, next) => {
+  async (req: AuthenticatedRequest, res, next) => {
     try {
       const eventId = req.params.id;
       if (!eventId) throw new AppError("eventId is required", 400);
       const rows = (req.body?.rows ?? []) as AttendeeRowInput[];
-      const result = await replaceEventAttendeesFromImport(eventId, rows);
+      const result = await replaceEventAttendeesFromImport(eventId, rows, {
+        user: req.user,
+      });
       res.json(result);
     } catch (err) {
       next(err);
@@ -562,7 +590,7 @@ router.post(
   "/events/:id/attendees/import-file",
   requireAuth,
   attendeeUpload.single("file"),
-  async (req, res, next) => {
+  async (req: AuthenticatedRequest, res, next) => {
     try {
       const eventId = req.params.id;
       if (!eventId) throw new AppError("eventId is required", 400);
@@ -577,7 +605,9 @@ router.post(
         throw new AppError("Upload an .xlsx or .csv file", 400);
       }
       const rows = parseAttendeeSpreadsheetBuffer(file.buffer);
-      const result = await replaceEventAttendeesFromImport(eventId, rows);
+      const result = await replaceEventAttendeesFromImport(eventId, rows, {
+        user: req.user,
+      });
       res.json(result);
     } catch (err) {
       next(err);
@@ -588,13 +618,15 @@ router.post(
 router.post(
   "/events/:id/attendees/import-sheet",
   requireAuth,
-  async (req, res, next) => {
+  async (req: AuthenticatedRequest, res, next) => {
     try {
       const eventId = req.params.id;
       if (!eventId) throw new AppError("eventId is required", 400);
       const url = String(req.body?.url ?? "").trim();
       if (!url) throw new AppError("url is required", 400);
-      const result = await importAttendeesFromSheetUrl(eventId, url);
+      const result = await importAttendeesFromSheetUrl(eventId, url, {
+        user: req.user,
+      });
       res.json(result);
     } catch (err) {
       next(err);
@@ -670,6 +702,44 @@ router.post(
       const result = await savePostEvent(eventId, payload, user, {
         createLead: Boolean(createLead),
       });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.get(
+  "/events/:id/client-comm-stages",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      const result = await listEventClientCommStages(eventId);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.patch(
+  "/events/:id/client-comm-stages/:stageId",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      const stageId = req.params.stageId;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      if (!stageId) throw new AppError("stageId is required", 400);
+      const user = (req as AuthenticatedRequest).user;
+      const result = await patchEventClientCommStage(
+        eventId,
+        stageId,
+        (req.body ?? {}) as PatchClientCommStagePayload,
+        user
+      );
       res.json(result);
     } catch (err) {
       next(err);

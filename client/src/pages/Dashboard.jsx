@@ -15,6 +15,12 @@ import {
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { STAGE_COLORS, B2C_STAGES, B2B_STAGES, CHANNEL_COLORS } from '@/components/leads/pipelineConfig';
+import {
+  EVENT_FILTER_STAGES,
+  EVENT_STAGE_COLORS_SOFT,
+  getEventStageColor,
+  normalizeEventStage,
+} from '@/components/events/eventPipelineConfig';
 import { Badge } from '@/components/ui/badge';
 import ReportFilters from '@/components/dashboard/ReportFilters';
 import ConversionRateChart from '@/components/dashboard/ConversionRateChart';
@@ -73,10 +79,18 @@ export default function Dashboard() {
     if (!leadsByStage[stage]) leadsByStage[stage] = leadsByStageRaw[stage];
   });
 
-  const eventsByStage = events.reduce((acc, event) => {
-    acc[event.stage] = (acc[event.stage] || 0) + 1;
+  const eventsByStageRaw = events.reduce((acc, event) => {
+    const stage = normalizeEventStage(event.stage);
+    acc[stage] = (acc[stage] || 0) + 1;
     return acc;
   }, {});
+  const eventsByStage = {};
+  for (const stage of EVENT_FILTER_STAGES) {
+    if (eventsByStageRaw[stage]) eventsByStage[stage] = eventsByStageRaw[stage];
+  }
+  Object.keys(eventsByStageRaw).forEach((stage) => {
+    if (!eventsByStage[stage]) eventsByStage[stage] = eventsByStageRaw[stage];
+  });
 
   const tasksByStatus = {
     'Not Acknowledged': tasks.filter(t => t.status === 'Not Acknowledged').length,
@@ -131,26 +145,7 @@ export default function Dashboard() {
     }
   ];
 
-  const eventStageColors = {
-    'Deposit Received': 'bg-blue-100 text-blue-800',
-    'Planning': 'bg-purple-100 text-purple-800',
-    'Run Of Show Scheduled': 'bg-violet-100 text-violet-800',
-    'Pre-Event Ready': 'bg-yellow-100 text-yellow-800',
-    'In Progress': 'bg-red-100 text-red-800',
-    'Post-Event': 'bg-indigo-100 text-indigo-800',
-    'Completed': 'bg-emerald-100 text-emerald-800',
-    'Lost': 'bg-slate-100 text-slate-800',
-    'Canceled': 'bg-gray-100 text-gray-800',
-    'Pre-Event Planning': 'bg-purple-100 text-purple-800',
-    'Inventory Ordering': 'bg-yellow-100 text-yellow-800',
-    'Staff Confirmed': 'bg-green-100 text-green-800',
-    '72hr Final Check': 'bg-orange-100 text-orange-800',
-    'Event Day': 'bg-red-100 text-red-800',
-    'Post-Event Processing': 'bg-indigo-100 text-indigo-800',
-    'Cancelled': 'bg-gray-100 text-gray-800'
-  };
-
-  const stageColors = { ...STAGE_COLORS, ...eventStageColors };
+  const stageColors = { ...STAGE_COLORS, ...EVENT_STAGE_COLORS_SOFT };
 
   return (
     <div className="space-y-8">
@@ -266,7 +261,7 @@ export default function Dashboard() {
               {Object.entries(eventsByStage).map(([stage, count]) => (
                 <Link key={stage} to={createPageUrl('Events') + `?stage=${encodeURIComponent(stage)}`}>
                   <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors cursor-pointer">
-                    <span className={`text-sm font-medium px-3 py-1 rounded-full ${stageColors[stage]}`}>
+                    <span className={`text-sm font-medium px-3 py-1 rounded-full ${getEventStageColor(stage, true)}`}>
                       {stage}
                     </span>
                     <span className="text-lg font-bold text-gray-900">{count}</span>
@@ -376,8 +371,8 @@ export default function Dashboard() {
                       year: 'numeric'
                     })}
                   </p>
-                  <span className={`text-xs px-2 py-1 rounded-full ${stageColors[event.stage]}`}>
-                    {event.stage}
+                  <span className={`text-xs px-2 py-1 rounded-full ${getEventStageColor(event.stage, true)}`}>
+                    {normalizeEventStage(event.stage)}
                   </span>
                 </div>
               </Link>

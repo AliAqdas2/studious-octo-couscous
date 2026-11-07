@@ -18,11 +18,13 @@ import {
   inventoryChecklistHtml,
   logisticsTable,
   openSection,
+  siteVisitBlock,
   wrapSheet,
   yn,
 } from './shared.js';
 import {
   buildHostScriptVars,
+  groupLeaderBiographyHtml,
   hostScriptSectionHtml,
 } from './hostScript.js';
 
@@ -73,7 +75,7 @@ function eventFlowHtml(core) {
   const start = core.startTime || 'Start';
   const skeleton = [
     `${start} — Arrival &amp; mingling; host checks guests in and offers drinks.`,
-    'Welcome / introductions — host introduces Mangia and the instructor.',
+    'Welcome / introductions — host introduces Mangia and the group leader.',
     'Appetizer / activity start.',
     'Instructor demonstration, then guests cook / create.',
     'Entree / main activity; team plates and (if a competition) presents.',
@@ -93,6 +95,7 @@ export function buildEventBeoHtml(input) {
   const addons = addonLines(core.event.custom_addons || core.event.customAddons);
   const venueRow = asRecord(input?.venue);
   const instructor = asRecord(input?.instructor);
+  const instructor2 = asRecord(input?.instructor2);
   const hostTemplate =
     asRecord(input?.hostScriptTemplate).body ||
     asRecord(input?.host_script_template).body ||
@@ -100,12 +103,14 @@ export function buildEventBeoHtml(input) {
   const scriptVars = buildHostScriptVars({
     event: core.event,
     instructor,
+    instructor2,
     client: input?.client,
     runOfShow: core.ros,
   });
   const scriptHtml = hostScriptSectionHtml(hostTemplate, scriptVars, {
     missingInstructor: !instructor.name,
   });
+  const biographyHtml = groupLeaderBiographyHtml(instructor, instructor2);
 
   const clientBits = [];
   if (core.isCompetition) clientBits.push('Cooking competition: YES');
@@ -133,12 +138,23 @@ export function buildEventBeoHtml(input) {
     ${logisticsTable(core)}
     ${openSection('Event Flow', eventFlowHtml(core), { keep: true })}
     ${openSection('Cooking Supplies', inventoryChecklistHtml(input?.inventory))}
-    ${openSection('Floor Map', imageBlock(input?.venueImages), { keep: true })}
+    ${
+      (core.event.venue_mode || core.event.venueMode) === 'go_to_them'
+        ? openSection(
+            'Site Visit',
+            siteVisitBlock(input?.siteVisit, core.event),
+            { keep: true }
+          )
+        : `${openSection('Floor Map', imageBlock(input?.venueImages), {
+            keep: true,
+          })}
     ${openSection(
       'Venue Guidelines',
       guidelinesBlock(venueRow.guidelines)
-    )}
-    ${openSection('Instructor Bio / Script', scriptHtml, { keep: true })}
+    )}`
+    }
+    ${openSection('Standard Script', scriptHtml, { keep: true })}
+    ${openSection('Group Leader Biography', biographyHtml, { keep: true })}
     ${openSection('Attendees', attendeeTable(core.participationUrl, input?.attendees))}
     ${approvalsBlock()}
   `;

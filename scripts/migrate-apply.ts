@@ -981,6 +981,36 @@ async function main(): Promise<void> {
     } else {
       console.log("event_eatery_stops.fulfillment_type already present");
     }
+
+    const clientCommDefs = await sql`
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = 'client_communication_stage_defs'
+    `;
+    if (clientCommDefs.length === 0) {
+      console.log("Applying client communication stages migration (0036)...");
+      const clientCommSql = readFileSync(
+        join(__dirname, "../drizzle/0036_client_communication_stages.sql"),
+        "utf8"
+      );
+      try {
+        await sql.unsafe(clientCommSql);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (
+          message.includes("already exists") ||
+          message.includes("duplicate")
+        ) {
+          console.log(`Skipping (already applied): ${message.split("\n")[0]}`);
+        } else {
+          throw err;
+        }
+      }
+      console.log("client communication stages migration applied");
+    } else {
+      console.log("client_communication_stage_defs already present");
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

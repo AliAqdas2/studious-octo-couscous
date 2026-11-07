@@ -5,13 +5,17 @@
 
 import {
   artifactsComplete,
+  siteVisitComplete,
   beoSaved,
   depositComplete,
   hasDeposit,
   parseRos,
 } from '@/lib/opsPanelCompletion';
 
-export { artifactsComplete } from '@/lib/opsPanelCompletion';
+export {
+  artifactsComplete,
+  siteVisitComplete,
+} from '@/lib/opsPanelCompletion';
 
 export const MILESTONE_OFFSETS = {
   deposit: null, // always until done once deposit exists
@@ -250,6 +254,10 @@ export function getPanelMilestoneLabel(milestoneId, event, opts = {}) {
       now
     );
     return formatMilestoneCountdown(daysLeft);
+  }
+  if (milestoneId === 'site_visit') {
+    if (siteVisitComplete(event)) return null;
+    return 'Complete before BEO final';
   }
   return null;
 }

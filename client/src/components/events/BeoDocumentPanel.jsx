@@ -22,6 +22,7 @@ import {
 } from '@/lib/beoTemplate';
 import { downloadBeoDocx } from '@/lib/beoDocx';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import SettingsCatalogLink from '@/components/settings/SettingsCatalogLink';
 import { getPanelMilestoneLabel } from '@/lib/eventMilestones';
 
 function beoLogoSrc() {
@@ -39,12 +40,14 @@ function buildFromState(state, event) {
     venue: state?.venue,
     venueImages: Array.isArray(state?.venueImages) ? state.venueImages : [],
     instructor: state?.instructor,
+    instructor2: state?.instructor2,
     client: state?.client,
     hostScriptTemplate:
       state?.hostScriptTemplate || state?.host_script_template || null,
     inventory: state?.inventory,
     eateryStops: state?.eateryStops,
     attendees: state?.attendees,
+    siteVisit: state?.siteVisit || state?.site_visit || null,
   });
 }
 
@@ -384,13 +387,29 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-gray-500">
             Generate a Banquet Event Order from deposit + Run of Show, edit,
-            save, and download.
+            save, and download. Host the final file externally, then save the
+            URL under Artifact Links → Add BEO Link.
           </p>
           {hasDocument ? (
             <Badge className="bg-green-600 text-white">Saved</Badge>
           ) : (
             <Badge variant="outline">Not generated</Badge>
           )}
+        </div>
+
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <SettingsCatalogLink
+            hash="settings-beo-script"
+            label="Manage Standard Script in Settings"
+          />
+          <SettingsCatalogLink
+            hash="settings-group-leaders"
+            label="Manage Group Leaders in Settings"
+          />
+          <SettingsCatalogLink
+            hash="settings-venues"
+            label="Manage Floor Maps in Settings"
+          />
         </div>
 
         {softHint ? (
@@ -430,7 +449,7 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
             ) : null}
             {state?.beoUrl ? (
               <p className="text-xs text-green-800">
-                External BEO link still on file:{' '}
+                Hosted BEO link on file (manage in Artifact Links):{' '}
                 <a
                   href={state.beoUrl}
                   target="_blank"
@@ -440,7 +459,12 @@ export default function BeoDocumentPanel({ event, canEdit = false }) {
                   Open URL
                 </a>
               </p>
-            ) : null}
+            ) : (
+              <p className="text-xs text-green-800/80">
+                After hosting, add the final URL in Artifact Links → Add BEO
+                Link.
+              </p>
+            )}
           </div>
         ) : null}
 

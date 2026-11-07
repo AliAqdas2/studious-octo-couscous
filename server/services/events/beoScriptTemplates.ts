@@ -28,8 +28,6 @@ Please enjoy celebrating tonight's event with your peers through the joy and mag
 INSTRUCTOR INTRO
 As we begin would love to introduce you to your instructor for the evening: {{instructor_name}}
 
-{{instructor_bio}}
-
 CLOSING
 Before you leave wouldn't this be a perfect time to get a group picture? Now that I have you all gathered here I want to remind you of our three goals. We wanted to have fun, learn something new and leave with pleasantly full stomachs. Did we do it? Great! Mangia on 3…1…2…3! (MANGIA) snap
 

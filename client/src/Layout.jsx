@@ -34,6 +34,7 @@ import {
 import {
   getNavProfile,
   isPageAllowed,
+  MARKETING_HOME_PATH,
   OPS_HOME_PATH,
 } from '@/lib/operationalAccess';
 
@@ -202,7 +203,13 @@ export default function Layout({ children, currentPageName }) {
     currentPageName &&
     !isPageAllowed(currentPageName, user, userAssignment)
   ) {
-    return <Navigate to={OPS_HOME_PATH} replace />;
+    const homePath =
+      navProfile === 'ops'
+        ? OPS_HOME_PATH
+        : navProfile === 'marketing'
+          ? MARKETING_HOME_PATH
+          : DEFAULT_APP_PATH;
+    return <Navigate to={homePath} replace />;
   }
 
   const navItems =
@@ -224,12 +231,19 @@ export default function Layout({ children, currentPageName }) {
             { name: 'Calendar', icon: Calendar, page: 'CalendarView' },
             { name: 'Settings', icon: Settings, page: 'Settings' },
           ]
-        : [
-            { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' },
-            ...(canManageGmail
-              ? [{ name: 'Settings', icon: Settings, page: 'Settings' }]
-              : []),
-          ];
+        : navProfile === 'marketing'
+          ? [
+              { name: 'Events', icon: Calendar, page: 'Events' },
+              { name: 'Calendar', icon: Calendar, page: 'CalendarView' },
+              { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' },
+              { name: 'Settings', icon: Settings, page: 'Settings' },
+            ]
+          : [
+              { name: 'My Tasks', icon: CheckSquare, page: 'Tasks' },
+              ...(canManageGmail
+                ? [{ name: 'Settings', icon: Settings, page: 'Settings' }]
+                : []),
+            ];
 
   const historyItems =
     navProfile === 'admin'

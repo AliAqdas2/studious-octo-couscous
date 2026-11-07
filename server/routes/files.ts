@@ -7,6 +7,7 @@ import {
   openFileStream,
   saveBuffer,
 } from "../services/files/storage.js";
+import { saveVenueFloorMapBuffer } from "../venueImages.js";
 
 const router = Router();
 
@@ -24,6 +25,19 @@ router.post(
       const file = req.file;
       if (!file) {
         throw new AppError("file is required", 400);
+      }
+      const target = String(
+        req.query?.target || req.body?.target || ""
+      )
+        .trim()
+        .toLowerCase();
+      if (target === "venueimages") {
+        const saved = saveVenueFloorMapBuffer({
+          buffer: file.buffer,
+          filename: file.originalname || "floor-map.jpeg",
+        });
+        res.json({ file_url: saved.fileUrl });
+        return;
       }
       const saved = await saveBuffer({
         buffer: file.buffer,

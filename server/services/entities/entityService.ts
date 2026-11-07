@@ -32,6 +32,11 @@ import { redactDepositFields } from "../events/depositAccess.js";
 import { canViewDepositAmount } from "../events/depositAccess.js";
 import { rescheduleWorkflowTasks } from "../events/rescheduleWorkflowTasks.js";
 import { syncLeadEventVenue } from "../events/syncLeadEventVenue.js";
+import { maybeAdvanceStageAfterTaskUpdate } from "../events/advanceEventStage.js";
+import {
+  applyEventDateTimeToLead,
+  applyLeadPreferredDateToEvent,
+} from "../events/syncLeadEventDateTime.js";
 
 export interface ListQuery {
   sort?: string;
@@ -56,6 +61,25 @@ function getColumn(
   const camel = toCamelCase(snakeOrCamel);
   const columns = table as unknown as Record<string, unknown>;
   return columns[camel] ?? null;
+}
+
+/** CRM-21: task duration in minutes — min/default 5, step 5. */
+function applyTaskDurationMinutes(
+  data: Record<string, unknown>,
+  opts: { defaultIfMissing: boolean }
+) {
+  if (!("estimatedMinutes" in data) && !opts.defaultIfMissing) return;
+  const raw = data.estimatedMinutes;
+  if (raw === undefined || raw === null || raw === "") {
+    if (opts.defaultIfMissing) data.estimatedMinutes = 5;
+    return;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 5) {
+    data.estimatedMinutes = 5;
+    return;
+  }
+  data.estimatedMinutes = Math.max(5, Math.round(n / 5) * 5);
 }
 
 function parseListQuery(query: Record<string, unknown>): ListQuery {
@@ -360,6 +384,10 @@ export async function createEntity(
     { stripId: true }
   );
 
+  if (entityName === "tasks") {
+    applyTaskDurationMinutes(data, { defaultIfMissing: true });
+  }
+
   if (def.singletonKey) {
     const keyField = toCamelCase(def.singletonKey);
     if (data[keyField] === undefined || data[keyField] === null || data[keyField] === "") {
@@ -513,6 +541,10 @@ export async function updateEntity(
   delete data.createdDate;
   delete data.createdBy;
 
+  if (entityName === "tasks") {
+    applyTaskDurationMinutes(data, { defaultIfMissing: false });
+  }
+
   const db = requireDb();
   const idColumn = getColumn(def.table, "id") as Parameters<typeof eq>[0];
 
@@ -535,10 +567,32 @@ export async function updateEntity(
 
   let previousEventStage: string | undefined;
   let previousEventDate: Date | null = null;
+  let previousEventStartTime: string | null | undefined;
   let previousLeadVenue: string | null | undefined;
   let previousLeadVenueMode: string | null | undefined;
+  let previousLeadVenueAddress: string | null | undefined;
+  let previousLeadPreferredDate: Date | null = null;
   let previousEventVenue: string | null | undefined;
   let previousEventVenueMode: string | null | undefined;
+  let previousEventVenueAddress: string | null | undefined;
+  let previousTaskEventId: string | undefined;
+  let previousTaskPhase: string | null | undefined;
+  let previousTaskStatus: string | null | undefined;
+  if (entityName === "tasks") {
+    const [existingTask] = await db
+      .select()
+      .from(def.table)
+      .where(eq(idColumn, id))
+      .limit(1);
+    previousTaskEventId = (existingTask as { eventId?: string } | undefined)
+      ?.eventId;
+    previousTaskPhase = (
+      existingTask as { workflowPhase?: string | null } | undefined
+    )?.workflowPhase;
+    previousTaskStatus = (
+      existingTask as { status?: string | null } | undefined
+    )?.status;
+  }
   if (entityName === "events") {
     const [existingEvent] = await db
       .select()
@@ -550,10 +604,16 @@ export async function updateEntity(
     const rawDate = (existingEvent as { eventDate?: Date } | undefined)
       ?.eventDate;
     previousEventDate = rawDate ? new Date(rawDate) : null;
+    previousEventStartTime = (
+      existingEvent as { startTime?: string | null } | undefined
+    )?.startTime;
     previousEventVenue = (existingEvent as { venue?: string | null })?.venue;
     previousEventVenueMode = (
       existingEvent as { venueMode?: string | null }
     )?.venueMode;
+    previousEventVenueAddress = (
+      existingEvent as { venueAddress?: string | null }
+    )?.venueAddress;
   }
   if (entityName === "leads") {
     const [existingLead] = await db
@@ -565,6 +625,13 @@ export async function updateEntity(
     previousLeadVenueMode = (
       existingLead as { venueMode?: string | null }
     )?.venueMode;
+    previousLeadVenueAddress = (
+      existingLead as { venueAddress?: string | null }
+    )?.venueAddress;
+    const rawPref = (
+      existingLead as { preferredDate?: Date | null } | undefined
+    )?.preferredDate;
+    previousLeadPreferredDate = rawPref ? new Date(rawPref) : null;
   }
 
   try {
@@ -607,11 +674,16 @@ export async function updateEntity(
       const nextDate = (row as { eventDate?: Date }).eventDate
         ? new Date((row as { eventDate: Date }).eventDate)
         : null;
-      if (
+      const nextStartTime =
+        (row as { startTime?: string | null }).startTime ?? null;
+      const dateChanged =
         previousEventDate &&
         nextDate &&
-        previousEventDate.getTime() !== nextDate.getTime()
-      ) {
+        previousEventDate.getTime() !== nextDate.getTime();
+      const startChanged =
+        String(previousEventStartTime || "") !== String(nextStartTime || "");
+
+      if (dateChanged) {
         try {
           const result = await rescheduleWorkflowTasks(id);
           if (result.updated > 0) {
@@ -627,13 +699,37 @@ export async function updateEntity(
         }
       }
 
+      if ((dateChanged || startChanged) && nextDate) {
+        const linkedLeadId =
+          (row as { leadId?: string | null }).leadId ||
+          (row as { sourceLeadId?: string | null }).sourceLeadId ||
+          null;
+        if (linkedLeadId) {
+          try {
+            await applyEventDateTimeToLead(
+              linkedLeadId,
+              { eventDate: nextDate, startTime: nextStartTime },
+              { user, eventId: id }
+            );
+          } catch (err) {
+            console.warn(
+              "[updateEntity] applyEventDateTimeToLead failed:",
+              err instanceof Error ? err.message : err
+            );
+          }
+        }
+      }
+
       const nextVenue = (row as { venue?: string | null }).venue ?? null;
       const nextVenueMode =
         (row as { venueMode?: "go_to_them" | "house_venue" | null })
           .venueMode ?? null;
+      const nextVenueAddress =
+        (row as { venueAddress?: string | null }).venueAddress ?? null;
       if (
         nextVenue !== previousEventVenue ||
-        nextVenueMode !== previousEventVenueMode
+        nextVenueMode !== previousEventVenueMode ||
+        nextVenueAddress !== previousEventVenueAddress
       ) {
         try {
           await syncLeadEventVenue({
@@ -641,6 +737,7 @@ export async function updateEntity(
             leadId: (row as { leadId?: string | null }).leadId,
             venue: nextVenue,
             venueMode: nextVenueMode,
+            venueAddress: nextVenueAddress,
             skipEvent: true,
           });
         } catch (err) {
@@ -659,6 +756,8 @@ export async function updateEntity(
       const nextVenueMode =
         (row as { venueMode?: "go_to_them" | "house_venue" | null })
           .venueMode ?? null;
+      const nextVenueAddress =
+        (row as { venueAddress?: string | null }).venueAddress ?? null;
       const convertedId =
         (row as { convertedToEventId?: string | null }).convertedToEventId ||
         (row as { linkedEventId?: string | null }).linkedEventId ||
@@ -666,7 +765,8 @@ export async function updateEntity(
       if (
         convertedId &&
         (nextVenue !== previousLeadVenue ||
-          nextVenueMode !== previousLeadVenueMode)
+          nextVenueMode !== previousLeadVenueMode ||
+          nextVenueAddress !== previousLeadVenueAddress)
       ) {
         try {
           await syncLeadEventVenue({
@@ -674,11 +774,61 @@ export async function updateEntity(
             eventId: convertedId,
             venue: nextVenue,
             venueMode: nextVenueMode,
+            venueAddress: nextVenueAddress,
             skipLead: true,
           });
         } catch (err) {
           console.warn(
             "[updateEntity] syncLeadEventVenue (lead) failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
+      const nextPreferred = (row as { preferredDate?: Date | null })
+        .preferredDate
+        ? new Date((row as { preferredDate: Date }).preferredDate)
+        : null;
+      const preferredChanged =
+        (previousLeadPreferredDate?.getTime() ?? null) !==
+        (nextPreferred?.getTime() ?? null);
+      if (preferredChanged && nextPreferred && convertedId) {
+        try {
+          await applyLeadPreferredDateToEvent(convertedId, nextPreferred, {
+            user,
+            leadId: id,
+          });
+        } catch (err) {
+          console.warn(
+            "[updateEntity] applyLeadPreferredDateToEvent failed:",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+    }
+
+    if (entityName === "tasks") {
+      const nextStatus =
+        (row as { status?: string | null }).status ?? previousTaskStatus;
+      const nextPhase =
+        (row as { workflowPhase?: string | null }).workflowPhase ??
+        previousTaskPhase;
+      const eventIdForStage =
+        (row as { eventId?: string }).eventId || previousTaskEventId;
+      if (
+        eventIdForStage &&
+        nextStatus &&
+        nextStatus !== previousTaskStatus &&
+        (nextStatus === "Done" || nextStatus === "Completed")
+      ) {
+        try {
+          await maybeAdvanceStageAfterTaskUpdate(eventIdForStage, {
+            workflowPhase: nextPhase,
+            status: nextStatus,
+          });
+        } catch (err) {
+          console.warn(
+            "[updateEntity] maybeAdvanceStageAfterTaskUpdate failed:",
             err instanceof Error ? err.message : err
           );
         }

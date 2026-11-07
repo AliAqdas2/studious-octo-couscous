@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { env } from "../../config/env.js";
@@ -122,6 +122,27 @@ export async function resolveFile(id: string): Promise<{
     throw new AppError("Invalid file path", 400);
   }
   return { meta, absolutePath };
+}
+
+/** Sync resolve for BEO print embedding (no throw — returns null if missing). */
+export function tryResolveFileSync(
+  id: string
+): { meta: MetaFile; absolutePath: string } | null {
+  if (!/^[0-9a-fA-F-]{36}$/.test(id)) return null;
+  try {
+    const metaFile = metaPath(id);
+    if (!existsSync(metaFile)) return null;
+    const meta = JSON.parse(readFileSync(metaFile, "utf8")) as MetaFile;
+    const absolutePath = dataPath(id, meta.storedName);
+    if (!existsSync(absolutePath)) return null;
+    const root = storageRoot();
+    if (!absolutePath.startsWith(root + path.sep) && absolutePath !== root) {
+      return null;
+    }
+    return { meta, absolutePath };
+  } catch {
+    return null;
+  }
 }
 
 export async function readFileBuffer(id: string): Promise<{

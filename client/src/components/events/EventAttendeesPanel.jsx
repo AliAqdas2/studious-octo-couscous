@@ -1,16 +1,19 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Plus, Trash2, Upload, Users, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
+import SettingsCatalogLink from '@/components/settings/SettingsCatalogLink';
 import { attendeesComplete } from '@/lib/opsPanelCompletion';
+import { useUnsavedBeforeUnload } from '@/lib/useUnsavedNavigation';
 
 /**
- * Instructor + guest list for the BEO (manual, Excel/CSV, Google Sheet).
+ * Group leaders + Attendee List for the BEO (CRM-13).
  */
 export default function EventAttendeesPanel({
   eventId,
@@ -19,14 +22,27 @@ export default function EventAttendeesPanel({
 }) {
   const queryClient = useQueryClient();
   const fileRef = useRef(null);
-  const [draft, setDraft] = useState({ name: '', allergies: '', phone: '' });
+  const [draft, setDraft] = useState({
+    name: '',
+    allergies: '',
+    phone: '',
+    email: '',
+  });
   const [sheetUrl, setSheetUrl] = useState('');
+  const [supportStaffDraft, setSupportStaffDraft] = useState(
+    () => event?.support_staff || event?.supportStaff || ''
+  );
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({
     name: '',
     allergies: '',
     phone: '',
+    email: '',
   });
+
+  useEffect(() => {
+    setSupportStaffDraft(event?.support_staff || event?.supportStaff || '');
+  }, [event?.id, event?.support_staff, event?.supportStaff]);
 
   const { data: instructors = [] } = useQuery({
     queryKey: ['instructors-active'],
@@ -60,26 +76,71 @@ export default function EventAttendeesPanel({
     attendeeCount: attendees.length,
   });
 
-  const instructorId = event?.instructor_id || '';
+  const leader1Id = event?.instructor_id || event?.instructorId || '';
+  const leader2Id = event?.instructor_id_2 || event?.instructorId2 || '';
+
+  const supportStaffSaved = (
+    event?.support_staff ||
+    event?.supportStaff ||
+    ''
+  ).trim();
+  const supportStaffDirty =
+    supportStaffDraft.trim() !== supportStaffSaved;
+  const leadershipDirty = supportStaffDirty || Boolean(editingId);
+  useUnsavedBeforeUnload(leadershipDirty);
 
   const invalidateGuests = () => {
     queryClient.invalidateQueries(['event-attendees', eventId]);
+    queryClient.invalidateQueries(['event', eventId]);
+    queryClient.invalidateQueries(['event-tasks', eventId]);
     queryClient.invalidateQueries(['beo-document', eventId]);
+    queryClient.invalidateQueries(['deposit-intake', eventId]);
+    queryClient.invalidateQueries(['run-of-show', eventId]);
   };
 
-  const instructorMutation = useMutation({
-    mutationFn: async (nextId) => {
-      await base44.entities.Event.update(eventId, {
-        instructor_id: nextId || null,
-      });
+  const leadershipMutation = useMutation({
+    mutationFn: async (patch) => {
+      await base44.entities.Event.update(eventId, patch);
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['event', eventId]);
       queryClient.invalidateQueries(['beo-document', eventId]);
-      toast.success('Instructor updated');
+      toast.success('Group leadership updated');
     },
-    onError: (err) => toast.error(err?.message || 'Failed to update instructor'),
+    onError: (err) =>
+      toast.error(err?.message || 'Failed to update group leadership'),
   });
+
+  const flushSupportStaffIfNeeded = () => {
+    if (!supportStaffDirty || !canEdit) return;
+    const next = supportStaffDraft.trim() || null;
+    leadershipMutation.mutate({ support_staff: next });
+  };
+
+  const setLeader1 = (nextId) => {
+    const id = nextId || null;
+    const patch = { instructor_id: id };
+    if (id && leader2Id && id === leader2Id) {
+      patch.instructor_id_2 = null;
+    }
+    leadershipMutation.mutate(patch);
+  };
+
+  const setLeader2 = (nextId) => {
+    const id = nextId || null;
+    if (id && leader1Id && id === leader1Id) {
+      toast.error('Group Leader 2 cannot be the same as Group Leader 1');
+      return;
+    }
+    leadershipMutation.mutate({ instructor_id_2: id });
+  };
+
+  const saveSupportStaff = () => {
+    const next = supportStaffDraft.trim() || null;
+    const current = (event?.support_staff || event?.supportStaff || '').trim() || null;
+    if (next === current) return;
+    leadershipMutation.mutate({ support_staff: next });
+  };
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -88,11 +149,12 @@ export default function EventAttendeesPanel({
         name: draft.name,
         allergies: draft.allergies,
         phone: draft.phone,
+        email: draft.email,
       });
       return res?.data ?? res;
     },
     onSuccess: () => {
-      setDraft({ name: '', allergies: '', phone: '' });
+      setDraft({ name: '', allergies: '', phone: '', email: '' });
       invalidateGuests();
       toast.success('Attendee added');
     },
@@ -107,6 +169,7 @@ export default function EventAttendeesPanel({
         name: editDraft.name,
         allergies: editDraft.allergies,
         phone: editDraft.phone,
+        email: editDraft.email,
       });
       return res?.data ?? res;
     },
@@ -165,7 +228,7 @@ export default function EventAttendeesPanel({
   });
 
   const busy =
-    instructorMutation.isPending ||
+    leadershipMutation.isPending ||
     createMutation.isPending ||
     updateMutation.isPending ||
     deleteMutation.isPending ||
@@ -174,52 +237,113 @@ export default function EventAttendeesPanel({
 
   const confirmReplace = () =>
     window.confirm(
-      'Import will replace the current attendee list. Continue?'
+      'Upload / Replace will replace the current Attendee List. Continue?'
     );
 
   return (
     <OpsPanelShell
-      title="Instructor & attendees"
+      title="Group Leader"
       icon={Users}
       complete={panelComplete}
       doneBadge={panelComplete}
       milestoneLabel={
         attendees.length
           ? `${attendees.length} guest${attendees.length === 1 ? '' : 's'}`
-          : instructorId
+          : leader1Id
             ? 'Guests pending'
             : null
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-          <Label className="text-sm font-medium shrink-0 sm:w-28">
-            Instructor
-          </Label>
-          <select
-            className="flex-1 h-10 rounded-md border border-input bg-background px-3 text-sm"
-            value={instructorId}
-            disabled={!canEdit || instructorMutation.isPending}
-            onChange={(e) => instructorMutation.mutate(e.target.value || null)}
-          >
-            <option value="">Select instructor…</option>
-            {instructors.map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.name}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Group Leader 1</Label>
+            <select
+              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={leader1Id}
+              disabled={!canEdit || leadershipMutation.isPending}
+              onChange={(e) => setLeader1(e.target.value || null)}
+            >
+              <option value="">Select group leader…</option>
+              {instructors.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">
+              Group Leader 2 (Optional)
+            </Label>
+            <select
+              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={leader2Id}
+              disabled={!canEdit || leadershipMutation.isPending}
+              onChange={(e) => setLeader2(e.target.value || null)}
+            >
+              <option value="">N/A</option>
+              {instructors
+                .filter((row) => row.id !== leader1Id)
+                .map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Support Staff</Label>
+            <Textarea
+              rows={2}
+              value={supportStaffDraft}
+              disabled={!canEdit || leadershipMutation.isPending}
+              onChange={(e) => setSupportStaffDraft(e.target.value)}
+              onBlur={saveSupportStaff}
+              placeholder="Names only — no bio in the BEO"
+              className="resize-y min-h-[60px]"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="text-xs text-gray-500">
+              Bios come from Settings → Group Leaders. Support Staff is text
+              only.
+            </p>
+            <SettingsCatalogLink
+              hash="settings-group-leaders"
+              label="Add more in Settings"
+              dirty={Boolean(editingId)}
+              onBeforeNavigate={flushSupportStaffIfNeeded}
+            />
+          </div>
         </div>
-        <p className="text-xs text-gray-500 -mt-2">
-          Bio is pulled into the BEO from Settings → Instructors.
-        </p>
 
         <div className="border-t pt-4 space-y-3">
-          <p className="text-sm font-medium">Guest list</p>
+          <p className="text-sm font-medium">Attendee List</p>
           <p className="text-xs text-gray-500 -mt-2">
-            Name, allergies, and phone fill the BEO table. Import replaces the
-            current list.
+            Name, allergies, phone number, and email fill the BEO table. Upload /
+            Replace or Import updates every event surface that uses this list.
           </p>
+          {(data?.attendee_list_updated_at ||
+            event?.attendee_list_updated_at ||
+            event?.attendeeListUpdatedAt) && (
+            <p className="text-xs text-gray-600">
+              Last updated{' '}
+              {new Date(
+                data?.attendee_list_updated_at ||
+                  event?.attendee_list_updated_at ||
+                  event?.attendeeListUpdatedAt
+              ).toLocaleString()}
+              {(data?.attendee_list_updated_by_name ||
+                event?.attendee_list_updated_by_name ||
+                event?.attendeeListUpdatedByName) &&
+                ` by ${
+                  data?.attendee_list_updated_by_name ||
+                  event?.attendee_list_updated_by_name ||
+                  event?.attendeeListUpdatedByName
+                }`}
+            </p>
+          )}
 
           {isLoading ? (
             <div className="h-16 animate-pulse bg-slate-100 rounded" />
@@ -230,7 +354,8 @@ export default function EventAttendeesPanel({
                   <tr>
                     <th className="px-3 py-2 font-medium">Name</th>
                     <th className="px-3 py-2 font-medium">Allergies</th>
-                    <th className="px-3 py-2 font-medium">Phone</th>
+                    <th className="px-3 py-2 font-medium">Phone Number</th>
+                    <th className="px-3 py-2 font-medium">Email</th>
                     {canEdit ? (
                       <th className="px-3 py-2 font-medium w-28"> </th>
                     ) : null}
@@ -240,7 +365,7 @@ export default function EventAttendeesPanel({
                   {attendees.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={canEdit ? 4 : 3}
+                        colSpan={canEdit ? 5 : 4}
                         className="px-3 py-5 text-center text-gray-500"
                       >
                         No attendees yet.
@@ -287,6 +412,20 @@ export default function EventAttendeesPanel({
                                     }))
                                   }
                                   className="h-8"
+                                  placeholder="Phone Number"
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <Input
+                                  value={editDraft.email}
+                                  onChange={(e) =>
+                                    setEditDraft((d) => ({
+                                      ...d,
+                                      email: e.target.value,
+                                    }))
+                                  }
+                                  className="h-8"
+                                  placeholder="Email"
                                 />
                               </td>
                               <td className="px-2 py-1">
@@ -319,6 +458,9 @@ export default function EventAttendeesPanel({
                               <td className="px-3 py-2 text-gray-600">
                                 {row.phone || '—'}
                               </td>
+                              <td className="px-3 py-2 text-gray-600">
+                                {row.email || '—'}
+                              </td>
                               {canEdit ? (
                                 <td className="px-2 py-1">
                                   <div className="flex gap-1">
@@ -333,6 +475,7 @@ export default function EventAttendeesPanel({
                                           name: row.name || '',
                                           allergies: row.allergies || '',
                                           phone: row.phone || '',
+                                          email: row.email || '',
                                         });
                                       }}
                                     >
@@ -387,10 +530,17 @@ export default function EventAttendeesPanel({
                   }
                 />
                 <Input
-                  placeholder="Phone"
+                  placeholder="Phone Number"
                   value={draft.phone}
                   onChange={(e) =>
                     setDraft((d) => ({ ...d, phone: e.target.value }))
+                  }
+                />
+                <Input
+                  placeholder="Email"
+                  value={draft.email}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, email: e.target.value }))
                   }
                 />
                 <Button
@@ -428,7 +578,7 @@ export default function EventAttendeesPanel({
                   ) : (
                     <Upload className="w-4 h-4 mr-2" />
                   )}
-                  Import Excel / CSV
+                  Upload / Replace
                 </Button>
                 <Input
                   placeholder="Google Sheet URL"
@@ -450,12 +600,13 @@ export default function EventAttendeesPanel({
                   ) : (
                     <Link2 className="w-4 h-4 mr-2" />
                   )}
-                  Import sheet
+                  Import
                 </Button>
               </div>
               <p className="text-xs text-gray-500">
-                Headers: Name, Allergies (or Dietary), Phone. Sheet must be
-                shared or published as CSV — not a private Drive Doc.
+                Headers: Name, Allergies (or Dietary), Phone Number (or Phone),
+                Email. Sheet must be shared or published as CSV — not a private
+                Drive Doc. Import replaces the current Attendee List.
               </p>
             </div>
           ) : null}
