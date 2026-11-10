@@ -149,6 +149,18 @@ export default function ClientCommunicationPanel({
   const stages = Array.isArray(data?.stages) ? data.stages : [];
   const currentId = data?.current?.id || data?.current?.Id || null;
 
+  const { data: preview, isLoading: previewLoading } = useQuery({
+    queryKey: ['event-client-comm-preview', eventId, expandedId],
+    queryFn: async () => {
+      const res = await base44.functions.invoke('getEventClientCommPreview', {
+        eventId,
+        stageId: expandedId,
+      });
+      return res?.data ?? res;
+    },
+    enabled: Boolean(eventId && expandedId),
+  });
+
   const patchMutation = useMutation({
     mutationFn: (payload) =>
       base44.functions.invoke('patchEventClientCommStage', {
@@ -343,18 +355,24 @@ export default function ClientCommunicationPanel({
 
                     {expanded ? (
                       <div className="mt-2 space-y-2 rounded-md border border-gray-100 bg-gray-50 p-3">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Template
+                            Filled preview
                           </p>
                           <div className="flex flex-wrap gap-1">
-                            {subject ? (
+                            {(preview?.subject || subject) ? (
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
                                 className="h-7 text-xs"
-                                onClick={() => copyText('Subject', subject)}
+                                disabled={previewLoading}
+                                onClick={() =>
+                                  copyText(
+                                    'Subject',
+                                    preview?.subject || subject
+                                  )
+                                }
                               >
                                 <Copy className="mr-1 h-3 w-3" />
                                 Subject
@@ -365,14 +383,18 @@ export default function ClientCommunicationPanel({
                               size="sm"
                               variant="outline"
                               className="h-7 text-xs"
-                              onClick={() =>
+                              disabled={previewLoading}
+                              onClick={() => {
+                                const filledSubject =
+                                  preview?.subject || subject || '';
+                                const filledBody = preview?.body || body || '';
                                 copyText(
                                   'Email',
-                                  subject
-                                    ? `Subject: ${subject}\n\n${body}`
-                                    : body
-                                )
-                              }
+                                  filledSubject
+                                    ? `Subject: ${filledSubject}\n\n${filledBody}`
+                                    : filledBody
+                                );
+                              }}
                             >
                               <Copy className="mr-1 h-3 w-3" />
                               Copy all
@@ -394,17 +416,40 @@ export default function ClientCommunicationPanel({
                           </div>
                         </div>
                         <p className="text-xs text-gray-500">
-                          Draft fills placeholders from event POC, dates, deposit
-                          link, company, and venue — then saves to Gmail Drafts.
+                          Placeholders filled from event POC, dates, deposit
+                          link, company, and venue. Copy and draft use the same
+                          text.
                         </p>
-                        {subject ? (
-                          <p className="text-sm font-medium text-gray-800">
-                            {subject}
+                        {preview?.has_unfilled_placeholders ? (
+                          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                            Some &lt;&lt;placeholders&gt;&gt; remain — set missing
+                            POC / deposit link / company on the event.
                           </p>
                         ) : null}
-                        <pre className="whitespace-pre-wrap break-words font-sans text-sm text-gray-700">
-                          {body || '(No body template)'}
-                        </pre>
+                        {previewLoading ? (
+                          <p className="text-sm text-gray-500">Filling preview…</p>
+                        ) : (
+                          <>
+                            {(preview?.subject || subject) ? (
+                              <p className="text-sm font-medium text-gray-800">
+                                {preview?.subject || subject}
+                              </p>
+                            ) : null}
+                            {preview?.to ? (
+                              <p className="text-xs text-gray-500">
+                                To: {preview.to}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-amber-700">
+                                No POC email on this event — draft will fail until
+                                one is set.
+                              </p>
+                            )}
+                            <pre className="whitespace-pre-wrap break-words font-sans text-sm text-gray-700">
+                              {preview?.body || body || '(No body template)'}
+                            </pre>
+                          </>
+                        )}
                       </div>
                     ) : null}
                   </div>

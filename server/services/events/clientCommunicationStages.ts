@@ -345,12 +345,11 @@ export async function patchEventClientCommStage(
 }
 
 /**
- * Fill stage template from event data and create a Gmail draft to the POC.
+ * Fill stage template from event data (no Gmail). Used by preview + draft.
  */
-export async function createClientCommStageDraft(
+export async function previewClientCommStage(
   eventId: string,
-  stageId: string,
-  user?: AuthUser | null
+  stageId: string
 ) {
   const db = requireDb();
   const [event] = await db
@@ -397,6 +396,29 @@ export async function createClientCommStageDraft(
     }
   );
 
+  const hasUnfilled =
+    /<<[^>]+>>/.test(filled.subject) || /<<[^>]+>>/.test(filled.body);
+
+  return {
+    to: filled.to,
+    subject: filled.subject,
+    body: filled.body,
+    stage_id: stageId,
+    stage_title: stage.title,
+    has_unfilled_placeholders: hasUnfilled,
+  };
+}
+
+/**
+ * Fill stage template from event data and create a Gmail draft to the POC.
+ */
+export async function createClientCommStageDraft(
+  eventId: string,
+  stageId: string,
+  user?: AuthUser | null
+) {
+  const filled = await previewClientCommStage(eventId, stageId);
+
   if (!filled.to) {
     throw new AppError(
       "Event needs a POC email before creating a draft. Set POC email on the event (Deposit / Event details).",
@@ -404,11 +426,18 @@ export async function createClientCommStageDraft(
     );
   }
 
+  const db = requireDb();
+  const [event] = await db
+    .select({ leadId: events.leadId })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1);
+
   const draft = await createGmailDraft({
     to: filled.to,
     subject: filled.subject,
     body: filled.body,
-    leadId: event.leadId || undefined,
+    leadId: event?.leadId || undefined,
     userId: user?.id,
     userName: user?.full_name,
   });
@@ -419,6 +448,6 @@ export async function createClientCommStageDraft(
     subject: filled.subject,
     body: filled.body,
     stage_id: stageId,
-    stage_title: stage.title,
+    stage_title: filled.stage_title,
   };
 }

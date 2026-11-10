@@ -1,7 +1,16 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  EVENT_FILTER_STAGES,
   EVENT_PIPELINE_STAGES,
   EVENT_TERMINAL_STAGES,
   getEventStageColor,
@@ -11,7 +20,7 @@ import {
 } from '@/components/events/eventPipelineConfig';
 
 /**
- * Named stage progression strip + optional manual advance.
+ * Named stage progression strip + optional manual advance / reopen.
  *
  * @param {{
  *   stage: string,
@@ -27,7 +36,8 @@ export default function EventStagePipeline({
   pending = false,
 }) {
   const current = normalizeEventStage(stage);
-  const isTerminal = EVENT_TERMINAL_STAGES.includes(current) || current === 'Completed';
+  const isTerminal =
+    EVENT_TERMINAL_STAGES.includes(current) || current === 'Completed';
   const nextStages = getNextEventStages(current);
   const currentIndex = EVENT_PIPELINE_STAGES.indexOf(current);
 
@@ -50,6 +60,11 @@ export default function EventStagePipeline({
               </span>
             ) : null}
           </div>
+          {canEdit && isTerminal ? (
+            <p className="mt-2 text-xs text-amber-800">
+              Reopen by choosing a stage below.
+            </p>
+          ) : null}
         </div>
         {canEdit && nextStages.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -74,6 +89,32 @@ export default function EventStagePipeline({
           </div>
         ) : null}
       </div>
+
+      {canEdit ? (
+        <div className="flex flex-wrap items-end gap-2 max-w-sm">
+          <div className="flex-1 min-w-[12rem] space-y-1">
+            <Label className="text-xs text-gray-600">Change stage</Label>
+            <Select
+              value={current}
+              disabled={pending}
+              onValueChange={(value) => {
+                if (value && value !== current) onStageChange?.(value);
+              }}
+            >
+              <SelectTrigger className="h-9 bg-white">
+                <SelectValue placeholder="Choose stage…" />
+              </SelectTrigger>
+              <SelectContent>
+                {EVENT_FILTER_STAGES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      ) : null}
 
       {!isTerminal ? (
         <div className="flex flex-wrap gap-1.5">

@@ -76,6 +76,7 @@ import {
   createClientCommStageDraft,
   listEventClientCommStages,
   patchEventClientCommStage,
+  previewClientCommStage,
   type PatchClientCommStagePayload,
 } from "../services/events/clientCommunicationStages.js";
 
@@ -741,6 +742,23 @@ router.patch(
         (req.body ?? {}) as PatchClientCommStagePayload,
         user
       );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.get(
+  "/events/:id/client-comm-stages/:stageId/preview",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+      const stageId = req.params.stageId;
+      if (!eventId) throw new AppError("eventId is required", 400);
+      if (!stageId) throw new AppError("stageId is required", 400);
+      const result = await previewClientCommStage(eventId, stageId);
       res.json(result);
     } catch (err) {
       next(err);
