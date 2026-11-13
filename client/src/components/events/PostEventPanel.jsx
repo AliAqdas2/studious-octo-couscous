@@ -13,13 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Mail, Save, UserPlus } from 'lucide-react';
+import { ClipboardList, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import OpsPanelShell from '@/components/events/OpsPanelShell';
 import { postEventComplete } from '@/lib/opsPanelCompletion';
 
 /**
- * During / post-event capture: staff hours, thank-you V1/V2, EMAIL 2, lead (plan 06).
+ * During / post-event ops capture: staff hours, costs, photos, CRM follow-ups.
+ * Client outreach emails live in Client Communication.
  */
 export default function PostEventPanel({ event, canEdit = false }) {
   const eventId = event?.id;
@@ -47,6 +48,7 @@ export default function PostEventPanel({ event, canEdit = false }) {
       suppliesCost: s.suppliesCost ?? '',
       photosUploaded: Boolean(s.photosUploaded),
       photoDownloadUrl: s.photoDownloadUrl || '',
+      // Preserved for API compatibility — edited in Client Communication
       thankYouVariant: s.thankYouVariant || '',
       thankYouSent: Boolean(s.thankYouSent),
       eventTrackerNote: s.eventTrackerNote || '',
@@ -66,16 +68,18 @@ export default function PostEventPanel({ event, canEdit = false }) {
   }, [data]);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-  const setEmail2 = (key, value) =>
-    setForm((f) => ({ ...f, email2: { ...f.email2, [key]: value } }));
 
   const saveMutation = useMutation({
-    mutationFn: async ({ createLead }) => {
+    mutationFn: async () => {
       const num = (v) =>
-        v === '' || v == null ? null : Number.isFinite(Number(v)) ? Number(v) : null;
+        v === '' || v == null
+          ? null
+          : Number.isFinite(Number(v))
+            ? Number(v)
+            : null;
       const res = await base44.functions.invoke('savePostEvent', {
         eventId,
-        createLead: Boolean(createLead),
+        createLead: false,
         staffHoursNotes: form.staffHoursNotes || null,
         additionalEventDetails: form.additionalEventDetails || null,
         laborCost: num(form.laborCost),
@@ -100,62 +104,52 @@ export default function PostEventPanel({ event, canEdit = false }) {
       });
       return res?.data ?? res;
     },
-    onSuccess: (body, vars) => {
+    onSuccess: () => {
       queryClient.invalidateQueries(['post-event', eventId]);
       queryClient.invalidateQueries(['event', eventId]);
       queryClient.invalidateQueries(['event-tasks', eventId]);
-      if (vars.createLead && body.newLeadId) {
-        toast.success(`Lead created (${body.newLeadId.slice(0, 8)}…)`);
-      } else {
-        toast.success('Post-event details saved');
-      }
+      toast.success('Post-event details saved');
     },
     onError: () => toast.error('Failed to save post-event details'),
   });
 
   if (!eventId || isLoading || !form) {
     return (
-      <OpsPanelShell title="During & post-event" icon={Mail} forceOpen>
+      <OpsPanelShell title="During & post-event" icon={ClipboardList} forceOpen>
         <div className="h-24 animate-pulse bg-slate-100 rounded" />
       </OpsPanelShell>
     );
   }
 
   const features = data?.features || {};
-  const experienceName = data?.state?.experienceName || event.event_type;
   const panelComplete = postEventComplete({
     ...event,
     staff_hours_notes: form.staffHoursNotes,
     staffHoursNotes: form.staffHoursNotes,
+    photos_uploaded: form.photosUploaded,
+    photosUploaded: form.photosUploaded,
     post_event: {
-      thankYouSent: form.thankYouSent,
-      thankYouVariant: form.thankYouVariant,
+      photosUploaded: form.photosUploaded,
     },
     postEvent: {
-      thankYouSent: form.thankYouSent,
-      thankYouVariant: form.thankYouVariant,
+      photosUploaded: form.photosUploaded,
     },
   });
 
   return (
     <OpsPanelShell
       title="During & post-event"
-      icon={Mail}
+      icon={ClipboardList}
       complete={panelComplete}
       doneBadge={panelComplete}
       forceOpen={!panelComplete}
-      milestoneLabel={
-        form.thankYouVariant
-          ? `Thank-you ${String(form.thankYouVariant).toUpperCase()}`
-          : null
-      }
     >
       <div className="space-y-5">
         <p className="text-xs text-gray-500">
-          Experience name for thank-you templates:{' '}
-          <span className="font-medium text-gray-700">{experienceName}</span>
-          {' '}(never hardcodes Paint & Sip).
+          Ops wrap-up after the event. Client thank-you and outreach emails are
+          in Client Communication.
         </p>
+
         <section className="space-y-2">
           <Label className="text-sm font-semibold">Admin morning-after</Label>
           <div>
@@ -230,20 +224,7 @@ export default function PostEventPanel({ event, canEdit = false }) {
         </section>
 
         <section className="space-y-2 border-t pt-4">
-          <Label className="text-sm font-semibold">Thank-you (Sales)</Label>
-          <Select
-            value={form.thankYouVariant}
-            disabled={!canEdit}
-            onValueChange={(v) => set('thankYouVariant', v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="V1 general / V2 highly positive…" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="v1">V1 — general</SelectItem>
-              <SelectItem value="v2">V2 — highly positive</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label className="text-sm font-semibold">Photos</Label>
           <div>
             <Label className="text-xs text-gray-500">Photo download link</Label>
             <Input
@@ -260,109 +241,55 @@ export default function PostEventPanel({ event, canEdit = false }) {
             />
             Photos uploaded to digital database / Drive
           </label>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={form.thankYouSent}
-              disabled={!canEdit}
-              onCheckedChange={(v) => set('thankYouSent', Boolean(v))}
-            />
-            Thank-you sent / draft reviewed
-          </label>
-
-          {form.thankYouVariant === 'v2' && features.linkedInFollowUp !== false && (
-            <div className="space-y-2 rounded border border-slate-100 p-3 bg-slate-50">
-              <Label className="text-xs font-semibold">After V2 yes</Label>
-              <div>
-                <Label className="text-xs text-gray-500">Event tracker note</Label>
-                <Textarea
-                  disabled={!canEdit}
-                  rows={2}
-                  value={form.eventTrackerNote}
-                  onChange={(e) => set('eventTrackerNote', e.target.value)}
-                />
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={form.linkedInRequested}
-                  disabled={!canEdit}
-                  onCheckedChange={(v) => set('linkedInRequested', Boolean(v))}
-                />
-                LinkedIn connection requested
-              </label>
-            </div>
-          )}
-
-          {form.thankYouVariant === 'v2' && features.tshirtThreeMonth !== false && (
-            <div className="space-y-2 rounded border border-slate-100 p-3">
-              <Label className="text-xs font-semibold">+3 months — T-shirt</Label>
-              <Input
-                disabled={!canEdit}
-                placeholder="T-shirt size"
-                value={form.tshirtSize}
-                onChange={(e) => set('tshirtSize', e.target.value)}
-              />
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={form.tshirtRequested}
-                  disabled={!canEdit}
-                  onCheckedChange={(v) => set('tshirtRequested', Boolean(v))}
-                />
-                CEO thank-you + Mangia DC T-shirt offered
-              </label>
-            </div>
-          )}
         </section>
 
-        {features.email2FollowUps !== false && (
-          <section className="space-y-2 border-t pt-4">
-            <Label className="text-sm font-semibold">EMAIL 2 (good feedback)</Label>
-            <div>
-              <Label className="text-xs text-gray-500">
-                When is their next event they plan?
-              </Label>
-              <Input
-                disabled={!canEdit}
-                value={form.email2.nextEventPlanned}
-                onChange={(e) => setEmail2('nextEventPlanned', e.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-gray-500">
-                Introduce us to three individuals who could benefit…
-              </Label>
-              <Textarea
-                disabled={!canEdit}
-                rows={2}
-                value={form.email2.introThreeIndividuals}
-                onChange={(e) =>
-                  setEmail2('introThreeIndividuals', e.target.value)
-                }
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.email2.newsletterInterest}
-                disabled={!canEdit}
-                onCheckedChange={(v) =>
-                  setEmail2('newsletterInterest', Boolean(v))
-                }
-              />
-              Interest in newsletter
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.email2.buildAnotherLead}
-                disabled={!canEdit}
-                onCheckedChange={(v) =>
-                  setEmail2('buildAnotherLead', Boolean(v))
-                }
-              />
-              Build another lead into Sales CRM
-            </label>
-            {form.email2.newLeadId && (
-              <p className="text-xs text-emerald-700">
-                Lead created: {form.email2.newLeadId}
-              </p>
+        {(features.linkedInFollowUp !== false ||
+          features.tshirtThreeMonth !== false) && (
+          <section className="space-y-3 border-t pt-4">
+            <Label className="text-sm font-semibold">CRM follow-ups</Label>
+            {features.linkedInFollowUp !== false && (
+              <div className="space-y-2 rounded border border-slate-100 p-3 bg-slate-50">
+                <div>
+                  <Label className="text-xs text-gray-500">Event tracker note</Label>
+                  <Textarea
+                    disabled={!canEdit}
+                    rows={2}
+                    value={form.eventTrackerNote}
+                    onChange={(e) => set('eventTrackerNote', e.target.value)}
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.linkedInRequested}
+                    disabled={!canEdit}
+                    onCheckedChange={(v) =>
+                      set('linkedInRequested', Boolean(v))
+                    }
+                  />
+                  LinkedIn connection requested
+                </label>
+              </div>
+            )}
+            {features.tshirtThreeMonth !== false && (
+              <div className="space-y-2 rounded border border-slate-100 p-3">
+                <Label className="text-xs font-semibold">+3 months — T-shirt</Label>
+                <Input
+                  disabled={!canEdit}
+                  placeholder="T-shirt size"
+                  value={form.tshirtSize}
+                  onChange={(e) => set('tshirtSize', e.target.value)}
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.tshirtRequested}
+                    disabled={!canEdit}
+                    onCheckedChange={(v) =>
+                      set('tshirtRequested', Boolean(v))
+                    }
+                  />
+                  Mangia DC T-shirt offered
+                </label>
+              </div>
             )}
           </section>
         )}
@@ -372,23 +299,11 @@ export default function PostEventPanel({ event, canEdit = false }) {
             <Button
               variant="outline"
               disabled={saveMutation.isPending}
-              onClick={() => saveMutation.mutate({ createLead: false })}
+              onClick={() => saveMutation.mutate()}
             >
               <Save className="w-4 h-4 mr-1" />
               Save
             </Button>
-            {features.email2FollowUps !== false &&
-              form.email2.buildAnotherLead &&
-              !form.email2.newLeadId && (
-                <Button
-                  className="bg-[#C84B31] hover:bg-[#A03A23]"
-                  disabled={saveMutation.isPending}
-                  onClick={() => saveMutation.mutate({ createLead: true })}
-                >
-                  <UserPlus className="w-4 h-4 mr-1" />
-                  Create lead
-                </Button>
-              )}
           </div>
         )}
       </div>

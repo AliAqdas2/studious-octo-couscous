@@ -139,7 +139,7 @@ export function attendeesComplete(event, opts = {}) {
 }
 
 /**
- * Post-event: staff hours captured and/or thank-you sent.
+ * Post-event: staff hours and/or photos captured (outreach emails are Client Comm).
  * @param {unknown} event
  */
 export function postEventComplete(event) {
@@ -148,9 +148,13 @@ export function postEventComplete(event) {
   const hours = String(
     e.staff_hours_notes || e.staffHoursNotes || ''
   ).trim();
-  const thankYouSent = Boolean(pe.thankYouSent || e.followup_email_sent || e.followupEmailSent);
-  const thankYouVariant = String(pe.thankYouVariant || '').trim();
-  return Boolean(hours) || thankYouSent || Boolean(thankYouVariant);
+  const photos = Boolean(
+    e.photos_uploaded ||
+      e.photosUploaded ||
+      pe.photosUploaded ||
+      pe.photos_uploaded
+  );
+  return Boolean(hours) || photos;
 }
 
 /**
