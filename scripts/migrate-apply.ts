@@ -1205,6 +1205,9 @@ async function main(): Promise<void> {
       console.log("leads.source_other already present; ensuring Google Ads enum value...");
       await sql`ALTER TYPE "public"."lead_source" ADD VALUE IF NOT EXISTS 'Google Ads'`;
     }
+
+    console.log("Ensuring client_comm_stage_status includes skipped (0039)...");
+    await sql`ALTER TYPE "public"."client_comm_stage_status" ADD VALUE IF NOT EXISTS 'skipped'`;
   } finally {
     await sql.end({ timeout: 5 });
   }

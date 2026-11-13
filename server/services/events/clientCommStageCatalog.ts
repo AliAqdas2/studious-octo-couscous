@@ -44,6 +44,12 @@ export const REMOVED_CLIENT_COMM_SLUGS = [
   "remaining_balance_cc_auth",
 ] as const;
 
+/** Mutually exclusive thank-you variants (pick one). */
+export const THANK_YOU_COMM_SLUGS = [
+  "thank_you_no_invoice",
+  "thank_you_with_invoice",
+] as const;
+
 export const CLIENT_COMM_STAGE_DEFS: ClientCommStageDefSeed[] = [
   // --- Cooking simple track (client's 11) ---
   {

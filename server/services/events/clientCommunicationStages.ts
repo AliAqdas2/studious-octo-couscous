@@ -14,6 +14,7 @@ import {
   CLIENT_COMM_STAGE_DEFS,
   COOKING_SIMPLE_COMM_SLUGS,
   REMOVED_CLIENT_COMM_SLUGS,
+  THANK_YOU_COMM_SLUGS,
   type ClientCommEventTypeScope,
 } from "./clientCommStageCatalog.js";
 import { fillClientCommSubjectAndBody } from "./fillClientCommTemplate.js";
@@ -273,6 +274,14 @@ export async function materializeClientCommStagesForEvent(eventId: string) {
   return { ok: true, inserted, totalDefs: defs.length, cooking_simple: cooking };
 }
 
+function isThankYouSlug(slug: string | null | undefined): boolean {
+  return (THANK_YOU_COMM_SLUGS as readonly string[]).includes(String(slug || ""));
+}
+
+function isClosedStatus(status: string | null | undefined): boolean {
+  return status === "done" || status === "skipped";
+}
+
 export async function listEventClientCommStages(eventId: string) {
   const db = requireDb();
   const [event] = await db
@@ -315,19 +324,82 @@ export async function listEventClientCommStages(eventId: string) {
     );
   });
 
-  const stageRows = filtered.map((r) => r.stage);
-  const stages = stageRows.map((r) => toApiRecord(r as Record<string, unknown>));
-  const pending = stageRows.find((r) => r.status !== "done");
-  const doneCount = stageRows.filter((r) => r.status === "done").length;
+  const thankYouRows = filtered.filter((r) => isThankYouSlug(r.defSlug));
+  const otherRows = filtered.filter((r) => !isThankYouSlug(r.defSlug));
+
+  const thankYouVariants: Array<Record<string, unknown>> = thankYouRows.map(
+    (r) => ({
+      ...toApiRecord(r.stage as Record<string, unknown>),
+      def_slug: r.defSlug,
+    })
+  );
+
+  let thankYouSelectedId: string | null = null;
+  if (thankYouVariants.length) {
+    const doneVar = thankYouVariants.find((v) => v.status === "done");
+    const pendingVar = thankYouVariants.find((v) => v.status === "pending");
+    thankYouSelectedId =
+      String(
+        (doneVar || pendingVar || thankYouVariants[0])?.id || ""
+      ) || null;
+  }
+
+  // Flat list never includes thank-you pair — UI uses thank_you_group (pick-one).
+  const listRows = otherRows;
+
+  const stages = listRows.map((r) => ({
+    ...toApiRecord(r.stage as Record<string, unknown>),
+    def_slug: r.defSlug,
+  }));
+
+  // Progress: thank-you pair counts as 1 step.
+  const otherClosed = otherRows.filter((r) =>
+    isClosedStatus(r.stage.status)
+  ).length;
+  const thankYouClosed =
+    thankYouRows.length > 0 &&
+    thankYouRows.some((r) => isClosedStatus(r.stage.status))
+      ? 1
+      : 0;
+  const thankYouTotal = thankYouRows.length > 0 ? 1 : 0;
+  const doneCount = otherClosed + thankYouClosed;
+  const totalCount = otherRows.length + thankYouTotal;
+
+  const pendingOther = otherRows.find((r) => r.stage.status === "pending");
+  const thankYouPending =
+    thankYouRows.length > 0 &&
+    !thankYouRows.some((r) => isClosedStatus(r.stage.status));
+  let current: Record<string, unknown> | null = null;
+  let currentTitle: string | null = null;
+  if (pendingOther) {
+    current = toApiRecord(pendingOther.stage as Record<string, unknown>);
+    currentTitle = pendingOther.stage.title;
+  } else if (thankYouPending) {
+    const sel =
+      thankYouRows.find((r) => r.stage.id === thankYouSelectedId) ||
+      thankYouRows[0];
+    current = sel
+      ? toApiRecord(sel.stage as Record<string, unknown>)
+      : null;
+    currentTitle = "Send Thank You Email";
+  } else if (totalCount > 0) {
+    currentTitle = "Complete";
+  }
 
   return {
     stages,
-    current: pending
-      ? toApiRecord(pending as Record<string, unknown>)
-      : null,
-    current_title: pending?.title ?? (stageRows.length ? "Complete" : null),
+    thank_you_group:
+      thankYouVariants.length > 0
+        ? {
+            title: "Send Thank You Email",
+            variants: thankYouVariants,
+            selected_id: thankYouSelectedId,
+          }
+        : null,
+    current,
+    current_title: currentTitle,
     done_count: doneCount,
-    total_count: stageRows.length,
+    total_count: totalCount,
     ops_stage: event.stage ?? null,
     simple_track: cooking,
   };
@@ -338,8 +410,46 @@ export interface PatchClientCommStagePayload {
   assignedUser?: string | null;
   due_date?: string | null;
   dueDate?: string | null;
-  status?: "pending" | "done" | null;
+  status?: "pending" | "done" | "skipped" | null;
   complete?: boolean;
+}
+
+async function skipThankYouSiblings(
+  eventId: string,
+  keepStageId: string,
+  user?: AuthUser | null
+) {
+  const db = requireDb();
+  const siblings = await db
+    .select({
+      stage: eventClientCommunicationStages,
+      defSlug: clientCommunicationStageDefs.slug,
+    })
+    .from(eventClientCommunicationStages)
+    .innerJoin(
+      clientCommunicationStageDefs,
+      eq(
+        eventClientCommunicationStages.defId,
+        clientCommunicationStageDefs.id
+      )
+    )
+    .where(eq(eventClientCommunicationStages.eventId, eventId));
+
+  const now = new Date();
+  for (const row of siblings) {
+    if (!isThankYouSlug(row.defSlug)) continue;
+    if (row.stage.id === keepStageId) continue;
+    if (row.stage.status === "skipped") continue;
+    await db
+      .update(eventClientCommunicationStages)
+      .set({
+        status: "skipped",
+        completedAt: now,
+        completedBy: user?.id ?? row.stage.completedBy,
+        updatedDate: now,
+      })
+      .where(eq(eventClientCommunicationStages.id, row.stage.id));
+  }
 }
 
 export async function patchEventClientCommStage(
@@ -349,11 +459,22 @@ export async function patchEventClientCommStage(
   user?: AuthUser | null
 ) {
   const db = requireDb();
-  const [existing] = await db
-    .select()
+  const [existingRow] = await db
+    .select({
+      stage: eventClientCommunicationStages,
+      defSlug: clientCommunicationStageDefs.slug,
+    })
     .from(eventClientCommunicationStages)
+    .innerJoin(
+      clientCommunicationStageDefs,
+      eq(
+        eventClientCommunicationStages.defId,
+        clientCommunicationStageDefs.id
+      )
+    )
     .where(eq(eventClientCommunicationStages.id, stageId))
     .limit(1);
+  const existing = existingRow?.stage;
   if (!existing || existing.eventId !== eventId) {
     throw new AppError("Client communication stage not found", 404);
   }
@@ -386,14 +507,17 @@ export async function patchEventClientCommStage(
   let completedBy = existing.completedBy;
 
   const markDone =
-    payload.complete === true ||
-    payload.status === "done";
+    payload.complete === true || payload.status === "done";
   const markPending =
-    payload.complete === false ||
-    payload.status === "pending";
+    payload.complete === false || payload.status === "pending";
+  const markSkipped = payload.status === "skipped";
 
   if (markDone) {
     status = "done";
+    completedAt = now;
+    completedBy = user?.id ?? existing.completedBy;
+  } else if (markSkipped) {
+    status = "skipped";
     completedAt = now;
     completedBy = user?.id ?? existing.completedBy;
   } else if (markPending) {
@@ -419,6 +543,43 @@ export async function patchEventClientCommStage(
     })
     .where(eq(eventClientCommunicationStages.id, stageId))
     .returning();
+
+  // Completing a thank-you variant skips the sibling.
+  if (markDone && isThankYouSlug(existingRow?.defSlug)) {
+    await skipThankYouSiblings(eventId, stageId, user);
+  }
+
+  // Reopening a thank-you: clear sibling skipped → pending so user can switch.
+  if (markPending && isThankYouSlug(existingRow?.defSlug)) {
+    const siblings = await db
+      .select({
+        stage: eventClientCommunicationStages,
+        defSlug: clientCommunicationStageDefs.slug,
+      })
+      .from(eventClientCommunicationStages)
+      .innerJoin(
+        clientCommunicationStageDefs,
+        eq(
+          eventClientCommunicationStages.defId,
+          clientCommunicationStageDefs.id
+        )
+      )
+      .where(eq(eventClientCommunicationStages.eventId, eventId));
+    for (const row of siblings) {
+      if (!isThankYouSlug(row.defSlug)) continue;
+      if (row.stage.id === stageId) continue;
+      if (row.stage.status !== "skipped") continue;
+      await db
+        .update(eventClientCommunicationStages)
+        .set({
+          status: "pending",
+          completedAt: null,
+          completedBy: null,
+          updatedDate: now,
+        })
+        .where(eq(eventClientCommunicationStages.id, row.stage.id));
+    }
+  }
 
   return {
     stage: toApiRecord((updated || existing) as Record<string, unknown>),
@@ -490,17 +651,36 @@ export async function previewClientCommStage(
   };
 }
 
+export interface ClientCommDraftOverrides {
+  to?: string | null;
+  subject?: string | null;
+  body?: string | null;
+}
+
 /**
  * Fill stage template from event data and create a Gmail draft to the POC.
+ * Optional overrides replace filled to/subject/body (Leads-style edit-before-draft).
  */
 export async function createClientCommStageDraft(
   eventId: string,
   stageId: string,
-  user?: AuthUser | null
+  user?: AuthUser | null,
+  overrides?: ClientCommDraftOverrides | null
 ) {
   const filled = await previewClientCommStage(eventId, stageId);
 
-  if (!filled.to) {
+  const to =
+    overrides?.to != null && String(overrides.to).trim()
+      ? String(overrides.to).trim()
+      : filled.to;
+  const subject =
+    overrides?.subject != null
+      ? String(overrides.subject)
+      : filled.subject;
+  const body =
+    overrides?.body != null ? String(overrides.body) : filled.body;
+
+  if (!to) {
     throw new AppError(
       "Event needs a POC email before creating a draft. Set POC email on the event (Deposit / Event details).",
       400
@@ -515,9 +695,9 @@ export async function createClientCommStageDraft(
     .limit(1);
 
   const draft = await createGmailDraft({
-    to: filled.to,
-    subject: filled.subject,
-    body: filled.body,
+    to,
+    subject,
+    body,
     leadId: event?.leadId || undefined,
     userId: user?.id,
     userName: user?.full_name,
@@ -525,9 +705,9 @@ export async function createClientCommStageDraft(
 
   return {
     ...draft,
-    to: filled.to,
-    subject: filled.subject,
-    body: filled.body,
+    to,
+    subject,
+    body,
     stage_id: stageId,
     stage_title: filled.stage_title,
   };

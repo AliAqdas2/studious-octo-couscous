@@ -580,7 +580,14 @@ export const base44 = {
         }
         const body = await request(
           `/api/events/${encodeURIComponent(eventId)}/client-comm-stages/${encodeURIComponent(stageId)}/draft`,
-          { method: "POST", body: JSON.stringify({}) }
+          {
+            method: "POST",
+            body: JSON.stringify({
+              to: payload.to,
+              subject: payload.subject,
+              body: payload.body,
+            }),
+          }
         );
         return { data: body };
       }

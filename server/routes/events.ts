@@ -787,7 +787,16 @@ router.post(
       if (!eventId) throw new AppError("eventId is required", 400);
       if (!stageId) throw new AppError("stageId is required", 400);
       const user = (req as AuthenticatedRequest).user;
-      const result = await createClientCommStageDraft(eventId, stageId, user);
+      const draftBody = (req.body ?? {}) as {
+        to?: string | null;
+        subject?: string | null;
+        body?: string | null;
+      };
+      const result = await createClientCommStageDraft(eventId, stageId, user, {
+        to: draftBody.to,
+        subject: draftBody.subject,
+        body: draftBody.body,
+      });
       res.json(result);
     } catch (err) {
       next(err);

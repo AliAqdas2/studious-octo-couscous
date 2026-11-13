@@ -27,6 +27,7 @@ export const clientCommEventTypeScopeEnum = pgEnum(
 export const clientCommStageStatusEnum = pgEnum("client_comm_stage_status", [
   "pending",
   "done",
+  "skipped",
 ]);
 
 /** Catalog of client outreach stages + email scripts (CRM-22). */
