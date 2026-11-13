@@ -742,7 +742,18 @@ export default function LeadDetail() {
             {isAdmin ? (
               <>
                 <InlineEditField label="Headcount Estimate" value={lead.headcount_estimate ? String(lead.headcount_estimate) : ''} icon={Users} type="number" onSave={(v) => updateFieldMutation.mutate({ updates: { headcount_estimate: v ? Number(v) : null }, fieldLabel: 'Headcount Estimate' })} />
-                <InlineEditField label="Preferred Date & Time" value={lead.preferred_date ? new Date(lead.preferred_date).toLocaleString() : ''} icon={Calendar} type="datetime-local" onSave={(v) => updateFieldMutation.mutate({ updates: { preferred_date: v ? new Date(v).toISOString() : '' }, fieldLabel: 'Preferred Date' })} />
+                <InlineEditField
+                  label="Preferred Date & Time"
+                  value={lead.preferred_date || ''}
+                  icon={Calendar}
+                  type="datetime-local"
+                  onSave={(v) =>
+                    updateFieldMutation.mutate({
+                      updates: { preferred_date: v || null },
+                      fieldLabel: 'Preferred Date',
+                    })
+                  }
+                />
                 {lead.converted_to_event_id ? (
                   <p className="text-xs text-gray-500 -mt-1 ml-8">
                     Synced with linked Event when converted — changes update both.
@@ -813,10 +824,22 @@ export default function LeadDetail() {
           {isAdmin ? (
             <>
               <div>
-                <InlineEditField label="Source" value={lead.source} options={['Website','Email','Phone','Referral','Call','Form','Other']} onSave={(v) => updateFieldMutation.mutate({ updates: { source: v }, fieldLabel: 'Source' })} />
-                {lead.referral_source === 'Other' && lead.referral_source_other && (
-                  <p className="text-xs text-gray-500 mt-1 ml-1">Other: {lead.referral_source_other}</p>
-                )}
+                <InlineEditField
+                  label="Source"
+                  value={lead.source}
+                  options={['Website', 'Email', 'Phone', 'Referral', 'Call', 'Form', 'Google Ads', 'Other']}
+                  otherOption="Other"
+                  otherValue={lead.source_other || ''}
+                  onSave={(v, otherText) =>
+                    updateFieldMutation.mutate({
+                      updates: {
+                        source: v || null,
+                        source_other: v === 'Other' ? (otherText || null) : null,
+                      },
+                      fieldLabel: 'Source',
+                    })
+                  }
+                />
               </div>
               <InlineEditField label="Channel" value={lead.channel} options={['B2B','B2C']} onSave={(v) => updateFieldMutation.mutate({ updates: { channel: v }, fieldLabel: 'Channel' })} />
               <InlineEditField label="Client Type" value={lead.client_type} options={['New','Previous','Referral']} onSave={(v) => updateFieldMutation.mutate({ updates: { client_type: v }, fieldLabel: 'Client Type' })} />
@@ -831,9 +854,9 @@ export default function LeadDetail() {
               <div>
                 <p className="text-sm text-gray-500">Source</p>
                 <p className="font-medium mt-1">{lead.source || 'Not set'}</p>
-                {lead.referral_source === 'Other' && lead.referral_source_other && (
-                  <p className="text-xs text-gray-500 mt-0.5">Other: {lead.referral_source_other}</p>
-                )}
+                {lead.source === 'Other' && lead.source_other ? (
+                  <p className="text-xs text-gray-500 mt-0.5">Other: {lead.source_other}</p>
+                ) : null}
               </div>
               <div><p className="text-sm text-gray-500">Channel</p><p className="font-medium mt-1">{lead.channel || 'Not set'}</p></div>
               <div><p className="text-sm text-gray-500">Client Type</p><p className="font-medium mt-1">{lead.client_type || 'Not set'}</p></div>

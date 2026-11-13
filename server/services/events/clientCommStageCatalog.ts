@@ -35,6 +35,15 @@ export const COOKING_SIMPLE_COMM_SLUGS = [
   "referral_request",
 ] as const;
 
+/**
+ * Duplicate extras removed from the catalog (same bodies as simple-track stages).
+ * Kept as inactive in DB so existing event instances can be filtered/pruned.
+ */
+export const REMOVED_CLIENT_COMM_SLUGS = [
+  "deposit_confirms_planning_timeline",
+  "remaining_balance_cc_auth",
+] as const;
+
 export const CLIENT_COMM_STAGE_DEFS: ClientCommStageDefSeed[] = [
   // --- Cooking simple track (client's 11) ---
   {
@@ -253,31 +262,8 @@ Here to help and look forward to keeping in touch!`,
   },
 
   // --- Extra / non-simple (hidden on Cooking Class track) ---
-  {
-    slug: "deposit_confirms_planning_timeline",
-    title: "Deposit Confirms and Planning Timeline Confirmation",
-    sortOrder: 101,
-    subject: "Payment received — planning timeline for <<event name>>",
-    body: `Good morning <<name>>,
-
-Payment received. We updated our system.
-We need the following participation details to properly prepare for the upcoming <<event name>>: <<deposit Link>>
-We'll need these details by <<14th day before the event>> or sooner.
-
-Does this timeline work for you?
-- <<name>> places deposit to reserve
-- I send you a participation template
-- <<name>> completes participation list by <<14th day before the event>>  send to me
-- We schedule quick check-in to go over the run of show <<13th day before the event>>
-- I send you the remaining balance invoice covering the final headcount <<12th day before the event>>
-
-Look forward to further planning this with you… it's going to be a blast!`,
-    defaultOwnerRole: "Sales",
-    dueOffsetDays: 0,
-    dueAnchor: "none",
-    eventTypeScope: "all",
-    showInSimpleTrack: false,
-  },
+  // Removed duplicates (same bodies as request_participation_list / send_cc_authorization):
+  // deposit_confirms_planning_timeline, remaining_balance_cc_auth — see REMOVED_CLIENT_COMM_SLUGS
   {
     slug: "confirmed_payment",
     title: "Confirmed - Payment",
@@ -368,26 +354,6 @@ Here is the remaining balance link -
 Please let me know once processed and will confirm this hits our system.`,
     defaultOwnerRole: "Sales",
     dueOffsetDays: 12,
-    dueAnchor: "before_event",
-    eventTypeScope: "all",
-    showInSimpleTrack: false,
-  },
-  {
-    slug: "remaining_balance_cc_auth",
-    title: "Remaining Balance with CC Authorization Form",
-    sortOrder: 107,
-    subject: "Remaining balance + CC authorization — <<event name>>",
-    body: `Good morning <<name>>,
-
-We have two more items before the big day on <<event date>>.
-
-Here is the remaining balance link: (Remaining Balance Link:). A separate email will be sent to you for the credit card authorization form for onsite consumption. Please fill it out and return it for our files.
-
-Please let me know once processed today and will confirm it hits our system.
-
-Happy Friday!`,
-    defaultOwnerRole: "Sales",
-    dueOffsetDays: 10,
     dueAnchor: "before_event",
     eventTypeScope: "all",
     showInSimpleTrack: false,

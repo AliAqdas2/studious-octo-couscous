@@ -1,6 +1,12 @@
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
-import { activityLogs, events, tasks } from "../../db/schema/index.js";
+import {
+  activityLogs,
+  clients,
+  events,
+  leads,
+  tasks,
+} from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
 import type { AuthUser } from "../auth/authService.js";
 import { toApiRecord } from "../entities/serialize.js";
@@ -14,7 +20,12 @@ import { sendDepositNotifyEmail } from "./depositNotifyEmail.js";
 import { generateEventWorkflow, reconcileEventWorkflowTasks } from "./generateWorkflow.js";
 import { listActiveHouseVenueNames } from "./venuesService.js";
 import { syncLeadEventVenue } from "./syncLeadEventVenue.js";
-import { applyEventDateTimeToLead } from "./syncLeadEventDateTime.js";
+import {
+  applyEventDateTimeToLead,
+  parseEventDateInput,
+} from "./syncLeadEventDateTime.js";
+import { etYmd } from "../dates/easternTime.js";
+import { rescheduleWorkflowTasks } from "./rescheduleWorkflowTasks.js";
 
 function requireDb() {
   const db = getDb();
@@ -154,14 +165,18 @@ export async function completeDepositIntake(
       : undefined;
 
   const now = new Date();
-  const eventDate = payload.eventDate
-    ? new Date(payload.eventDate)
-    : event.eventDate;
+  const prevYmd = event.eventDate ? etYmd(new Date(event.eventDate)) : null;
+  const parsedEventDate = payload.eventDate
+    ? parseEventDateInput(payload.eventDate)
+    : null;
+  const eventDate = parsedEventDate || event.eventDate;
+  const nextStartTime =
+    payload.startTime?.trim() || event.startTime || null;
 
   const [updated] = await db
     .update(events)
     .set({
-      startTime: payload.startTime?.trim() || event.startTime || null,
+      startTime: nextStartTime,
       eventDate,
       pocName: payload.pocName?.trim() || event.pocName,
       pocEmail: payload.pocEmail?.trim() || event.pocEmail,
@@ -233,6 +248,20 @@ export async function completeDepositIntake(
       console.warn(
         "[completeDepositIntake] applyEventDateTimeToLead failed:",
         dtErr instanceof Error ? dtErr.message : dtErr
+      );
+    }
+  }
+
+  const nextYmd = updated.eventDate
+    ? etYmd(new Date(updated.eventDate))
+    : null;
+  if (prevYmd && nextYmd && prevYmd !== nextYmd) {
+    try {
+      await rescheduleWorkflowTasks(eventId);
+    } catch (rsErr) {
+      console.warn(
+        "[completeDepositIntake] rescheduleWorkflowTasks failed:",
+        rsErr instanceof Error ? rsErr.message : rsErr
       );
     }
   }
@@ -362,15 +391,27 @@ export async function getDepositIntakeState(
   user?: AuthUser | null
 ) {
   const db = requireDb();
-  const [event] = await db
-    .select()
+  const [row] = await db
+    .select({
+      event: events,
+      leadCompany: leads.company,
+      clientCompany: clients.company,
+    })
     .from(events)
+    .leftJoin(leads, eq(events.leadId, leads.id))
+    .leftJoin(clients, eq(events.clientId, clients.id))
     .where(eq(events.id, eventId))
     .limit(1);
-  if (!event) throw new AppError("Event not found", 404);
+  if (!row?.event) throw new AppError("Event not found", 404);
+
+  const event = row.event;
+  const companyName = row.clientCompany || row.leadCompany || null;
 
   const record = redactDepositFields(
-    toApiRecord(event as Record<string, unknown>),
+    {
+      ...toApiRecord(event as Record<string, unknown>),
+      company_name: companyName,
+    },
     user
   );
 

@@ -49,6 +49,26 @@ const HOUSE_VENUES_FALLBACK = [
 
 const CHEESEBOARD_MIN = 25;
 
+const EASTERN_TZ = 'America/New_York';
+
+/** Calendar YYYY-MM-DD in America/New_York (avoids UTC day flip). */
+function toYmdEastern(value) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: EASTERN_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const map = {};
+  for (const p of parts) {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  }
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
 const emptyFood = () => ({
   charcuterie: { enabled: false, style: null, amount: '' },
   additionalProtein: { enabled: false, amount: '' },
@@ -132,12 +152,14 @@ function formatIntakeSummary(src, { isCooking, canViewDeposit }) {
 
   const when = src.event_date || src.eventDate;
   const start = src.start_time || src.startTime;
-  const dateTime = [
-    when ? new Date(when).toLocaleDateString() : null,
-    start || null,
-  ]
-    .filter(Boolean)
-    .join(' · ') || '—';
+  const dateYmd = toYmdEastern(when);
+  const dateLabel = dateYmd
+    ? (() => {
+        const [y, m, d] = dateYmd.split('-').map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString();
+      })()
+    : null;
+  const dateTime = [dateLabel, start || null].filter(Boolean).join(' · ') || '—';
 
   const venueMode = src.venue_mode || src.venueMode;
   const modeFriendly = venueModeLabel(venueMode);
@@ -152,30 +174,44 @@ function formatIntakeSummary(src, { isCooking, canViewDeposit }) {
       }`
     : '—';
 
+  const companyName =
+    src.company_name || src.companyName || src.company || null;
+  const eventType = src.event_type || src.eventType || null;
+
   const rows = [
-    { label: 'Venue', kind: 'text', value: venue },
-    {
-      label: 'Venue restrictions',
-      kind: 'text',
-      value: src.venue_restrictions || src.venueRestrictions || null,
-    },
-    { label: 'Date / time', kind: 'text', value: dateTime },
-    { label: 'Headcount', kind: 'text', value: headcount },
     {
       label: 'Planner',
       kind: 'text',
       value: src.poc_name || src.pocName || '—',
+    },
+    { label: 'Date / time', kind: 'text', value: dateTime },
+    {
+      label: 'Company',
+      kind: 'text',
+      value: companyName || '—',
+    },
+    {
+      label: 'Event type',
+      kind: 'text',
+      value: eventType || '—',
     },
     {
       label: 'Planner email',
       kind: 'text',
       value: src.poc_email || src.pocEmail || null,
     },
+    { label: 'Venue', kind: 'text', value: venue },
+    {
+      label: 'Venue restrictions',
+      kind: 'text',
+      value: src.venue_restrictions || src.venueRestrictions || null,
+    },
     {
       label: 'Planner phone',
       kind: 'text',
       value: src.poc_phone || src.pocPhone || null,
     },
+    { label: 'Headcount', kind: 'text', value: headcount },
   ];
 
   const alcoholDetails = [];
@@ -363,10 +399,7 @@ function buildFormFromSource(src, houseVenues = HOUSE_VENUES_FALLBACK) {
 
   return {
     startTime: src.start_time || src.startTime || '',
-    eventDate:
-      src.event_date || src.eventDate
-        ? new Date(src.event_date || src.eventDate).toISOString().slice(0, 10)
-        : '',
+    eventDate: toYmdEastern(src.event_date || src.eventDate),
     pocName: src.poc_name || src.pocName || '',
     pocEmail: src.poc_email || src.pocEmail || '',
     pocPhone: src.poc_phone || src.pocPhone || '',
@@ -579,9 +612,8 @@ export default function DepositIntakeForm({ event, user }) {
       const payload = {
         eventId,
         startTime: form.startTime || null,
-        eventDate: form.eventDate
-          ? new Date(`${form.eventDate}T12:00:00`).toISOString()
-          : null,
+        // Date-only YYYY-MM-DD — server interprets as ET wall day
+        eventDate: form.eventDate || null,
         pocName: form.pocName || null,
         pocEmail: form.pocEmail || null,
         pocPhone: form.pocPhone || null,

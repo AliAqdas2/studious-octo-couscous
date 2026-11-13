@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import { AppError } from "../../lib/errors.js";
 import { getDb } from "../../db/index.js";
 import {
@@ -13,6 +13,7 @@ import { createGmailDraft } from "../gmail/drafts.js";
 import {
   CLIENT_COMM_STAGE_DEFS,
   COOKING_SIMPLE_COMM_SLUGS,
+  REMOVED_CLIENT_COMM_SLUGS,
   type ClientCommEventTypeScope,
 } from "./clientCommStageCatalog.js";
 import { fillClientCommSubjectAndBody } from "./fillClientCommTemplate.js";
@@ -107,6 +108,20 @@ export async function ensureClientCommStageDefs() {
       });
     }
   }
+
+  // Deactivate duplicate extras that were removed from the catalog.
+  if (REMOVED_CLIENT_COMM_SLUGS.length > 0) {
+    await db
+      .update(clientCommunicationStageDefs)
+      .set({ isActive: false, updatedDate: now })
+      .where(
+        inArray(
+          clientCommunicationStageDefs.slug,
+          [...REMOVED_CLIENT_COMM_SLUGS]
+        )
+      );
+  }
+
   return { ok: true, count: CLIENT_COMM_STAGE_DEFS.length };
 }
 
@@ -141,6 +156,70 @@ export async function materializeClientCommStagesForEvent(eventId: string) {
   const defs = cooking
     ? defsAll.filter((d) => d.showInSimpleTrack)
     : defsAll;
+
+  // Cooking: drop pending instances that are inactive or off the simple track.
+  // Preserve completed history.
+  if (cooking) {
+    const stalePending = await db
+      .select({
+        id: eventClientCommunicationStages.id,
+        status: eventClientCommunicationStages.status,
+        showInSimpleTrack: clientCommunicationStageDefs.showInSimpleTrack,
+        isActive: clientCommunicationStageDefs.isActive,
+        defSlug: clientCommunicationStageDefs.slug,
+      })
+      .from(eventClientCommunicationStages)
+      .innerJoin(
+        clientCommunicationStageDefs,
+        eq(
+          eventClientCommunicationStages.defId,
+          clientCommunicationStageDefs.id
+        )
+      )
+      .where(eq(eventClientCommunicationStages.eventId, eventId));
+
+    const toDelete = stalePending.filter((r) => {
+      if (r.status === "done") return false;
+      const onSimple =
+        r.showInSimpleTrack ||
+        (COOKING_SIMPLE_COMM_SLUGS as readonly string[]).includes(
+          r.defSlug || ""
+        );
+      return !r.isActive || !onSimple;
+    });
+    if (toDelete.length > 0) {
+      await db
+        .delete(eventClientCommunicationStages)
+        .where(
+          inArray(
+            eventClientCommunicationStages.id,
+            toDelete.map((r) => r.id)
+          )
+        );
+    }
+  } else if (REMOVED_CLIENT_COMM_SLUGS.length > 0) {
+    // Non-cooking: remove pending instances of deactivated duplicate defs only.
+    const removedDefs = await db
+      .select({ id: clientCommunicationStageDefs.id })
+      .from(clientCommunicationStageDefs)
+      .where(
+        inArray(clientCommunicationStageDefs.slug, [
+          ...REMOVED_CLIENT_COMM_SLUGS,
+        ])
+      );
+    const removedIds = removedDefs.map((d) => d.id);
+    if (removedIds.length > 0) {
+      await db
+        .delete(eventClientCommunicationStages)
+        .where(
+          and(
+            eq(eventClientCommunicationStages.eventId, eventId),
+            inArray(eventClientCommunicationStages.defId, removedIds),
+            ne(eventClientCommunicationStages.status, "done")
+          )
+        );
+    }
+  }
 
   const existing = await db
     .select()
@@ -212,6 +291,7 @@ export async function listEventClientCommStages(eventId: string) {
       stage: eventClientCommunicationStages,
       defSlug: clientCommunicationStageDefs.slug,
       showInSimpleTrack: clientCommunicationStageDefs.showInSimpleTrack,
+      defActive: clientCommunicationStageDefs.isActive,
     })
     .from(eventClientCommunicationStages)
     .innerJoin(
@@ -224,15 +304,16 @@ export async function listEventClientCommStages(eventId: string) {
     .where(eq(eventClientCommunicationStages.eventId, eventId))
     .orderBy(asc(eventClientCommunicationStages.sortOrder));
 
-  const filtered = cooking
-    ? rows.filter(
-        (r) =>
-          r.showInSimpleTrack ||
-          (COOKING_SIMPLE_COMM_SLUGS as readonly string[]).includes(
-            r.defSlug || ""
-          )
+  const filtered = rows.filter((r) => {
+    if (!r.defActive) return false;
+    if (!cooking) return true;
+    return (
+      r.showInSimpleTrack ||
+      (COOKING_SIMPLE_COMM_SLUGS as readonly string[]).includes(
+        r.defSlug || ""
       )
-    : rows;
+    );
+  });
 
   const stageRows = filtered.map((r) => r.stage);
   const stages = stageRows.map((r) => toApiRecord(r as Record<string, unknown>));

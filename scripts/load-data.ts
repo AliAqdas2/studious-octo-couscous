@@ -327,6 +327,7 @@ async function loadData(): Promise<void> {
       "Referral",
       "Call",
       "Form",
+      "Google Ads",
       "Other",
     ] as const;
     const REFERRALS = [
@@ -380,6 +381,7 @@ async function loadData(): Promise<void> {
           phone: r.phone || null,
           additionalContacts: parseJson(r.additional_contacts, null),
           source: pickEnum(r.source, SOURCES),
+          sourceOther: r.source_other || null,
           referralSource: pickEnum(r.referral_source, REFERRALS),
           referralSourceOther: r.referral_source_other || null,
           inquiryType: pickEnum(r.inquiry_type, INQUIRY, "Unknown"),

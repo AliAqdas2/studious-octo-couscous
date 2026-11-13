@@ -110,6 +110,45 @@ export function etDateParts(utcDate: Date): {
   };
 }
 
+export function etTimeParts(utcDate: Date): {
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: EASTERN_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(utcDate);
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    if (p.type !== "literal") map[p.type] = p.value;
+  }
+  let hour = Number(map.hour);
+  if (hour === 24) hour = 0;
+  return {
+    hour,
+    minute: Number(map.minute),
+    second: Number(map.second),
+  };
+}
+
+/** YYYY-MM-DD of an instant in America/New_York. */
+export function etYmd(utcDate: Date): string {
+  const { year, month, day } = etDateParts(utcDate);
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+/** HH:MM of an instant in America/New_York (null if midnight). */
+export function etStartTimeHm(utcDate: Date): string | null {
+  if (Number.isNaN(utcDate.getTime())) return null;
+  const { hour, minute } = etTimeParts(utcDate);
+  if (hour === 0 && minute === 0) return null;
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
 /** 0 = Sunday … 6 = Saturday in Eastern time. */
 export function easternWeekday(utcDate: Date): number {
   const wd = new Intl.DateTimeFormat("en-US", {

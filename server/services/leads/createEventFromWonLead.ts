@@ -7,6 +7,7 @@ import {
   tasks,
 } from "../../db/schema/index.js";
 import { AppError } from "../../lib/errors.js";
+import { etStartTimeHm } from "../dates/easternTime.js";
 import { linkEventToClient } from "../events/linkEventToClient.js";
 import { assignEventStaff } from "../events/assignEventStaff.js";
 import { resolveVenueModeForName } from "../events/venuesService.js";
@@ -241,14 +242,7 @@ export async function createEventFromWonLead(
 
   let startTime: string | null = null;
   if (lead.preferredDate) {
-    const d = new Date(lead.preferredDate);
-    if (!Number.isNaN(d.getTime())) {
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mm = String(d.getMinutes()).padStart(2, "0");
-      if (hh !== "00" || mm !== "00") {
-        startTime = `${hh}:${mm}`;
-      }
-    }
+    startTime = etStartTimeHm(new Date(lead.preferredDate));
   }
 
   const headcountEstimate = lead.headcountEstimate

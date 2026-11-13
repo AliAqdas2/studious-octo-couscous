@@ -9,6 +9,7 @@ export const leadSourceEnum = pgEnum("lead_source", [
   "Referral",
   "Call",
   "Form",
+  "Google Ads",
   "Other",
 ]);
 

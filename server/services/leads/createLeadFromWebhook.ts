@@ -13,6 +13,7 @@ const LEAD_SOURCES = new Set([
   "Referral",
   "Call",
   "Form",
+  "Google Ads",
   "Other",
 ]);
 
@@ -208,6 +209,11 @@ export async function createLeadFromWebhook(
 
   const referralSource = pickString(data, "referral_source", "referralSource");
   if (referralSource) body.referral_source = referralSource;
+
+  const sourceOther = pickString(data, "source_other", "sourceOther");
+  if (sourceRaw === "Other" && sourceOther) {
+    body.source_other = sourceOther;
+  }
 
   if (skipAutoCall !== undefined) body.skip_auto_call = skipAutoCall;
 

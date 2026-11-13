@@ -33,6 +33,7 @@ export const leads = pgTable("leads", {
   phone: varchar("phone", { length: 50 }),
   additionalContacts: jsonb("additional_contacts"),
   source: leadSourceEnum("source"),
+  sourceOther: varchar("source_other", { length: 255 }),
   referralSource: referralSourceEnum("referral_source"),
   referralSourceOther: varchar("referral_source_other", { length: 255 }),
   inquiryType: inquiryTypeEnum("inquiry_type").default("Unknown"),

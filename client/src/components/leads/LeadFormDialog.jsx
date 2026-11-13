@@ -11,6 +11,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Phone } from 'lucide-react';
 import { detectChannelFromEmail } from './pipelineConfig';
 import AdditionalContactsEditor from './AdditionalContactsEditor';
+import {
+  fromDatetimeLocalValue,
+  toDatetimeLocalValue,
+} from '@/lib/localDateTime';
 
 export default function LeadFormDialog({ lead, onClose, prefillData }) {
   const queryClient = useQueryClient();
@@ -38,6 +42,7 @@ export default function LeadFormDialog({ lead, onClose, prefillData }) {
     notes: '',
     stage: 'New Inquiry',
     channel: prefillData?.channel || '',
+    source_other: prefillData?.source_other || '',
     referral_source: prefillData?.referral_source || '',
     referral_source_other: prefillData?.referral_source_other || ''
   });
@@ -65,6 +70,9 @@ export default function LeadFormDialog({ lead, onClose, prefillData }) {
     );
   };
   const [showOtherReferral, setShowOtherReferral] = useState(lead?.referral_source === 'Other');
+  const [showOtherSource, setShowOtherSource] = useState(
+    (lead?.source || prefillData?.source) === 'Other'
+  );
 
   // Auto-detect channel from email when not editing
   const handleEmailChange = (email) => {
@@ -78,13 +86,8 @@ export default function LeadFormDialog({ lead, onClose, prefillData }) {
   const mutation = useMutation({
     mutationFn: async (data) => {
       if (lead) {
+        // Server applyLeadPreferredDateToEvent syncs event_date + start_time
         await base44.entities.Lead.update(lead.id, data);
-        // Sync preferred_date to linked event when lead has been converted
-        if (data.preferred_date && lead.converted_to_event_id) {
-          await base44.entities.Event.update(lead.converted_to_event_id, {
-            event_date: data.preferred_date
-          });
-        }
         return;
       }
       return base44.entities.Lead.create(data);
@@ -114,6 +117,10 @@ export default function LeadFormDialog({ lead, onClose, prefillData }) {
     return {
       ...formData,
       channel,
+      source_other:
+        formData.source === 'Other'
+          ? formData.source_other?.trim() || null
+          : null,
       headcount_estimate: formData.headcount_estimate ? Number(formData.headcount_estimate) : null,
       is_priority: formData.client_type === 'Previous',
       event_type_interest: selectedInterests.includes('Other')
@@ -230,15 +237,37 @@ export default function LeadFormDialog({ lead, onClose, prefillData }) {
               <Label>Source</Label>
               <select
                 value={formData.source}
-                onChange={(e) => setFormData({...formData, source: e.target.value})}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setFormData({
+                    ...formData,
+                    source: next,
+                    source_other: next === 'Other' ? formData.source_other || '' : '',
+                  });
+                  setShowOtherSource(next === 'Other');
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               >
                 <option value="Website">Website</option>
                 <option value="Email">Email</option>
                 <option value="Phone">Phone</option>
                 <option value="Referral">Referral</option>
+                <option value="Call">Call</option>
+                <option value="Form">Form</option>
+                <option value="Google Ads">Google Ads</option>
                 <option value="Other">Other</option>
               </select>
+              {showOtherSource && (
+                <div className="mt-3">
+                  <Input
+                    value={formData.source_other || ''}
+                    onChange={(e) =>
+                      setFormData({ ...formData, source_other: e.target.value })
+                    }
+                    placeholder="Please specify"
+                  />
+                </div>
+              )}
             </div>
             {!lead && (
               <div>
@@ -280,8 +309,15 @@ export default function LeadFormDialog({ lead, onClose, prefillData }) {
               <Label>Preferred Date & Time</Label>
               <Input
                 type="datetime-local"
-                value={formData.preferred_date ? new Date(formData.preferred_date).toISOString().slice(0, 16) : ''}
-                onChange={(e) => setFormData({...formData, preferred_date: e.target.value ? new Date(e.target.value).toISOString() : ''})}
+                value={toDatetimeLocalValue(formData.preferred_date)}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    preferred_date: e.target.value
+                      ? fromDatetimeLocalValue(e.target.value)
+                      : '',
+                  })
+                }
               />
             </div>
             <div>

@@ -26,7 +26,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 
-const SOURCE_OPTIONS = ['Website', 'Email', 'Phone', 'Referral', 'Call', 'Form', 'Other'];
+const SOURCE_OPTIONS = ['Website', 'Email', 'Phone', 'Referral', 'Call', 'Form', 'Google Ads', 'Other'];
 
 const EVENT_TYPE_OPTIONS = [
   'Cooking Class',
@@ -348,7 +348,7 @@ export default function Leads() {
     sessionStorage.removeItem(FILTERS_STORAGE_KEY);
   };
 
-  const exportColumns = ['name', 'email', 'phone', 'company', 'channel', 'source', 'stage', 'created_date', 'preferred_date', 'preferred_time', 'event_type_interest', 'event_format', 'headcount_estimate', 'inquiry_type', 'client_type', 'referral_source', 'referral_source_other', 'is_priority', 'meeting_date', 'assigned_sales_rep', 'deposit_number', 'deposit_amount', 'notes', 'last_contact_date'];
+  const exportColumns = ['name', 'email', 'phone', 'company', 'channel', 'source', 'source_other', 'stage', 'created_date', 'preferred_date', 'preferred_time', 'event_type_interest', 'event_format', 'headcount_estimate', 'inquiry_type', 'client_type', 'referral_source', 'referral_source_other', 'is_priority', 'meeting_date', 'assigned_sales_rep', 'deposit_number', 'deposit_amount', 'venue', 'venue_mode', 'venue_address', 'notes', 'last_contact_date'];
 
   const formatExportDate = (val) => {
     if (!val) return '';

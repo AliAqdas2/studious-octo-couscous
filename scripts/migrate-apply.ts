@@ -1185,6 +1185,26 @@ async function main(): Promise<void> {
         "client_communication_stage_defs.show_in_simple_track already present"
       );
     }
+
+    const sourceOtherCols = await sql`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'leads'
+        and column_name = 'source_other'
+    `;
+    if (sourceOtherCols.length === 0) {
+      console.log("Applying lead source Google Ads migration (0038)...");
+      await applySqlFile(
+        "lead source Google Ads migration",
+        "../drizzle/0038_lead_source_google_ads.sql",
+        { wholeFile: true }
+      );
+    } else {
+      // Enum ADD VALUE is idempotent; ensure Google Ads exists even if column already present
+      console.log("leads.source_other already present; ensuring Google Ads enum value...");
+      await sql`ALTER TYPE "public"."lead_source" ADD VALUE IF NOT EXISTS 'Google Ads'`;
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

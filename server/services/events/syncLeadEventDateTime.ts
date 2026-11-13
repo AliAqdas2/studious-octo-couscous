@@ -2,6 +2,13 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { activityLogs, events, leads } from "../../db/schema/index.js";
 import type { AuthUser } from "../auth/authService.js";
+import {
+  easternWallTimeToUtc,
+  etDateParts,
+  etStartTimeHm,
+  etYmd,
+  parseDateOnlyEt,
+} from "../dates/easternTime.js";
 import { rescheduleWorkflowTasks } from "./rescheduleWorkflowTasks.js";
 
 function requireDb() {
@@ -10,16 +17,19 @@ function requireDb() {
   return db;
 }
 
-/** Extract HH:MM from a Date; null if midnight or invalid. */
-export function startTimeFromDate(d: Date): string | null {
-  if (Number.isNaN(d.getTime())) return null;
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  if (hh === "00" && mm === "00") return null;
-  return `${hh}:${mm}`;
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
-/** Combine event calendar date + optional HH:MM into a preferred_date Date. */
+/** Extract HH:MM from a Date in America/New_York; null if midnight or invalid. */
+export function startTimeFromDate(d: Date): string | null {
+  return etStartTimeHm(d);
+}
+
+/**
+ * Combine event calendar date + optional HH:MM into a preferred_date Date
+ * using America/New_York wall time.
+ */
 export function combineEventDateAndStartTime(
   eventDate: Date,
   startTime: string | null | undefined
@@ -27,18 +37,50 @@ export function combineEventDateAndStartTime(
   const base = new Date(eventDate);
   if (Number.isNaN(base.getTime())) return base;
 
+  const { year, month, day } = etDateParts(base);
+  const ymd = `${year}-${pad2(month)}-${pad2(day)}`;
+
   const raw = String(startTime || "").trim();
   const m = raw.match(/^(\d{1,2}):(\d{2})/);
   if (m) {
     const h = Number(m[1]);
     const min = Number(m[2]);
     if (Number.isFinite(h) && Number.isFinite(min)) {
-      base.setHours(h, min, 0, 0);
-      return base;
+      const combined = easternWallTimeToUtc(
+        `${ymd}T${pad2(h)}:${pad2(min)}:00`
+      );
+      if (combined && !Number.isNaN(combined.getTime())) return combined;
     }
   }
   // Keep time already on eventDate if no startTime
   return base;
+}
+
+/**
+ * Parse deposit/event date payload into an ET day-anchor Date.
+ * Accepts YYYY-MM-DD or a full ISO instant.
+ */
+export function parseEventDateInput(
+  raw: Date | string | null | undefined
+): Date | null {
+  if (raw == null || raw === "") return null;
+  if (raw instanceof Date) {
+    return Number.isNaN(raw.getTime()) ? null : raw;
+  }
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return parseDateOnlyEt(s);
+  }
+  // Date-only with time stripped preference for T12 noon payloads
+  const dateOnly = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (dateOnly && /T12:00:00/.test(s) && !/[zZ]|[+-]\d{2}:?\d{2}/.test(s)) {
+    return parseDateOnlyEt(dateOnly[1]!);
+  }
+  if (dateOnly && !s.includes("T")) {
+    return parseDateOnlyEt(dateOnly[1]!);
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function sameInstant(a: Date | null | undefined, b: Date | null | undefined): boolean {
@@ -107,10 +149,18 @@ export async function applyLeadPreferredDateToEvent(
   if (!event) return false;
 
   const nextStart = startTimeFromDate(next);
+  // Store event_date as the same ET wall instant as preferred_date
+  const nextEventDate = next;
   const prevDate = event.eventDate ? new Date(event.eventDate) : null;
   const prevStart = normStart(event.startTime);
 
-  if (sameInstant(prevDate, next) && prevStart === nextStart) {
+  const prevYmd = prevDate ? etYmd(prevDate) : null;
+  const nextYmd = etYmd(nextEventDate);
+
+  if (
+    sameInstant(prevDate, nextEventDate) &&
+    prevStart === nextStart
+  ) {
     return false;
   }
 
@@ -119,20 +169,20 @@ export async function applyLeadPreferredDateToEvent(
     start_time: prevStart,
   };
   const toSnapshot = {
-    event_date: next.toISOString(),
+    event_date: nextEventDate.toISOString(),
     start_time: nextStart,
   };
 
   await db
     .update(events)
     .set({
-      eventDate: next,
+      eventDate: nextEventDate,
       startTime: nextStart,
       updatedDate: new Date(),
     })
     .where(eq(events.id, eventId));
 
-  if (!opts?.skipReschedule) {
+  if (!opts?.skipReschedule && prevYmd !== nextYmd) {
     try {
       await rescheduleWorkflowTasks(eventId);
     } catch (err) {
@@ -183,7 +233,10 @@ export async function applyEventDateTimeToLead(
 ): Promise<boolean> {
   if (!leadId || input.eventDate == null || input.eventDate === "") return false;
   const db = requireDb();
-  const eventDate = new Date(input.eventDate);
+  const eventDate =
+    input.eventDate instanceof Date
+      ? input.eventDate
+      : parseEventDateInput(input.eventDate) || new Date(input.eventDate);
   if (Number.isNaN(eventDate.getTime())) return false;
 
   const nextPreferred = combineEventDateAndStartTime(
