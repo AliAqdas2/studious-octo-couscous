@@ -187,6 +187,7 @@ export default function EventFormDialog({ event, onClose }) {
     onSuccess: () => {
       setFormTouched(false);
       queryClient.invalidateQueries(['events']);
+      queryClient.invalidateQueries(['events-flow-board']);
       if (event?.id) {
         queryClient.invalidateQueries(['event', event.id]);
       }

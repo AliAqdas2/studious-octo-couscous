@@ -79,6 +79,7 @@ import {
   previewClientCommStage,
   type PatchClientCommStagePayload,
 } from "../services/events/clientCommunicationStages.js";
+import { getEventsFlowBoard } from "../services/events/eventFlowBoard.js";
 
 function requireDb() {
   const db = getDb();
@@ -107,6 +108,16 @@ router.get(
     }
   }
 );
+
+/** Confirmed Event Flow board (Sheet1 dual-track list). */
+router.get("/events/flow-board", requireAuth, async (_req, res, next) => {
+  try {
+    const body = await getEventsFlowBoard();
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post(
   "/events/:id/generate-workflow",

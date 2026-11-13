@@ -149,6 +149,7 @@ const EventTasksPanel = ({
   const invalidate = () => {
     queryClient.invalidateQueries(['event-tasks', eventId]);
     queryClient.invalidateQueries(['tasks']);
+    queryClient.invalidateQueries(['events-flow-board']);
   };
 
   const acknowledgeTaskMutation = useMutation({

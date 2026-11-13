@@ -144,9 +144,11 @@ export default function EventDetail() {
       base44.functions.invoke('generateEventWorkflow', { eventId }),
     onSuccess: () => {
       queryClient.invalidateQueries(['event-tasks', eventId]);
+      queryClient.invalidateQueries(['tasks']);
       queryClient.invalidateQueries(['event-inventory', eventId]);
       queryClient.invalidateQueries(['event-experience', eventId]);
       queryClient.invalidateQueries(['event-client-comm-stages', eventId]);
+      queryClient.invalidateQueries(['events-flow-board']);
       toast.success('Event workflow generated successfully');
       setTab('tasks');
       setTabInUrl('tasks');
@@ -162,10 +164,12 @@ export default function EventDetail() {
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries(['event-tasks', eventId]);
+      queryClient.invalidateQueries(['tasks']);
       queryClient.invalidateQueries(['event-inventory', eventId]);
       queryClient.invalidateQueries(['event', eventId]);
       queryClient.invalidateQueries(['event-experience', eventId]);
       queryClient.invalidateQueries(['event-client-comm-stages', eventId]);
+      queryClient.invalidateQueries(['events-flow-board']);
       const body = res?.data ?? res;
       toast.success(
         `Workflow regenerated (${body?.deletedOpenTasks ?? 0} open tasks replaced)`

@@ -169,6 +169,7 @@ export default function ClientCommunicationPanel({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries(['event-client-comm-stages', eventId]);
+      queryClient.invalidateQueries(['events-flow-board']);
     },
     onError: (err) => {
       toast.error(err?.message || 'Failed to update communication stage');

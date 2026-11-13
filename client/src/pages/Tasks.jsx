@@ -19,12 +19,23 @@ import {
   buildTeamMemberOptions,
   enrichTeamMemberOptions,
 } from '@/lib/taskTeamMembers';
-import { isMyAssignedTask } from '@/lib/taskMineHighlight';
+import {
+  isFullEventTaskViewer,
+  isMyAssignedTask,
+} from '@/lib/taskMineHighlight';
 import {
   buildTasksProgressCsv,
   downloadTextFile,
   taskProgressCsvFilename,
 } from '@/lib/tasksProgressCsv';
+
+/** Map operational RoleAssignment roles onto task.responsible_role values. */
+function taskRoleMatchKeys(operationalRole) {
+  const role = String(operationalRole || '');
+  if (!role) return [];
+  if (role === 'Ops Manager' || role === 'Admin') return ['Ops', role];
+  return [role];
+}
 
 export default function Tasks() {
   const queryClient = useQueryClient();
@@ -64,7 +75,7 @@ export default function Tasks() {
   const { data: roleAssignments = [], isLoading: isLoadingRole } = useQuery({
     queryKey: ['roleAssignment', user?.id],
     queryFn: () => base44.entities.RoleAssignment.filter({ user_id: user.id }),
-    enabled: !!user && user.role !== 'admin'
+    enabled: !!user,
   });
 
   const { data: allRoleAssignments = [] } = useQuery({
@@ -88,26 +99,31 @@ export default function Tasks() {
     [allRoleAssignments, users]
   );
 
+  const seesAllTasks = isFullEventTaskViewer(user, roleAssignments);
+  const userOperationalRole = roleAssignments[0]?.role;
+  const roleMatchKeys = taskRoleMatchKeys(userOperationalRole);
+
   const acknowledgeTaskMutation = useMutation({
     mutationFn: async ({ taskId, task }) => {
       if (!user) throw new Error('User not authenticated');
-      
-      // Ensure role is loaded for non-admin users
-      if (user.role !== 'admin' && !userOperationalRole) {
+
+      const matchesRole = roleMatchKeys.includes(task.responsible_role);
+      const assignedToMe = isMyAssignedTask(task, user.id);
+
+      if (!seesAllTasks && !userOperationalRole && !assignedToMe) {
         throw new Error('Role information loading. Please try again.');
       }
-      
-      // Non-admin users can only acknowledge tasks matching their role
-      if (user.role !== 'admin' && task.responsible_role !== userOperationalRole) {
+
+      if (!seesAllTasks && !matchesRole && !assignedToMe) {
         throw new Error('You can only acknowledge tasks assigned to your role');
       }
-      
-      if (task.assigned_user && user.role !== 'admin') {
+
+      if (task.assigned_user && !seesAllTasks) {
         throw new Error('Task already acknowledged');
       }
-      
-      const isOverride = task.assigned_user && user.role === 'admin';
-      
+
+      const isOverride = Boolean(task.assigned_user && seesAllTasks);
+
       if (isOverride) {
         return base44.entities.Task.update(taskId, {
           previous_assignee: task.assigned_user,
@@ -119,7 +135,7 @@ export default function Tasks() {
           acknowledged_timestamp: new Date().toISOString()
         });
       }
-      
+
       return base44.entities.Task.update(taskId, {
         assigned_user: user.id,
         status: 'Working On It',
@@ -127,13 +143,15 @@ export default function Tasks() {
       });
     },
     onSuccess: async (_, { taskId, task }) => {
-      const isOverride = task.assigned_user && user.role === 'admin';
+      const isOverride = Boolean(task.assigned_user && seesAllTasks);
       await base44.functions.invoke('postSystemMessage', {
         taskId,
         action: isOverride ? 'override' : 'acknowledged',
         metadata: isOverride ? { previous_assignee: task.assigned_user } : {}
       });
       queryClient.invalidateQueries(['tasks']);
+      queryClient.invalidateQueries(['event-tasks']);
+      queryClient.invalidateQueries(['events-flow-board']);
       toast.success('Task acknowledged');
     },
     onError: (error) => {
@@ -157,6 +175,8 @@ export default function Tasks() {
         metadata: {}
       });
       queryClient.invalidateQueries(['tasks']);
+      queryClient.invalidateQueries(['event-tasks']);
+      queryClient.invalidateQueries(['events-flow-board']);
       toast.success('Task marked as done');
     },
     onError: (error) => {
@@ -172,6 +192,7 @@ export default function Tasks() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['tasks']);
+      queryClient.invalidateQueries(['events-flow-board']);
       setEditingDueDate(null);
       setDueDateValue('');
       toast.success('Due date updated');
@@ -205,6 +226,8 @@ export default function Tasks() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['tasks']);
+      queryClient.invalidateQueries(['event-tasks']);
+      queryClient.invalidateQueries(['events-flow-board']);
       toast.success('Assignee updated');
     },
     onError: (error) => {
@@ -224,46 +247,52 @@ export default function Tasks() {
     },
   });
 
-  const userOperationalRole = roleAssignments[0]?.role;
+  const filteredTasks = tasks.filter((task) => {
+    const assignedToMe = isMyAssignedTask(task, user?.id);
+    const matchesRole = roleMatchKeys.includes(task.responsible_role);
 
-  const filteredTasks = tasks.filter(task => {
-    // Role-based visibility: Non-admin users only see tasks for their role or assigned to them
-    if (user && user.role !== 'admin') {
-      const matchesRole = task.responsible_role === userOperationalRole;
-      const assignedToUser = task.assigned_user === user.id;
-      if (!matchesRole && !assignedToUser) return false;
+    // Full viewers (system admin / Ops / Ops Manager / Admin assignment) see all.
+    // Others see own role queue or personal assignments.
+    if (user && !seesAllTasks && !assignedToMe && !matchesRole) {
+      return false;
     }
 
     // View modes: My Tasks | Role inbox | By phase
     if (viewMode === 'mine' && user) {
-      const assignedToMe = task.assigned_user === user.id;
       const unassignedInMyRole =
-        !task.assigned_user &&
-        user.role !== 'admin' &&
-        task.responsible_role === userOperationalRole;
-      if (user.role === 'admin') {
-        if (!assignedToMe) return false;
-      } else if (!assignedToMe && !unassignedInMyRole) {
+        !task.assigned_user && !seesAllTasks && matchesRole;
+      if (!assignedToMe && !unassignedInMyRole) return false;
+    } else if (viewMode === 'role') {
+      // Never hide personal assignments under a role tab
+      if (
+        activeTab !== 'all' &&
+        !assignedToMe &&
+        task.responsible_role !== activeTab
+      ) {
         return false;
       }
-    } else if (viewMode === 'role') {
-      if (activeTab !== 'all' && task.responsible_role !== activeTab) return false;
     } else if (viewMode === 'phase') {
-      if (phaseFilter !== 'all' && task.workflow_phase !== phaseFilter) return false;
+      if (
+        phaseFilter !== 'all' &&
+        !assignedToMe &&
+        task.workflow_phase !== phaseFilter
+      ) {
+        return false;
+      }
     }
-    
+
     // Status filter
     if (statusFilter === 'acknowledged' && task.status === 'Not Acknowledged') return false;
     if (statusFilter === 'working' && task.status !== 'Working On It') return false;
     if (statusFilter === 'done' && task.status !== 'Done') return false;
     if (statusFilter === 'not-acknowledged' && task.status !== 'Not Acknowledged') return false;
-    
+
     // Event filter
     if (eventFilter !== 'all' && task.event_id !== eventFilter) return false;
-    
+
     // Search filter
     if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    
+
     return true;
   });
 
