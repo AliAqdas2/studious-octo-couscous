@@ -63,7 +63,7 @@ export async function postSystemMessage(
       isSystemMessage: true,
       systemAction: action,
       systemMetadata: metadata,
-      createdBy: user.email || user.id,
+      createdBy: user.id || null,
     })
     .returning();
 
